@@ -13,6 +13,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -30,6 +34,14 @@ export default {
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
         },
         muted: {
           DEFAULT: "hsl(var(--muted))",
@@ -57,6 +69,16 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        cyber: {
+          green: "hsl(var(--cyber-green))",
+          "green-glow": "hsl(var(--cyber-green-glow))",
+          cyan: "hsl(var(--cyber-cyan))",
+          blue: "hsl(var(--cyber-blue))",
+          purple: "hsl(var(--cyber-purple))",
+          red: "hsl(var(--cyber-red))",
+          orange: "hsl(var(--cyber-orange))",
+          matrix: "hsl(var(--matrix-green))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -65,25 +87,49 @@ export default {
       },
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+        "fade-in": {
+          from: { opacity: "0", transform: "translateY(10px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "slide-in-right": {
+          from: { opacity: "0", transform: "translateX(20px)" },
+          to: { opacity: "1", transform: "translateX(0)" },
+        },
+        "pulse-ring": {
+          "0%": { transform: "scale(0.95)", opacity: "1" },
+          "50%": { transform: "scale(1)", opacity: "0.5" },
+          "100%": { transform: "scale(0.95)", opacity: "1" },
+        },
+        "data-flow": {
+          "0%": { backgroundPosition: "0% 50%" },
+          "100%": { backgroundPosition: "100% 50%" },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "fade-in": "fade-in 0.3s ease-out",
+        "slide-in-right": "slide-in-right 0.3s ease-out",
+        "pulse-ring": "pulse-ring 2s ease-in-out infinite",
+        "data-flow": "data-flow 3s linear infinite",
+      },
+      backgroundImage: {
+        "gradient-cyber": "var(--gradient-cyber)",
+        "gradient-threat": "var(--gradient-threat)",
+        "gradient-card": "var(--gradient-card)",
+        "gradient-glow": "var(--gradient-glow)",
+      },
+      boxShadow: {
+        cyber: "var(--shadow-cyber)",
+        glow: "var(--shadow-glow)",
+        card: "var(--shadow-card)",
       },
     },
   },
