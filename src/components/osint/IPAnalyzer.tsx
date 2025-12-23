@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
-  Globe,
   Shield,
   Clock,
   ExternalLink,
+  RefreshCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,64 +12,48 @@ import { cn } from "@/lib/utils";
    TYPES
 ===================================================== */
 
-type ThreatSeverity = "low" | "medium" | "high" | "critical";
+type Severity = "low" | "medium" | "high" | "critical";
 
-interface ThreatItem {
+interface FeedItem {
   timestamp: string;
-  type: "ip" | "domain" | "url" | "hash";
   value: string;
+  type: "ip" | "domain" | "url" | "hash";
   source: string;
-  severity: ThreatSeverity;
+  severity: Severity;
   tags: string[];
-  reference?: string;
+  reference: string;
+}
+
+interface FeedStatus {
+  name: string;
+  status: "online" | "offline";
 }
 
 /* =====================================================
-   STATIC FEED DEFINITIONS (NO API)
+   CORS-SAFE PUBLIC MIRRORS
 ===================================================== */
 
 const FEEDS = [
   {
     name: "ThreatFox",
-    endpoint: "https://threatfox.abuse.ch/export/json/recent/",
-    severity: "critical" as ThreatSeverity,
+    url: "https://cors.isomorphic-git.org/https://threatfox.abuse.ch/export/txt/recent/",
+    severity: "critical" as Severity,
     tags: ["malware", "c2", "ransomware"],
+    ref: "https://threatfox.abuse.ch",
   },
   {
     name: "URLHaus",
-    endpoint: "https://urlhaus.abuse.ch/downloads/text/",
-    severity: "high" as ThreatSeverity,
+    url: "https://cors.isomorphic-git.org/https://urlhaus.abuse.ch/downloads/text/",
+    severity: "high" as Severity,
     tags: ["malware", "payload"],
+    ref: "https://urlhaus.abuse.ch",
   },
   {
     name: "OpenPhish",
-    endpoint: "https://openphish.com/feed.txt",
-    severity: "high" as ThreatSeverity,
-    tags: ["phishing", "credential-harvest"],
-  },
-  {
-    name: "Feodo Tracker",
-    endpoint: "https://feodotracker.abuse.ch/downloads/ipblocklist.txt",
-    severity: "medium" as ThreatSeverity,
-    tags: ["botnet", "c2"],
-  },
-  {
-    name: "SSL Blacklist",
-    endpoint: "https://sslbl.abuse.ch/blacklist/sslipblacklist.txt",
-    severity: "medium" as ThreatSeverity,
-    tags: ["tls", "encrypted-c2"],
-  },
-  {
-    name: "Spamhaus DROP",
-    endpoint: "https://www.spamhaus.org/drop/drop.txt",
-    severity: "medium" as ThreatSeverity,
-    tags: ["infrastructure", "abuse"],
-  },
-  {
-    name: "CERT.PL",
-    endpoint: "https://hole.cert.pl/domains/domains.txt",
-    severity: "low" as ThreatSeverity,
-    tags: ["malicious-domain"],
+    url: "https://cors.isomorphic-git.org/https://openphish.com/feed.txt",
+    severity: "high" as Severity,
+    tags: ["phishing"],
+    ref: "https://openphish.com",
   },
 ];
 
@@ -78,24 +62,22 @@ const FEEDS = [
 ===================================================== */
 
 export function IPAnalyzer() {
-  const [items, setItems] = useState<ThreatItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<FeedItem[]>([]);
+  const [feedStatus, setFeedStatus] = useState<FeedStatus[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadThreatFeeds();
+    loadFeeds();
   }, []);
 
-  /* =====================================================
-     LOAD FEEDS
-  ===================================================== */
-
-  const loadThreatFeeds = async () => {
+  const loadFeeds = async () => {
     setLoading(true);
-    const collected: ThreatItem[] = [];
+    const collected: FeedItem[] = [];
+    const statuses: FeedStatus[] = [];
 
     for (const feed of FEEDS) {
       try {
-        const res = await fetch(feed.endpoint);
+        const res = await fetch(feed.url);
         const text = await res.text();
 
         const lines = text
@@ -107,48 +89,39 @@ export function IPAnalyzer() {
               !l.startsWith("//") &&
               l.length > 4
           )
-          .slice(0, 5); // limit per feed for UI sanity
+          .slice(0, 10);
 
         for (const line of lines) {
           collected.push({
             timestamp: new Date().toISOString(),
-            type: inferType(line),
             value: line.trim(),
+            type: inferType(line),
             source: feed.name,
             severity: feed.severity,
             tags: feed.tags,
-            reference: feed.endpoint,
+            reference: feed.ref,
           });
         }
+
+        statuses.push({ name: feed.name, status: "online" });
       } catch {
-        // silently skip unavailable feeds
+        statuses.push({ name: feed.name, status: "offline" });
       }
     }
 
-    // newest first
-    setItems(
-      collected.sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() -
-          new Date(a.timestamp).getTime()
-      )
-    );
-
+    setItems(collected);
+    setFeedStatus(statuses);
     setLoading(false);
   };
 
-  /* =====================================================
-     HELPERS
-  ===================================================== */
-
-  const inferType = (value: string): ThreatItem["type"] => {
-    if (value.match(/^\d{1,3}(\.\d{1,3}){3}/)) return "ip";
-    if (value.startsWith("http")) return "url";
-    if (value.length === 64) return "hash";
+  const inferType = (v: string): FeedItem["type"] => {
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v)) return "ip";
+    if (v.startsWith("http")) return "url";
+    if (v.length === 64) return "hash";
     return "domain";
   };
 
-  const severityColor = (s: ThreatSeverity) => {
+  const severityClass = (s: Severity) => {
     switch (s) {
       case "critical":
         return "bg-destructive/20 text-destructive";
@@ -161,99 +134,110 @@ export function IPAnalyzer() {
     }
   };
 
-  /* =====================================================
-     UI
-  ===================================================== */
-
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      {/* Header */}
+      {/* HEADER */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">
+        <h1 className="text-2xl font-bold">
           🔥 Latest Threat Intelligence (Live, No API)
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="text-muted-foreground text-sm">
           Public threat feeds updated in near real-time
         </p>
       </div>
 
-      {/* Feed Status */}
-      <div className="card-cyber p-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="h-4 w-4 text-primary" />
-          <span className="font-semibold text-foreground">
-            Active Threat Feeds
-          </span>
+      {/* FEED STATUS */}
+      <div className="card-cyber p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-primary" />
+            <span className="font-semibold">Active Threat Feeds</span>
+          </div>
+          <button
+            onClick={loadFeeds}
+            className="text-xs flex items-center gap-1 text-muted-foreground hover:text-primary"
+          >
+            <RefreshCcw className="h-3 w-3" />
+            Refresh
+          </button>
         </div>
-        <span className="text-xs text-muted-foreground font-mono">
-          Updated: {new Date().toUTCString()}
-        </span>
+
+        <div className="flex flex-wrap gap-3 text-xs">
+          {feedStatus.map((f) => (
+            <span
+              key={f.name}
+              className={cn(
+                "px-2 py-1 rounded font-mono",
+                f.status === "online"
+                  ? "bg-success/20 text-success"
+                  : "bg-destructive/20 text-destructive"
+              )}
+            >
+              {f.name}: {f.status}
+            </span>
+          ))}
+        </div>
       </div>
 
-      {/* Feed List */}
+      {/* FEED ITEMS */}
       {loading ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="text-center text-muted-foreground py-10">
           Loading live threat intelligence…
+        </div>
+      ) : items.length === 0 ? (
+        <div className="text-center text-muted-foreground py-10">
+          No threat data available (feeds blocked or offline)
         </div>
       ) : (
         <div className="space-y-3">
-          {items.map((item, idx) => (
-            <div
-              key={idx}
-              className="card-cyber p-4 flex items-start gap-4"
-            >
-              <div className="pt-1">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-              </div>
+          {items.map((i, idx) => (
+            <div key={idx} className="card-cyber p-4 flex gap-4">
+              <AlertTriangle className="h-5 w-5 text-destructive mt-1" />
 
               <div className="flex-1 space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span
                     className={cn(
                       "px-2 py-0.5 rounded text-xs font-mono",
-                      severityColor(item.severity)
+                      severityClass(i.severity)
                     )}
                   >
-                    {item.severity.toUpperCase()}
+                    {i.severity.toUpperCase()}
                   </span>
-                  <span className="text-xs text-muted-foreground font-mono">
-                    {item.source}
+                  <span className="text-xs font-mono text-muted-foreground">
+                    {i.source}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    [{item.type}]
+                    [{i.type}]
                   </span>
                 </div>
 
-                <p className="font-mono text-sm break-all">
-                  {item.value}
-                </p>
+                <p className="font-mono text-sm break-all">{i.value}</p>
 
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
-                    {new Date(item.timestamp).toUTCString()}
+                    {new Date(i.timestamp).toUTCString()}
                   </span>
 
-                  {item.reference && (
-                    <a
-                      href={item.reference}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 hover:underline"
-                    >
-                      Source
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
+                  <a
+                    href={i.reference}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 hover:underline"
+                  >
+                    Source
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {item.tags.map((tag) => (
+                  {i.tags.map((t) => (
                     <span
-                      key={tag}
+                      key={t}
                       className="px-2 py-0.5 rounded bg-secondary text-xs font-mono"
                     >
-                      {tag}
+                      {t}
                     </span>
                   ))}
                 </div>
@@ -263,10 +247,10 @@ export function IPAnalyzer() {
         </div>
       )}
 
-      {/* Footer */}
+      {/* FOOTER */}
       <div className="card-cyber p-4 text-xs text-muted-foreground">
-        Sources include ThreatFox, URLHaus, OpenPhish, Feodo Tracker, SSLBL,
-        Spamhaus DROP, and CERT.PL. No API keys required.
+        Sources include ThreatFox, URLHaus, and OpenPhish via public mirrors.
+        No API keys required.
       </div>
     </div>
   );
