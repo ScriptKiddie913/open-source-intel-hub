@@ -1,325 +1,273 @@
-import { useState } from "react";
-import { Server, Search, Loader2, Copy, MapPin, Shield, AlertTriangle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ThreatBadge } from "./ThreatBadge";
-import { getFullIPAnalysis, isValidIP } from "@/services/ipService";
-import { reverseDNS } from "@/services/dnsService";
-import { saveRecord, logActivity } from "@/lib/database";
-import { useToast } from "@/hooks/use-toast";
+import { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  Globe,
+  Shield,
+  Clock,
+  ExternalLink,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { GeoLocation, PortInfo, ThreatLevel } from "@/types/osint";
 
-interface IPResults {
-  ip: string;
-  geo: GeoLocation | null;
-  ports: PortInfo | null;
-  reverseDns: string | null;
-  threatLevel: ThreatLevel;
+/* =====================================================
+   TYPES
+===================================================== */
+
+type ThreatSeverity = "low" | "medium" | "high" | "critical";
+
+interface ThreatItem {
+  timestamp: string;
+  type: "ip" | "domain" | "url" | "hash";
+  value: string;
+  source: string;
+  severity: ThreatSeverity;
+  tags: string[];
+  reference?: string;
 }
 
+/* =====================================================
+   STATIC FEED DEFINITIONS (NO API)
+===================================================== */
+
+const FEEDS = [
+  {
+    name: "ThreatFox",
+    endpoint: "https://threatfox.abuse.ch/export/json/recent/",
+    severity: "critical" as ThreatSeverity,
+    tags: ["malware", "c2", "ransomware"],
+  },
+  {
+    name: "URLHaus",
+    endpoint: "https://urlhaus.abuse.ch/downloads/text/",
+    severity: "high" as ThreatSeverity,
+    tags: ["malware", "payload"],
+  },
+  {
+    name: "OpenPhish",
+    endpoint: "https://openphish.com/feed.txt",
+    severity: "high" as ThreatSeverity,
+    tags: ["phishing", "credential-harvest"],
+  },
+  {
+    name: "Feodo Tracker",
+    endpoint: "https://feodotracker.abuse.ch/downloads/ipblocklist.txt",
+    severity: "medium" as ThreatSeverity,
+    tags: ["botnet", "c2"],
+  },
+  {
+    name: "SSL Blacklist",
+    endpoint: "https://sslbl.abuse.ch/blacklist/sslipblacklist.txt",
+    severity: "medium" as ThreatSeverity,
+    tags: ["tls", "encrypted-c2"],
+  },
+  {
+    name: "Spamhaus DROP",
+    endpoint: "https://www.spamhaus.org/drop/drop.txt",
+    severity: "medium" as ThreatSeverity,
+    tags: ["infrastructure", "abuse"],
+  },
+  {
+    name: "CERT.PL",
+    endpoint: "https://hole.cert.pl/domains/domains.txt",
+    severity: "low" as ThreatSeverity,
+    tags: ["malicious-domain"],
+  },
+];
+
+/* =====================================================
+   COMPONENT
+===================================================== */
+
 export function IPAnalyzer() {
-  const [ip, setIP] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<IPResults | null>(null);
-  const { toast } = useToast();
+  const [items, setItems] = useState<ThreatItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const analyzeIP = async () => {
-    const cleanIP = ip.trim();
-    
-    if (!cleanIP) {
-      toast({ title: "Error", description: "Please enter an IP address", variant: "destructive" });
-      return;
-    }
+  useEffect(() => {
+    loadThreatFeeds();
+  }, []);
 
-    if (!isValidIP(cleanIP)) {
-      toast({ title: "Error", description: "Invalid IP address format", variant: "destructive" });
-      return;
-    }
+  /* =====================================================
+     LOAD FEEDS
+  ===================================================== */
 
+  const loadThreatFeeds = async () => {
     setLoading(true);
+    const collected: ThreatItem[] = [];
 
-    try {
-      const [analysis, rdns] = await Promise.all([
-        getFullIPAnalysis(cleanIP),
-        reverseDNS(cleanIP).catch(() => null),
-      ]);
+    for (const feed of FEEDS) {
+      try {
+        const res = await fetch(feed.endpoint);
+        const text = await res.text();
 
-      setResults({
-        ip: cleanIP,
-        geo: analysis.geo,
-        ports: analysis.ports,
-        reverseDns: rdns,
-        threatLevel: analysis.threatLevel,
-      });
+        const lines = text
+          .split("\n")
+          .filter(
+            (l) =>
+              l &&
+              !l.startsWith("#") &&
+              !l.startsWith("//") &&
+              l.length > 4
+          )
+          .slice(0, 5); // limit per feed for UI sanity
 
-      // Save to database
-      await saveRecord({
-        id: crypto.randomUUID(),
-        target: cleanIP,
-        type: "ip",
-        data: { geo: analysis.geo, ports: analysis.ports, reverseDns: rdns },
-        threatLevel: analysis.threatLevel,
-        timestamp: new Date(),
-        source: "ip-analyzer",
-      });
+        for (const line of lines) {
+          collected.push({
+            timestamp: new Date().toISOString(),
+            type: inferType(line),
+            value: line.trim(),
+            source: feed.name,
+            severity: feed.severity,
+            tags: feed.tags,
+            reference: feed.endpoint,
+          });
+        }
+      } catch {
+        // silently skip unavailable feeds
+      }
+    }
 
-      await logActivity({
-        type: "search",
-        title: `IP analysis: ${cleanIP}`,
-        description: `Location: ${analysis.geo?.city || "Unknown"}, ${analysis.geo?.country || "Unknown"}`,
-      });
+    // newest first
+    setItems(
+      collected.sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() -
+          new Date(a.timestamp).getTime()
+      )
+    );
 
-      toast({ title: "Analysis complete" });
-    } catch (error) {
-      console.error("IP analysis error:", error);
-      toast({ title: "Analysis failed", description: "Could not analyze IP", variant: "destructive" });
-    } finally {
-      setLoading(false);
+    setLoading(false);
+  };
+
+  /* =====================================================
+     HELPERS
+  ===================================================== */
+
+  const inferType = (value: string): ThreatItem["type"] => {
+    if (value.match(/^\d{1,3}(\.\d{1,3}){3}/)) return "ip";
+    if (value.startsWith("http")) return "url";
+    if (value.length === 64) return "hash";
+    return "domain";
+  };
+
+  const severityColor = (s: ThreatSeverity) => {
+    switch (s) {
+      case "critical":
+        return "bg-destructive/20 text-destructive";
+      case "high":
+        return "bg-orange-500/20 text-orange-500";
+      case "medium":
+        return "bg-yellow-500/20 text-yellow-500";
+      default:
+        return "bg-primary/10 text-primary";
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({ title: "Copied", description: "Copied to clipboard" });
-  };
-
-  const getPortService = (port: number): string => {
-    const services: Record<number, string> = {
-      21: "FTP",
-      22: "SSH",
-      23: "Telnet",
-      25: "SMTP",
-      53: "DNS",
-      80: "HTTP",
-      110: "POP3",
-      143: "IMAP",
-      443: "HTTPS",
-      445: "SMB",
-      993: "IMAPS",
-      995: "POP3S",
-      3306: "MySQL",
-      3389: "RDP",
-      5432: "PostgreSQL",
-      5900: "VNC",
-      6379: "Redis",
-      8080: "HTTP-Alt",
-      8443: "HTTPS-Alt",
-      27017: "MongoDB",
-    };
-    return services[port] || "Unknown";
-  };
-
-  const isHighRiskPort = (port: number): boolean => {
-    const highRisk = [22, 23, 3389, 5900, 445, 139, 21];
-    return highRisk.includes(port);
-  };
+  /* =====================================================
+     UI
+  ===================================================== */
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">IP Analyzer</h1>
+        <h1 className="text-2xl font-bold text-foreground">
+          🔥 Latest Threat Intelligence (Live, No API)
+        </h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Geolocation, open ports, and threat intelligence for IP addresses
+          Public threat feeds updated in near real-time
         </p>
       </div>
 
-      {/* Search */}
-      <div className="card-cyber p-4">
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <Server className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={ip}
-              onChange={(e) => setIP(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && analyzeIP()}
-              placeholder="Enter IP address (e.g., 8.8.8.8)"
-              className="pl-10"
-            />
-          </div>
-          <Button onClick={analyzeIP} disabled={loading} variant="cyber">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
-            Analyze
-          </Button>
+      {/* Feed Status */}
+      <div className="card-cyber p-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Shield className="h-4 w-4 text-primary" />
+          <span className="font-semibold text-foreground">
+            Active Threat Feeds
+          </span>
         </div>
+        <span className="text-xs text-muted-foreground font-mono">
+          Updated: {new Date().toUTCString()}
+        </span>
       </div>
 
-      {/* Results */}
-      {results && (
-        <div className="space-y-4">
-          {/* Summary */}
-          <div className="card-cyber p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-lg bg-primary/10">
-                  <Server className="h-6 w-6 text-primary" />
+      {/* Feed List */}
+      {loading ? (
+        <div className="text-center py-12 text-muted-foreground">
+          Loading live threat intelligence…
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item, idx) => (
+            <div
+              key={idx}
+              className="card-cyber p-4 flex items-start gap-4"
+            >
+              <div className="pt-1">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              </div>
+
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={cn(
+                      "px-2 py-0.5 rounded text-xs font-mono",
+                      severityColor(item.severity)
+                    )}
+                  >
+                    {item.severity.toUpperCase()}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {item.source}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    [{item.type}]
+                  </span>
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-mono font-bold text-foreground">{results.ip}</h2>
-                    <Button variant="ghost" size="icon" onClick={() => copyToClipboard(results.ip)} className="h-6 w-6">
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                  {results.reverseDns && (
-                    <p className="text-sm text-muted-foreground font-mono">{results.reverseDns}</p>
+
+                <p className="font-mono text-sm break-all">
+                  {item.value}
+                </p>
+
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(item.timestamp).toUTCString()}
+                  </span>
+
+                  {item.reference && (
+                    <a
+                      href={item.reference}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 hover:underline"
+                    >
+                      Source
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
                   )}
                 </div>
-              </div>
-              <ThreatBadge level={results.threatLevel} size="lg" />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Geolocation */}
-            {results.geo && (
-              <div className="card-cyber p-4 space-y-4">
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-primary" />
-                  <h3 className="font-semibold text-foreground">Geolocation</h3>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { label: "Country", value: `${results.geo.country} (${results.geo.countryCode})` },
-                    { label: "City", value: results.geo.city },
-                    { label: "Region", value: results.geo.region },
-                    { label: "Timezone", value: results.geo.timezone },
-                    { label: "ISP", value: results.geo.isp },
-                    { label: "Organization", value: results.geo.org },
-                    { label: "ASN", value: results.geo.as },
-                    { label: "Coordinates", value: `${results.geo.lat}, ${results.geo.lon}` },
-                  ].map((item) => (
-                    <div key={item.label} className="p-2 rounded bg-secondary/50">
-                      <p className="text-[10px] text-muted-foreground uppercase">{item.label}</p>
-                      <p className="font-mono text-xs text-foreground truncate">{item.value || "N/A"}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Ports & Services */}
-            <div className="card-cyber p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-primary" />
-                  <h3 className="font-semibold text-foreground">Ports & Services</h3>
-                </div>
-                {results.ports && (
-                  <span className="text-xs text-muted-foreground font-mono">
-                    {results.ports.ports.length} open
-                  </span>
-                )}
-              </div>
-
-              {results.ports && results.ports.ports.length > 0 ? (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {results.ports.ports.map((port) => (
-                    <div
-                      key={port}
-                      className={cn(
-                        "flex items-center justify-between p-2 rounded",
-                        isHighRiskPort(port) ? "bg-destructive/10 border border-destructive/30" : "bg-secondary/50"
-                      )}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {item.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2 py-0.5 rounded bg-secondary text-xs font-mono"
                     >
-                      <div className="flex items-center gap-2">
-                        {isHighRiskPort(port) && <AlertTriangle className="h-3 w-3 text-destructive" />}
-                        <span className="font-mono text-sm font-bold text-foreground">{port}</span>
-                        <span className="text-xs text-muted-foreground">{getPortService(port)}</span>
-                      </div>
-                      {isHighRiskPort(port) && (
-                        <span className="text-xs text-destructive">High Risk</span>
-                      )}
-                    </div>
+                      {tag}
+                    </span>
                   ))}
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No open ports detected
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Vulnerabilities */}
-          {results.ports?.vulns && results.ports.vulns.length > 0 && (
-            <div className="card-cyber p-4 border-destructive/30 bg-destructive/5">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-                <h3 className="font-semibold text-destructive">Known Vulnerabilities</h3>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {results.ports.vulns.map((vuln) => (
-                  <a
-                    key={vuln}
-                    href={`https://nvd.nist.gov/vuln/detail/${vuln}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1.5 rounded bg-destructive/20 text-destructive text-sm font-mono hover:bg-destructive/30 transition-colors"
-                  >
-                    {vuln}
-                  </a>
-                ))}
               </div>
             </div>
-          )}
-
-          {/* Tags & Hostnames */}
-          {results.ports && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {results.ports.hostnames.length > 0 && (
-                <div className="card-cyber p-4">
-                  <h3 className="font-semibold text-foreground mb-3">Hostnames</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {results.ports.hostnames.map((hostname) => (
-                      <span
-                        key={hostname}
-                        className="px-2 py-1 rounded bg-secondary text-foreground text-xs font-mono"
-                      >
-                        {hostname}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {results.ports.tags.length > 0 && (
-                <div className="card-cyber p-4">
-                  <h3 className="font-semibold text-foreground mb-3">Tags</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {results.ports.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className={cn(
-                          "px-2 py-1 rounded text-xs font-mono",
-                          ["malware", "botnet", "c2", "compromised", "scanner"].includes(tag.toLowerCase())
-                            ? "bg-destructive/20 text-destructive"
-                            : "bg-primary/10 text-primary"
-                        )}
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          ))}
         </div>
       )}
 
-      {/* Empty State */}
-      {!loading && !results && (
-        <div className="card-cyber p-12 text-center">
-          <Server className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-          <p className="text-muted-foreground">Enter an IP address to analyze</p>
-          <p className="text-xs text-muted-foreground/60 mt-2">
-            Get geolocation, open ports, and vulnerability data from Shodan InternetDB
-          </p>
-        </div>
-      )}
+      {/* Footer */}
+      <div className="card-cyber p-4 text-xs text-muted-foreground">
+        Sources include ThreatFox, URLHaus, OpenPhish, Feodo Tracker, SSLBL,
+        Spamhaus DROP, and CERT.PL. No API keys required.
+      </div>
     </div>
   );
 }
