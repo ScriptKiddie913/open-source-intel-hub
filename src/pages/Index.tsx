@@ -3,7 +3,6 @@ import { useEffect, useState, useRef } from "react";
 
 import { OSINTSidebar } from "@/components/osint/OSINTSidebar";
 import { Dashboard } from "@/components/osint/Dashboard";
-import { SearchInterface } from "@/components/osint/SearchInterface";
 import { DomainIntelligence } from "@/components/osint/DomainIntelligence";
 import { IPAnalyzer } from "@/components/osint/IPAnalyzer";
 import { CertificateInspector } from "@/components/osint/CertificateInspector";
