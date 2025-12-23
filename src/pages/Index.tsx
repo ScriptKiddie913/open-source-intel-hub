@@ -24,20 +24,47 @@ import {
 } from "lucide-react";
 
 /* =====================================================
-   🔑 PERPLEXITY API KEY (CLIENT-SIDE, EXPOSED)
+   API KEY (CLIENT SIDE, AS REQUESTED)
 ===================================================== */
 
 const PERPLEXITY_API_KEY =
   "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";
 
 /* =====================================================
-   FLOATING PERPLEXITY CHAT
+   TYPES
 ===================================================== */
 
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
+
+/* =====================================================
+   MESSAGE RENDERER (LINK SAFE)
+===================================================== */
+
+function renderMessage(text: string) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return parts.map((part, i) =>
+    part.match(/^https?:\/\//) ? (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary underline break-all"
+      >
+        {part}
+      </a>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
+
+/* =====================================================
+   FLOATING CHAT
+===================================================== */
 
 function FloatingPerplexityChat() {
   const [open, setOpen] = useState(true);
@@ -50,9 +77,10 @@ function FloatingPerplexityChat() {
   const dragging = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
 
-  /* ---------------- DRAG LOGIC ---------------- */
+  /* ---------------- DRAG ---------------- */
 
   const onMouseDown = (e: React.MouseEvent) => {
+    if (expanded) return;
     dragging.current = true;
     offset.current = {
       x: e.clientX - position.x,
@@ -61,17 +89,14 @@ function FloatingPerplexityChat() {
   };
 
   const onMouseMove = (e: MouseEvent) => {
-    if (!dragging.current) return;
+    if (!dragging.current || expanded) return;
 
     const nextX = e.clientX - offset.current.x;
     const nextY = e.clientY - offset.current.y;
 
-    const maxX = window.innerWidth - 340;
-    const maxY = window.innerHeight - 120;
-
     setPosition({
-      x: Math.max(8, Math.min(nextX, maxX)),
-      y: Math.max(8, Math.min(nextY, maxY)),
+      x: Math.max(8, Math.min(nextX, window.innerWidth - 360)),
+      y: Math.max(8, Math.min(nextY, window.innerHeight - 120)),
     });
   };
 
@@ -88,22 +113,22 @@ function FloatingPerplexityChat() {
     };
   }, []);
 
-  /* ---------------- SEND MESSAGE ---------------- */
+  /* ---------------- SEND ---------------- */
 
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userMessage: ChatMessage = {
+    const userMsg: ChatMessage = {
       role: "user",
       content: input,
     };
 
-    setMessages((m) => [...m, userMessage]);
+    setMessages((m) => [...m, userMsg]);
     setInput("");
     setLoading(true);
 
     try {
-      const response = await fetch(
+      const res = await fetch(
         "https://api.perplexity.ai/chat/completions",
         {
           method: "POST",
@@ -117,40 +142,35 @@ function FloatingPerplexityChat() {
               {
                 role: "system",
                 content:
-                  "You are an OSINT and threat intelligence research assistant. Be accurate, thorough, and structured. Do not truncate analysis.",
+                  "You are an OSINT and threat intelligence assistant. Respond with structured paragraphs, preserve links, lists, and indicators. Do not truncate.",
               },
               ...messages,
-              userMessage,
+              userMsg,
             ],
             temperature: 0.2,
           }),
         }
       );
 
-      const data = await response.json();
-      const reply = data?.choices?.[0]?.message?.content;
+      const data = await res.json();
+      const reply = data?.choices?.[0]?.message?.content || "";
 
       setMessages((m) => [
         ...m,
-        {
-          role: "assistant",
-          content: reply || "No response received.",
-        },
+        { role: "assistant", content: reply },
       ]);
     } catch {
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
-          content: "Error contacting Perplexity API.",
+          content: "Error contacting intelligence service.",
         },
       ]);
     } finally {
       setLoading(false);
     }
   };
-
-  /* ---------------- UI ---------------- */
 
   if (!open) {
     return (
@@ -168,12 +188,23 @@ function FloatingPerplexityChat() {
       className={cn(
         "fixed z-50",
         expanded
-          ? "w-[420px] max-h-[90vh]"
-          : "w-[320px] max-h-[60vh]"
+          ? "inset-0 flex items-center justify-center bg-black/40"
+          : ""
       )}
-      style={{ left: position.x, bottom: position.y }}
     >
-      <div className="card-cyber border border-border shadow-xl flex flex-col h-full">
+      <div
+        className={cn(
+          "card-cyber border border-border shadow-xl flex flex-col",
+          expanded
+            ? "w-[720px] h-[85vh]"
+            : "w-[340px] max-h-[60vh]"
+        )}
+        style={
+          expanded
+            ? undefined
+            : { left: position.x, bottom: position.y, position: "fixed" }
+        }
+      >
         {/* HEADER */}
         <div
           className="flex items-center justify-between p-2 border-b border-border cursor-move"
@@ -181,7 +212,7 @@ function FloatingPerplexityChat() {
         >
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Bot className="h-4 w-4" />
-            Perplexity OSINT Chat
+            OSINT Chat
           </div>
           <div className="flex gap-2">
             <button onClick={() => setExpanded((e) => !e)}>
@@ -203,13 +234,13 @@ function FloatingPerplexityChat() {
             <div
               key={i}
               className={cn(
-                "p-3 rounded whitespace-pre-wrap",
+                "p-3 rounded whitespace-pre-wrap break-words",
                 m.role === "user"
                   ? "bg-primary/10 text-right"
                   : "bg-secondary/50"
               )}
             >
-              {m.content}
+              {renderMessage(m.content)}
             </div>
           ))}
           {loading && (
@@ -249,32 +280,24 @@ const Index = () => {
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       <OSINTSidebar />
-
       <main className="flex-1 overflow-y-auto relative">
-        <div className="min-h-full">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/search" element={<SearchInterface />} />
-            <Route path="/threat-intel" element={<ThreatIntelPage />} />
-            <Route path="/domain" element={<DomainIntelligence />} />
-            <Route path="/ip" element={<IPAnalyzer />} />
-            <Route path="/certs" element={<CertificateInspector />} />
-            <Route path="/breach" element={<BreachChecker />} />
-            <Route path="/import" element={<DataImporter />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </div>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/search" element={<SearchInterface />} />
+          <Route path="/threat-intel" element={<ThreatIntelPage />} />
+          <Route path="/domain" element={<DomainIntelligence />} />
+          <Route path="/ip" element={<IPAnalyzer />} />
+          <Route path="/certs" element={<CertificateInspector />} />
+          <Route path="/breach" element={<BreachChecker />} />
+          <Route path="/import" element={<DataImporter />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
-
       <FloatingPerplexityChat />
     </div>
   );
 };
-
-/* =====================================================
-   EXTRA PAGE
-===================================================== */
 
 function ThreatIntelPage() {
   return (
