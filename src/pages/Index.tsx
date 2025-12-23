@@ -27,7 +27,8 @@ import {
    🔑 PERPLEXITY API KEY (CLIENT-SIDE, EXPOSED)
 ===================================================== */
 
-const PERPLEXITY_API_KEY = "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";
+const PERPLEXITY_API_KEY =
+  "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";
 
 /* =====================================================
    FLOATING PERPLEXITY CHAT
@@ -61,9 +62,16 @@ function FloatingPerplexityChat() {
 
   const onMouseMove = (e: MouseEvent) => {
     if (!dragging.current) return;
+
+    const nextX = e.clientX - offset.current.x;
+    const nextY = e.clientY - offset.current.y;
+
+    const maxX = window.innerWidth - 340;
+    const maxY = window.innerHeight - 120;
+
     setPosition({
-      x: e.clientX - offset.current.x,
-      y: e.clientY - offset.current.y,
+      x: Math.max(8, Math.min(nextX, maxX)),
+      y: Math.max(8, Math.min(nextY, maxY)),
     });
   };
 
@@ -78,23 +86,12 @@ function FloatingPerplexityChat() {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  });
+  }, []);
 
   /* ---------------- SEND MESSAGE ---------------- */
 
   const sendMessage = async () => {
     if (!input.trim()) return;
-
-    if (!PERPLEXITY_API_KEY || PERPLEXITY_API_KEY.startsWith("pplx-REPLACE")) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          content: "Perplexity API key is not configured.",
-        },
-      ]);
-      return;
-    }
 
     const userMessage: ChatMessage = {
       role: "user",
@@ -120,7 +117,7 @@ function FloatingPerplexityChat() {
               {
                 role: "system",
                 content:
-                  "You are an OSINT and threat intelligence research assistant. Be accurate, concise, and cite sources when possible.",
+                  "You are an OSINT and threat intelligence research assistant. Be accurate, thorough, and structured. Do not truncate analysis.",
               },
               ...messages,
               userMessage,
@@ -155,11 +152,24 @@ function FloatingPerplexityChat() {
 
   /* ---------------- UI ---------------- */
 
+  if (!open) {
+    return (
+      <button
+        className="fixed bottom-4 right-4 z-50 px-4 py-2 rounded-full bg-primary text-primary-foreground shadow-lg"
+        onClick={() => setOpen(true)}
+      >
+        Open Chat
+      </button>
+    );
+  }
+
   return (
     <div
       className={cn(
         "fixed z-50",
-        expanded ? "w-[420px] h-[520px]" : "w-[320px]"
+        expanded
+          ? "w-[420px] max-h-[90vh]"
+          : "w-[320px] max-h-[60vh]"
       )}
       style={{ left: position.x, bottom: position.y }}
     >
@@ -187,52 +197,41 @@ function FloatingPerplexityChat() {
           </div>
         </div>
 
-        {open ? (
-          <>
-            {/* MESSAGES */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
-              {messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "p-2 rounded",
-                    m.role === "user"
-                      ? "bg-primary/10 text-right"
-                      : "bg-secondary/50"
-                  )}
-                >
-                  {m.content}
-                </div>
-              ))}
-              {loading && (
-                <div className="text-xs text-muted-foreground">
-                  Thinking…
-                </div>
+        {/* MESSAGES */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm leading-relaxed">
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              className={cn(
+                "p-3 rounded whitespace-pre-wrap",
+                m.role === "user"
+                  ? "bg-primary/10 text-right"
+                  : "bg-secondary/50"
               )}
+            >
+              {m.content}
             </div>
+          ))}
+          {loading && (
+            <div className="text-xs text-muted-foreground">
+              Thinking…
+            </div>
+          )}
+        </div>
 
-            {/* INPUT */}
-            <div className="p-2 border-t border-border flex gap-2">
-              <input
-                className="flex-1 bg-transparent outline-none text-sm"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                placeholder="Ask OSINT / threat intel question…"
-              />
-              <button onClick={sendMessage} disabled={loading}>
-                <Send className="h-4 w-4" />
-              </button>
-            </div>
-          </>
-        ) : (
-          <button
-            className="p-3 text-sm text-center"
-            onClick={() => setOpen(true)}
-          >
-            Open Perplexity Chat
+        {/* INPUT */}
+        <div className="p-2 border-t border-border flex gap-2">
+          <input
+            className="flex-1 bg-transparent outline-none text-sm"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            placeholder="Ask OSINT / threat intel question…"
+          />
+          <button onClick={sendMessage} disabled={loading}>
+            <Send className="h-4 w-4" />
           </button>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -268,7 +267,6 @@ const Index = () => {
         </div>
       </main>
 
-      {/* GLOBAL PERPLEXITY CHAT */}
       <FloatingPerplexityChat />
     </div>
   );
