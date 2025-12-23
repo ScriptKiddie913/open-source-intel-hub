@@ -8,6 +8,7 @@ import { CertificateInspector } from "@/components/osint/CertificateInspector";
 import { BreachChecker } from "@/components/osint/BreachChecker";
 import { DataImporter } from "@/components/osint/DataImporter";
 import { SettingsPage } from "@/components/osint/SettingsPage";
+import { ThreatIntelSearch } from "@/components/osint/ThreatIntelSearch";
 import { useEffect } from "react";
 import { initDatabase } from "@/lib/database";
 
@@ -25,6 +26,7 @@ const Index = () => {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/search" element={<SearchInterface />} />
+            <Route path="/threat-intel" element={<ThreatIntelPage />} />
             <Route path="/domain" element={<DomainIntelligence />} />
             <Route path="/ip" element={<IPAnalyzer />} />
             <Route path="/certs" element={<CertificateInspector />} />
@@ -41,6 +43,15 @@ const Index = () => {
     </div>
   );
 };
+
+function ThreatIntelPage() {
+  return (
+    <div className="p-6 animate-fade-in">
+      <h1 className="text-2xl font-bold text-foreground mb-6">Threat Intelligence</h1>
+      <ThreatIntelSearch />
+    </div>
+  );
+}
 
 function ComingSoon({ title }: { title: string }) {
   return (
