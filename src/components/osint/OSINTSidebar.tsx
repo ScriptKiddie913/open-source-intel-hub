@@ -16,6 +16,7 @@ import {
   Terminal,
   Lock,
   Activity,
+  Radar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -29,6 +30,7 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Search", href: "/search", icon: Search },
+  { name: "Threat Intel", href: "/threat-intel", icon: Radar },
   { name: "Domain Intel", href: "/domain", icon: Globe },
   { name: "IP Analyzer", href: "/ip", icon: Activity },
   { name: "Certificates", href: "/certs", icon: Lock },
