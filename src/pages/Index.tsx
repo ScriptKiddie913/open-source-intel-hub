@@ -282,7 +282,7 @@ const Index = () => {
       <main className="flex-1 overflow-y-auto relative">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/search" element={<SearchInterface />} />
+       
           <Route path="/threat-intel" element={<ThreatIntelPage />} />
           <Route path="/domain" element={<DomainIntelligence />} />
           <Route path="/ip" element={<IPAnalyzer />} />
