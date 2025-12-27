@@ -1,5 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Activity, AlertTriangle, Globe, Hash, Link as LinkIcon, Mail, RefreshCw, Shield, Zap } from 'lucide-react';
+import {
+  Activity,
+  AlertTriangle,
+  Globe,
+  Hash,
+  Link as LinkIcon,
+  Mail,
+  RefreshCw,
+  Shield,
+  Zap
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,12 +52,9 @@ export function LiveThreatFeed() {
   }, []);
 
   useEffect(() => {
-    if (autoRefresh) {
-      const interval = setInterval(() => {
-        loadThreats();
-      }, 60000);
-      return () => clearInterval(interval);
-    }
+    if (!autoRefresh) return;
+    const interval = setInterval(loadThreats, 60000);
+    return () => clearInterval(interval);
   }, [autoRefresh]);
 
   const loadThreats = async () => {
@@ -57,61 +64,61 @@ export function LiveThreatFeed() {
       const malwareSamples: ThreatFeed[] = [];
 
       /* ===============================
-         Emerging Threats – Botnet IPs
+         IPsum – malicious IP activity
       =============================== */
-      const emerging = await fetch(
-        'https://rules.emergingthreats.net/blockrules/compromised-ips.txt'
+      const ipsumText = await fetch(
+        'https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt'
       ).then(r => r.text());
 
-      emerging.split('\n').forEach((line, i) => {
-        const ip = line.trim();
-        if (!ip || ip.startsWith('#')) return;
+      ipsumText.split('\n').forEach((line, i) => {
+        if (!line || line.startsWith('#')) return;
+        const [ip] = line.split(/\s+/);
+        if (!ip) return;
 
         feeds.push({
-          id: `et-${i}`,
+          id: `ipsum-${i}`,
           indicator: ip,
           indicatorType: 'ip',
           type: 'botnet',
-          threat: 'Compromised Host',
-          confidence: 90,
-          source: 'EmergingThreats',
-          tags: ['botnet', 'public'],
+          threat: 'Malicious IP Activity',
+          confidence: 85,
+          source: 'IPsum',
+          tags: ['botnet', 'network'],
           firstSeen: new Date().toISOString()
         });
       });
 
       /* ===============================
-         Feodo Tracker – C2 Servers
+         Spamhaus DROP mirror
       =============================== */
-      const feodo = await fetch(
-        'https://feodotracker.abuse.ch/downloads/ipblocklist.json'
-      ).then(r => r.json());
+      const spamhausText = await fetch(
+        'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/spamhaus_drop.netset'
+      ).then(r => r.text());
 
-      feodo.forEach((entry: any, i: number) => {
+      spamhausText.split('\n').forEach((line, i) => {
+        if (!line || line.startsWith('#')) return;
+
         feeds.push({
-          id: `feodo-${i}`,
-          indicator: entry.ip_address,
+          id: `spamhaus-${i}`,
+          indicator: line.trim(),
           indicatorType: 'ip',
           type: 'c2',
-          threat: entry.malware || 'C2 Server',
+          threat: 'High Risk Infrastructure',
           confidence: 95,
-          source: 'FeodoTracker',
+          source: 'Spamhaus',
           tags: ['c2', 'malware'],
-          firstSeen: entry.first_seen || new Date().toISOString()
+          firstSeen: new Date().toISOString()
         });
       });
 
       /* ===============================
-         MalwareBazaar – Malware Hashes
+         MalwareBazaar – recent hashes
       =============================== */
-      const bazaar = await fetch(
-        'https://mb-api.abuse.ch/api/v1/',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'query=get_recent&selector=30'
-        }
-      ).then(r => r.json());
+      const bazaar = await fetch('https://mb-api.abuse.ch/api/v1/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'query=get_recent&selector=30'
+      }).then(r => r.json());
 
       if (bazaar?.data) {
         bazaar.data.forEach((entry: any, i: number) => {
@@ -136,7 +143,7 @@ export function LiveThreatFeed() {
       await buildMapData(feeds);
 
       toast.success('Threat data refreshed');
-    } catch (error) {
+    } catch (e) {
       toast.error('Failed to load threat feeds');
     } finally {
       setLoading(false);
@@ -144,7 +151,9 @@ export function LiveThreatFeed() {
   };
 
   const buildMapData = async (feedData: ThreatFeed[]) => {
-    const ipFeeds = feedData.filter(f => f.indicatorType === 'ip').slice(0, 50);
+    const ipFeeds = feedData
+      .filter(f => f.indicatorType === 'ip')
+      .slice(0, 50);
 
     const geoResults = await Promise.all(
       ipFeeds.map(async feed => {
@@ -158,27 +167,28 @@ export function LiveThreatFeed() {
       })
     );
 
-    const mapPoints: ThreatMapData[] = [];
+    const points: ThreatMapData[] = [];
 
-    geoResults.filter(Boolean).forEach((point: any) => {
-      const existing = mapPoints.find(
-        p => Math.abs(p.lat - point.lat) < 0.5 &&
-             Math.abs(p.lon - point.lon) < 0.5
+    geoResults.filter(Boolean).forEach((p: any) => {
+      const existing = points.find(
+        e =>
+          Math.abs(e.lat - p.lat) < 0.5 &&
+          Math.abs(e.lon - p.lon) < 0.5
       );
 
       if (existing) {
         existing.count++;
       } else {
-        mapPoints.push({
-          lat: point.lat,
-          lon: point.lon,
-          threat: point.threat,
+        points.push({
+          lat: p.lat,
+          lon: p.lon,
+          threat: p.threat,
           count: 1
         });
       }
     });
 
-    setMapData(mapPoints);
+    setMapData(points);
   };
 
   const filteredFeeds =
@@ -192,16 +202,13 @@ export function LiveThreatFeed() {
     botnet: feeds.filter(f => f.type === 'botnet').length
   };
 
-  /* ===============================
-     UI BELOW IS 100% UNCHANGED
-  =============================== */
-
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Live Threat Intelligence</h1>
+          <h1 className="text-2xl font-bold text-foreground">
+            Live Threat Intelligence
+          </h1>
           <p className="text-muted-foreground text-sm mt-1">
             Real-time threat feeds and malware tracking
           </p>
@@ -213,11 +220,21 @@ export function LiveThreatFeed() {
             onClick={() => setAutoRefresh(!autoRefresh)}
             className={autoRefresh ? 'border-primary' : ''}
           >
-            <Activity className={cn('h-4 w-4 mr-2', autoRefresh && 'animate-pulse')} />
+            <Activity
+              className={cn(
+                'h-4 w-4 mr-2',
+                autoRefresh && 'animate-pulse'
+              )}
+            />
             Auto Refresh
           </Button>
           <Button onClick={loadThreats} disabled={loading} size="sm">
-            <RefreshCw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
+            <RefreshCw
+              className={cn(
+                'h-4 w-4 mr-2',
+                loading && 'animate-spin'
+              )}
+            />
             Refresh
           </Button>
         </div>
@@ -229,31 +246,14 @@ export function LiveThreatFeed() {
         </div>
       )}
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card><CardContent className="p-4 text-center">
-          <div className="text-2xl font-bold text-primary font-mono">{stats.total}</div>
-          <div className="text-xs text-muted-foreground">Total Threats</div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4 text-center">
-          <div className="text-2xl font-bold text-red-500 font-mono">{stats.critical}</div>
-          <div className="text-xs text-muted-foreground">High Confidence</div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4 text-center">
-          <div className="text-2xl font-bold text-orange-500 font-mono">{stats.malware}</div>
-          <div className="text-xs text-muted-foreground">Malware Samples</div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4 text-center">
-          <div className="text-2xl font-bold text-yellow-500 font-mono">{stats.phishing}</div>
-          <div className="text-xs text-muted-foreground">Phishing URLs</div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4 text-center">
-          <div className="text-2xl font-bold text-purple-500 font-mono">{stats.botnet}</div>
-          <div className="text-xs text-muted-foreground">Botnet C2s</div>
-        </CardContent></Card>
+        <StatCard label="Total Threats" value={stats.total} color="text-primary" />
+        <StatCard label="High Confidence" value={stats.critical} color="text-red-500" />
+        <StatCard label="Malware Samples" value={stats.malware} color="text-orange-500" />
+        <StatCard label="Phishing URLs" value={stats.phishing} color="text-yellow-500" />
+        <StatCard label="Botnet C2s" value={stats.botnet} color="text-purple-500" />
       </div>
 
-      {/* Map */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -266,14 +266,34 @@ export function LiveThreatFeed() {
         </CardContent>
       </Card>
 
-      {/* Tabs */}
       <Tabs defaultValue="feeds">
         <TabsList>
-          <TabsTrigger value="feeds"><Shield className="h-4 w-4 mr-2" />Threat Feeds</TabsTrigger>
-          <TabsTrigger value="malware"><AlertTriangle className="h-4 w-4 mr-2" />Malware</TabsTrigger>
+          <TabsTrigger value="feeds">
+            <Shield className="h-4 w-4 mr-2" />
+            Threat Feeds
+          </TabsTrigger>
+          <TabsTrigger value="malware">
+            <AlertTriangle className="h-4 w-4 mr-2" />
+            Malware
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="feeds">
+        <TabsContent value="feeds" className="mt-4">
+          <div className="flex gap-2 mb-4 flex-wrap">
+            {(['all', 'malware', 'phishing', 'botnet', 'c2'] as const).map(type => (
+              <Button
+                key={type}
+                size="sm"
+                variant={selectedType === type ? 'default' : 'outline'}
+                onClick={() => setSelectedType(type)}
+              >
+                {type === 'all'
+                  ? 'All'
+                  : type.charAt(0).toUpperCase() + type.slice(1)}
+              </Button>
+            ))}
+          </div>
+
           <div className="space-y-3">
             {filteredFeeds.map(feed => (
               <ThreatFeedCard key={feed.id} feed={feed} />
@@ -281,7 +301,7 @@ export function LiveThreatFeed() {
           </div>
         </TabsContent>
 
-        <TabsContent value="malware">
+        <TabsContent value="malware" className="mt-4">
           <div className="space-y-3">
             {malware.map(sample => (
               <MalwareCard key={sample.id} sample={sample} />
@@ -293,13 +313,22 @@ export function LiveThreatFeed() {
   );
 }
 
-/* ===============================
-   REMAINDER UNCHANGED
-=============================== */
+function StatCard({ label, value, color }: any) {
+  return (
+    <Card>
+      <CardContent className="p-4 text-center">
+        <div className={`text-2xl font-bold font-mono ${color}`}>
+          {value}
+        </div>
+        <div className="text-xs text-muted-foreground">{label}</div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function ThreatFeedCard({ feed }: { feed: ThreatFeed }) {
-  const getIcon = (indicatorType: string) => {
-    switch (indicatorType) {
+  const getIcon = (type: string) => {
+    switch (type) {
       case 'ip': return <Zap className="h-4 w-4" />;
       case 'domain': return <Globe className="h-4 w-4" />;
       case 'url': return <LinkIcon className="h-4 w-4" />;
@@ -310,13 +339,13 @@ function ThreatFeedCard({ feed }: { feed: ThreatFeed }) {
   };
 
   return (
-    <Card className="bg-card border">
+    <Card>
       <CardContent className="p-4">
-        <div className="flex items-center gap-3 mb-2">
+        <div className="flex gap-3 mb-2 items-center">
           {getIcon(feed.indicatorType)}
           <div className="font-semibold">{feed.threat}</div>
         </div>
-        <code className="text-xs font-mono">{feed.indicator}</code>
+        <code className="text-xs font-mono break-all">{feed.indicator}</code>
       </CardContent>
     </Card>
   );
@@ -324,33 +353,39 @@ function ThreatFeedCard({ feed }: { feed: ThreatFeed }) {
 
 function MalwareCard({ sample }: { sample: ThreatFeed }) {
   return (
-    <Card className="bg-card border">
+    <Card>
       <CardContent className="p-4">
         <div className="font-semibold mb-1">{sample.threat}</div>
-        <code className="text-xs font-mono">{sample.indicator}</code>
+        <code className="text-xs font-mono break-all">{sample.indicator}</code>
       </CardContent>
     </Card>
   );
 }
 
 function ThreatMap({ data }: { data: ThreatMapData[] }) {
-  const width = 800;
-  const height = 400;
-  const latToY = (lat: number) => ((90 - lat) / 180) * height;
-  const lonToX = (lon: number) => ((lon + 180) / 360) * width;
+  const mapWidth = 800;
+  const mapHeight = 400;
+
+  const latToY = (lat: number) => ((90 - lat) / 180) * mapHeight;
+  const lonToX = (lon: number) => ((lon + 180) / 360) * mapWidth;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-[400px]">
+    <svg
+      viewBox={`0 0 ${mapWidth} ${mapHeight}`}
+      className="w-full h-[400px]"
+      style={{
+        background: 'linear-gradient(180deg,#0a0e27 0%,#1a1f3a 100%)'
+      }}
+    >
       {data.map((p, i) => (
         <circle
           key={i}
           cx={lonToX(p.lon)}
           cy={latToY(p.lat)}
           r={Math.min(4 + p.count * 2, 15)}
-          fill="red"
+          fill="rgb(239,68,68)"
         />
       ))}
     </svg>
   );
 }
-
