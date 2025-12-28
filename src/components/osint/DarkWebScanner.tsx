@@ -2,7 +2,7 @@
 
 /* ============================================================================
    DarkWebScanner.tsx
-   REAL Dark Web Exposure Monitor (Metadata-Based, Legal, OSINT-Grade)
+   Real Dark Web Exposure Monitor (Metadata-Only, OSINT-Grade)
    ============================================================================ */
 
 import {
@@ -21,17 +21,14 @@ import {
   Globe,
   Database,
   Eye,
-  Filter,
   Clock,
   RefreshCcw,
   Layers,
   Shield,
-  Bug,
-  FileText,
-  User,
-  Hash,
-  ExternalLink,
   Activity,
+  ExternalLink,
+  Filter,
+  Hash,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -49,12 +46,6 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 
 import {
   discoverOnionSites,
@@ -72,14 +63,7 @@ import { cn } from '@/lib/utils';
 ============================================================================ */
 
 type ViewMode = 'cards' | 'compact';
-type Section = 'onions' | 'signals';
-
-interface Stats {
-  onions: number;
-  signals: number;
-  online: number;
-  offline: number;
-}
+type TabMode = 'onions' | 'signals';
 
 const RISK_COLORS: Record<
   'critical' | 'high' | 'medium' | 'low',
@@ -103,46 +87,44 @@ export function DarkWebScanner() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const [onions, setOnions] = useState<OnionSite[]>([]);
+  const [onionSites, setOnionSites] = useState<OnionSite[]>([]);
   const [signals, setSignals] = useState<LeakSignal[]>([]);
 
-  const [section, setSection] = useState<Section>('onions');
+  const [tab, setTab] = useState<TabMode>('onions');
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
 
-  const [checkingUptime, setCheckingUptime] = useState<
+  const [uptimeLoading, setUptimeLoading] = useState<
     Record<string, boolean>
   >({});
 
-  const autoRefreshRef = useRef<NodeJS.Timeout | null>(
-    null
-  );
+  // ✅ CLIENT-SAFE TIMER
+  const refreshTimer = useRef<number | null>(null);
 
   /* ------------------------------------------------------------------------
-     SEARCH HANDLER
+     SEARCH
   ------------------------------------------------------------------------ */
 
-  const handleSearch = useCallback(async () => {
+  const runSearch = useCallback(async () => {
     if (!query.trim()) {
       toast.error('Enter a search keyword');
       return;
     }
 
     setLoading(true);
-    setOnions([]);
+    setOnionSites([]);
     setSignals([]);
 
     try {
-      const [onionResults, signalResults] =
-        await Promise.all([
-          discoverOnionSites(query),
-          searchDarkWebSignals(query),
-        ]);
+      const [onions, sigs] = await Promise.all([
+        discoverOnionSites(query),
+        searchDarkWebSignals(query),
+      ]);
 
-      setOnions(onionResults);
-      setSignals(signalResults);
+      setOnionSites(onions);
+      setSignals(sigs);
 
       toast.success(
-        `Discovered ${onionResults.length} onion sites and ${signalResults.length} exposure signals`
+        `Found ${onions.length} onion sites and ${sigs.length} exposure signals`
       );
     } catch (err) {
       console.error(err);
@@ -153,66 +135,43 @@ export function DarkWebScanner() {
   }, [query]);
 
   /* ------------------------------------------------------------------------
-     AUTO REFRESH (METADATA ONLY)
+     AUTO REFRESH (CLIENT SAFE)
   ------------------------------------------------------------------------ */
 
   useEffect(() => {
-    if (autoRefreshRef.current) {
-      clearInterval(autoRefreshRef.current);
+    if (refreshTimer.current !== null) {
+      window.clearInterval(refreshTimer.current);
     }
 
-    autoRefreshRef.current = setInterval(() => {
+    refreshTimer.current = window.setInterval(() => {
       if (query.trim()) {
-        handleSearch();
+        runSearch();
       }
     }, 120000);
 
     return () => {
-      if (autoRefreshRef.current) {
-        clearInterval(autoRefreshRef.current);
+      if (refreshTimer.current !== null) {
+        window.clearInterval(refreshTimer.current);
       }
     };
-  }, [query, handleSearch]);
-
-  /* ------------------------------------------------------------------------
-     STATS
-  ------------------------------------------------------------------------ */
-
-  const stats: Stats = useMemo(() => {
-    let online = 0;
-    let offline = 0;
-
-    onions.forEach(o => {
-      if (o.status === 'online') online++;
-      if (o.status === 'offline') offline++;
-    });
-
-    return {
-      onions: onions.length,
-      signals: signals.length,
-      online,
-      offline,
-    };
-  }, [onions, signals]);
+  }, [query, runSearch]);
 
   /* ------------------------------------------------------------------------
      UPTIME CHECK
   ------------------------------------------------------------------------ */
 
-  const runUptimeCheck = async (onion: OnionSite) => {
-    setCheckingUptime(prev => ({
+  const checkUptime = async (site: OnionSite) => {
+    setUptimeLoading(prev => ({
       ...prev,
-      [onion.url]: true,
+      [site.url]: true,
     }));
 
     try {
-      const result = await checkOnionUptime(
-        onion.url
-      );
+      const result = await checkOnionUptime(site.url);
 
-      setOnions(prev =>
+      setOnionSites(prev =>
         prev.map(o =>
-          o.url === onion.url
+          o.url === site.url
             ? {
                 ...o,
                 status: result.status,
@@ -224,225 +183,177 @@ export function DarkWebScanner() {
     } catch {
       toast.error('Uptime check failed');
     } finally {
-      setCheckingUptime(prev => ({
+      setUptimeLoading(prev => ({
         ...prev,
-        [onion.url]: false,
+        [site.url]: false,
       }));
     }
   };
+
+  /* ------------------------------------------------------------------------
+     STATS
+  ------------------------------------------------------------------------ */
+
+  const stats = useMemo(() => {
+    return {
+      onions: onionSites.length,
+      signals: signals.length,
+      online: onionSites.filter(o => o.status === 'online')
+        .length,
+      offline: onionSites.filter(o => o.status === 'offline')
+        .length,
+    };
+  }, [onionSites, signals]);
 
   /* ------------------------------------------------------------------------
      RENDER
   ------------------------------------------------------------------------ */
 
   return (
-    <TooltipProvider>
-      <div className="p-6 space-y-6 animate-fade-in">
-        {/* HEADER */}
-        <div className="flex items-center justify-between">
+    <div className="p-6 space-y-6 animate-fade-in">
+      {/* HEADER */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Radar className="h-7 w-7 text-primary" />
+            Dark Web Exposure Monitor
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Real metadata-based monitoring of onion services and
+            public leak references
+          </p>
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={runSearch}
+          disabled={loading}
+        >
+          <RefreshCcw className="h-4 w-4 mr-2" />
+          Refresh
+        </Button>
+      </div>
+
+      {/* LEGAL NOTICE */}
+      <Card className="border-yellow-500/40 bg-yellow-500/10">
+        <CardContent className="p-4 flex gap-3">
+          <AlertTriangle className="h-5 w-5 text-yellow-500 mt-1" />
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Radar className="h-7 w-7 text-primary" />
-              Dark Web Exposure Monitor
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Real metadata-based monitoring of onion
-              services and public leak indicators
+            <h3 className="font-semibold">
+              Metadata-Only Intelligence
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              This tool uses public indexes and metadata only.
+              No authentication bypass, no dump downloads,
+              and no illegal scraping is performed.
             </p>
           </div>
+        </CardContent>
+      </Card>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSearch}
-            disabled={loading}
-          >
-            <RefreshCcw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
+      {/* SEARCH BAR */}
+      <Card>
+        <CardContent className="p-4 flex gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e =>
+                e.key === 'Enter' && runSearch()
+              }
+              placeholder="Domain, email, company, keyword..."
+              className="pl-10"
+            />
+          </div>
 
-        {/* LEGAL NOTICE */}
-        <Card className="border-yellow-500/40 bg-yellow-500/10">
-          <CardContent className="p-4 flex gap-3">
-            <AlertTriangle className="h-5 w-5 text-yellow-500 mt-1" />
-            <div>
-              <h3 className="font-semibold">
-                Metadata-Only Intelligence
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                This system performs passive OSINT
-                collection using public indexes and
-                metadata sources only. No authentication
-                bypass, dump downloads, or illegal
-                scraping is performed.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* SEARCH BAR */}
-        <Card>
-          <CardContent className="p-4 flex gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={e =>
-                  setQuery(e.target.value)
-                }
-                onKeyDown={e =>
-                  e.key === 'Enter' &&
-                  handleSearch()
-                }
-                placeholder="Domain, email, company, keyword..."
-                className="pl-10"
-              />
-            </div>
-
-            <Button
-              onClick={handleSearch}
-              disabled={loading}
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Discover
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* STATS */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat
-            label="Onion Sites"
-            value={stats.onions}
-            icon={Globe}
-          />
-          <Stat
-            label="Exposure Signals"
-            value={stats.signals}
-            icon={Database}
-          />
-          <Stat
-            label="Online"
-            value={stats.online}
-            icon={Activity}
-          />
-          <Stat
-            label="Offline"
-            value={stats.offline}
-            icon={Shield}
-          />
-        </div>
-
-        {/* TABS */}
-        <Tabs
-          defaultValue="onions"
-          onValueChange={v =>
-            setSection(v as Section)
-          }
-        >
-          <TabsList>
-            <TabsTrigger value="onions">
-              Onion Discovery
-            </TabsTrigger>
-            <TabsTrigger value="signals">
-              Exposure Signals
-            </TabsTrigger>
-          </TabsList>
-
-          {/* ONION SITES */}
-          <TabsContent
-            value="onions"
-            className="mt-4 space-y-4"
-          >
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setViewMode(v =>
-                    v === 'cards'
-                      ? 'compact'
-                      : 'cards'
-                  )
-                }
-              >
-                <Layers className="h-4 w-4 mr-2" />
-                {viewMode === 'cards'
-                  ? 'Compact'
-                  : 'Cards'}
-              </Button>
-            </div>
-
-            {onions.map(site => (
-              <OnionCard
-                key={site.url}
-                site={site}
-                view={viewMode}
-                loading={
-                  checkingUptime[site.url]
-                }
-                onCheck={() =>
-                  runUptimeCheck(site)
-                }
-              />
-            ))}
-
-            {!loading && onions.length === 0 && (
-              <EmptyState
-                icon={Globe}
-                text="No onion sites discovered"
-              />
+          <Button onClick={runSearch} disabled={loading}>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <Eye className="h-4 w-4 mr-2" />
+                Discover
+              </>
             )}
-          </TabsContent>
+          </Button>
+        </CardContent>
+      </Card>
 
-          {/* SIGNALS */}
-          <TabsContent
-            value="signals"
-            className="mt-4 space-y-3"
-          >
-            {signals.map(sig => (
-              <SignalCard
-                key={sig.id}
-                signal={sig}
-              />
-            ))}
-
-            {!loading &&
-              signals.length === 0 && (
-                <EmptyState
-                  icon={Database}
-                  text="No exposure signals found"
-                />
-              )}
-          </TabsContent>
-        </Tabs>
-
-        {/* SOURCES */}
-        <Card className="border-primary/40 bg-primary/5">
-          <CardContent className="p-4 flex gap-3">
-            <Database className="h-5 w-5 text-primary" />
-            <div>
-              <h3 className="font-semibold">
-                Real Data Sources
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Ahmia (onion index) • Pastebin
-                archive • Ghostbin • Rentry •
-                GitHub Gists • Tor2Web gateways
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* STATS */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Stat label="Onion Sites" value={stats.onions} icon={Globe} />
+        <Stat label="Signals" value={stats.signals} icon={Database} />
+        <Stat label="Online" value={stats.online} icon={Activity} />
+        <Stat label="Offline" value={stats.offline} icon={Shield} />
       </div>
-    </TooltipProvider>
+
+      {/* TABS */}
+      <Tabs value={tab} onValueChange={v => setTab(v as TabMode)}>
+        <TabsList>
+          <TabsTrigger value="onions">Onion Discovery</TabsTrigger>
+          <TabsTrigger value="signals">Exposure Signals</TabsTrigger>
+        </TabsList>
+
+        {/* ONIONS */}
+        <TabsContent value="onions" className="mt-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                setViewMode(v =>
+                  v === 'cards' ? 'compact' : 'cards'
+                )
+              }
+            >
+              <Layers className="h-4 w-4 mr-2" />
+              {viewMode === 'cards' ? 'Compact' : 'Cards'}
+            </Button>
+          </div>
+
+          {onionSites.map(site => (
+            <OnionCard
+              key={site.url}
+              site={site}
+              loading={uptimeLoading[site.url]}
+              onCheck={() => checkUptime(site)}
+            />
+          ))}
+
+          {!loading && onionSites.length === 0 && (
+            <EmptyState text="No onion sites discovered" />
+          )}
+        </TabsContent>
+
+        {/* SIGNALS */}
+        <TabsContent value="signals" className="mt-4 space-y-3">
+          {signals.map(sig => (
+            <SignalCard key={sig.id} signal={sig} />
+          ))}
+
+          {!loading && signals.length === 0 && (
+            <EmptyState text="No exposure signals found" />
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* SOURCES */}
+      <Card className="border-primary/40 bg-primary/5">
+        <CardContent className="p-4 flex gap-3">
+          <Database className="h-5 w-5 text-primary" />
+          <div>
+            <h3 className="font-semibold">Real Data Sources</h3>
+            <p className="text-sm text-muted-foreground">
+              Ahmia • Pastebin Archive • Ghostbin • Rentry •
+              GitHub Gists • Tor2Web Gateways
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -464,12 +375,8 @@ function Stat({
       <CardContent className="p-4 flex items-center gap-3">
         <Icon className="h-5 w-5 text-primary" />
         <div>
-          <p className="text-xs text-muted-foreground">
-            {label}
-          </p>
-          <p className="font-mono font-bold">
-            {value}
-          </p>
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="font-mono font-bold">{value}</p>
         </div>
       </CardContent>
     </Card>
@@ -478,53 +385,35 @@ function Stat({
 
 function OnionCard({
   site,
-  view,
   loading,
   onCheck,
 }: {
   site: OnionSite;
-  view: ViewMode;
   loading: boolean;
   onCheck: () => void;
 }) {
   return (
-    <Card
-      className={cn(
-        'border',
-        RISK_COLORS[site.riskLevel]
-      )}
-    >
+    <Card className={cn('border', RISK_COLORS[site.riskLevel])}>
       <CardContent className="p-4 space-y-3">
-        <div className="flex justify-between gap-4">
-          <div>
-            <h3 className="font-mono break-all">
-              {site.url}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {site.description}
-            </p>
-          </div>
-
-          <Badge>{site.riskLevel}</Badge>
+        <div>
+          <h3 className="font-mono break-all">{site.url}</h3>
+          <p className="text-sm text-muted-foreground">
+            {site.description}
+          </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
           {site.tags.map(tag => (
-            <Badge
-              key={tag}
-              variant="outline"
-            >
+            <Badge key={tag} variant="outline">
               {tag}
             </Badge>
           ))}
         </div>
 
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex justify-between items-center text-sm">
           <span className="flex items-center gap-1 text-muted-foreground">
             <Clock className="h-3 w-3" />
-            {new Date(
-              site.lastSeen
-            ).toLocaleString()}
+            {new Date(site.lastSeen).toLocaleString()}
           </span>
 
           <Button
@@ -548,32 +437,22 @@ function OnionCard({
   );
 }
 
-function SignalCard({
-  signal,
-}: {
-  signal: LeakSignal;
-}) {
+function SignalCard({ signal }: { signal: LeakSignal }) {
   return (
     <Card>
       <CardContent className="p-4 space-y-2">
         <div className="flex justify-between">
-          <h3 className="font-semibold">
-            {signal.title}
-          </h3>
-          <Badge variant="secondary">
-            {signal.source}
-          </Badge>
+          <h3 className="font-semibold">{signal.title}</h3>
+          <Badge variant="secondary">{signal.source}</Badge>
         </div>
 
         <p className="text-sm text-muted-foreground">
-          Indicator: {signal.indicator}
+          Indicator: <span className="font-mono">{signal.indicator}</span>
         </p>
 
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>
-            {new Date(
-              signal.timestamp
-            ).toLocaleString()}
+            {new Date(signal.timestamp).toLocaleString()}
           </span>
           <a
             href={signal.url}
@@ -590,20 +469,12 @@ function SignalCard({
   );
 }
 
-function EmptyState({
-  icon: Icon,
-  text,
-}: {
-  icon: any;
-  text: string;
-}) {
+function EmptyState({ text }: { text: string }) {
   return (
     <Card>
       <CardContent className="p-12 text-center">
-        <Icon className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-        <p className="text-muted-foreground">
-          {text}
-        </p>
+        <Globe className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
+        <p className="text-muted-foreground">{text}</p>
       </CardContent>
     </Card>
   );
