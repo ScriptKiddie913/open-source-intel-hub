@@ -1,20 +1,23 @@
-// src/components/osint/EnhancedThreatMap.tsx
+// src/components/osint/LiveThreatFeed.tsx
+// REPLACE ENTIRE FILE WITH THIS
+
 import { useState, useEffect, useRef } from 'react';
-import { Activity, RefreshCw, Globe, Zap, AlertTriangle } from 'lucide-react';
+import { Activity, RefreshCw, Globe, Zap, AlertTriangle, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getEnhancedLiveThreatMap, LiveThreatPoint } from '@/services/enhancedThreatService';
+import { fetchLiveThreatMap, ThreatPoint } from '@/services/realTimeThreatService';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-export function EnhancedThreatMap() {
+export function LiveThreatFeed() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [threats, setThreats] = useState<LiveThreatPoint[]>([]);
+  const [threats, setThreats] = useState<ThreatPoint[]>([]);
   const [loading, setLoading] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [hoveredThreat, setHoveredThreat] = useState<LiveThreatPoint | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [hoveredThreat, setHoveredThreat] = useState<ThreatPoint | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     loadThreats();
@@ -22,7 +25,7 @@ export function EnhancedThreatMap() {
 
   useEffect(() => {
     if (autoRefresh) {
-      const interval = setInterval(loadThreats, 60000); // 1 minute
+      const interval = setInterval(loadThreats, 300000); // 5 minutes
       return () => clearInterval(interval);
     }
   }, [autoRefresh]);
@@ -34,16 +37,18 @@ export function EnhancedThreatMap() {
   const loadThreats = async () => {
     setLoading(true);
     try {
-      const data = await getEnhancedLiveThreatMap();
+      const data = await fetchLiveThreatMap();
       setThreats(data);
       setLastUpdate(new Date());
       
       if (data.length > 0) {
-        toast.success(`Loaded ${data.length} threat indicators`);
+        toast.success(`Loaded ${data.length} live threat indicators`);
+      } else {
+        toast.info('No active threats detected at this time');
       }
     } catch (error) {
       console.error('Failed to load threats:', error);
-      toast.error('Failed to load threat data');
+      toast.error('Failed to load live threat data');
     } finally {
       setLoading(false);
     }
@@ -56,17 +61,18 @@ export function EnhancedThreatMap() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 
-    // Dark background
+    // Dark background with grid
     ctx.fillStyle = '#0a0e27';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw grid lines
-    ctx.strokeStyle = 'rgba(0, 255, 159, 0.05)';
+    // Draw world map outline (simplified)
+    ctx.strokeStyle = 'rgba(0, 255, 159, 0.1)';
     ctx.lineWidth = 1;
+    
+    // Grid lines
     for (let i = 0; i < 18; i++) {
       ctx.beginPath();
       ctx.moveTo(0, i * (canvas.height / 18));
@@ -81,37 +87,31 @@ export function EnhancedThreatMap() {
     }
 
     // Convert lat/lon to canvas coordinates
-    const latToY = (lat: number) => {
-      return ((90 - lat) / 180) * canvas.height;
-    };
-
-    const lonToX = (lon: number) => {
-      return ((lon + 180) / 360) * canvas.width;
-    };
+    const latToY = (lat: number) => ((90 - lat) / 180) * canvas.height;
+    const lonToX = (lon: number) => ((lon + 180) / 360) * canvas.width;
 
     // Draw threat points
     threats.forEach((threat) => {
       const x = lonToX(threat.lon);
       const y = latToY(threat.lat);
-      const radius = Math.min(5 + threat.count * 2, 20);
+      const radius = Math.min(5 + threat.count * 2, 25);
 
-      // Severity colors
-      const colors = {
-        critical: 'rgb(239, 68, 68)',
-        high: 'rgb(251, 146, 60)',
-        medium: 'rgb(234, 179, 8)',
-        low: 'rgb(59, 130, 246)',
+      const severityColors = {
+        critical: '#ef4444',
+        high: '#f97316',
+        medium: '#eab308',
+        low: '#3b82f6',
       };
 
-      const color = colors[threat.severity];
+      const color = severityColors[threat.severity];
 
       // Glow effect
-      ctx.beginPath();
-      ctx.arc(x, y, radius + 5, 0, Math.PI * 2);
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius + 5);
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius + 10);
       gradient.addColorStop(0, color);
       gradient.addColorStop(1, 'transparent');
       ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, radius + 10, 0, Math.PI * 2);
       ctx.fill();
 
       // Main point
@@ -119,11 +119,14 @@ export function EnhancedThreatMap() {
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
-      // Pulse animation for critical threats
+      // Pulse for critical
       if (threat.severity === 'critical') {
         const time = Date.now() / 1000;
-        const pulseRadius = radius + Math.sin(time * 3) * 3;
+        const pulseRadius = radius + Math.sin(time * 3) * 5;
         ctx.beginPath();
         ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
         ctx.strokeStyle = color;
@@ -136,7 +139,7 @@ export function EnhancedThreatMap() {
       // Count label
       if (threat.count > 1) {
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 10px JetBrains Mono';
+        ctx.font = 'bold 11px JetBrains Mono';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(threat.count.toString(), x, y);
@@ -145,9 +148,9 @@ export function EnhancedThreatMap() {
       // Highlight on hover
       if (hoveredThreat?.id === threat.id) {
         ctx.strokeStyle = '#00FF9F';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 4;
         ctx.beginPath();
-        ctx.arc(x, y, radius + 10, 0, Math.PI * 2);
+        ctx.arc(x, y, radius + 15, 0, Math.PI * 2);
         ctx.stroke();
       }
     });
@@ -164,19 +167,24 @@ export function EnhancedThreatMap() {
     const lonToX = (lon: number) => ((lon + 180) / 360) * canvas.width;
     const latToY = (lat: number) => ((90 - lat) / 180) * canvas.height;
 
-    // Find clicked threat
     const clicked = threats.find((threat) => {
       const tx = lonToX(threat.lon);
       const ty = latToY(threat.lat);
       const distance = Math.sqrt((x - tx) ** 2 + (y - ty) ** 2);
-      const radius = Math.min(5 + threat.count * 2, 20);
-      return distance <= radius + 10;
+      const radius = Math.min(5 + threat.count * 2, 25);
+      return distance <= radius + 15;
     });
 
-    if (clicked) {
-      setHoveredThreat(clicked);
-    } else {
-      setHoveredThreat(null);
+    setHoveredThreat(clicked || null);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect) {
+      setMousePos({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      });
     }
   };
 
@@ -188,7 +196,18 @@ export function EnhancedThreatMap() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="p-6 space-y-6 animate-fade-in">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <Globe className="h-7 w-7 text-primary" />
+          Live Threat Intelligence Map
+        </h1>
+        <p className="text-muted-foreground text-sm mt-1">
+          Real-time global threat visualization from Feodo, URLhaus, ThreatFox
+        </p>
+      </div>
+
       {/* Controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -198,7 +217,7 @@ export function EnhancedThreatMap() {
             onClick={() => setAutoRefresh(!autoRefresh)}
             className={autoRefresh ? 'border-primary' : ''}
           >
-            <Activity className={cn('h-4 w-4 mr-2', autoRefresh && 'animate-pulse')} />
+            <Activity className={cn('h-4 w-4 mr-2', autoRefresh && 'animate-pulse text-primary')} />
             Auto Refresh
           </Button>
           <Button onClick={loadThreats} disabled={loading} size="sm">
@@ -208,65 +227,60 @@ export function EnhancedThreatMap() {
         </div>
         {lastUpdate && (
           <div className="text-xs text-muted-foreground font-mono">
-            Last updated: {lastUpdate.toLocaleTimeString()}
+            Updated: {lastUpdate.toLocaleTimeString()}
           </div>
         )}
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
-        <Card className="bg-card border-border">
-          <CardContent className="p-3 text-center">
-            <div className="text-2xl font-bold text-primary font-mono">{stats.total}</div>
-            <div className="text-xs text-muted-foreground">Total Threats</div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="p-3 text-center">
-            <div className="text-2xl font-bold text-red-500 font-mono">{stats.critical}</div>
-            <div className="text-xs text-muted-foreground">Critical</div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="p-3 text-center">
-            <div className="text-2xl font-bold text-orange-500 font-mono">{stats.high}</div>
-            <div className="text-xs text-muted-foreground">High</div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="p-3 text-center">
-            <div className="text-2xl font-bold text-cyan-500 font-mono">{stats.countries}</div>
-            <div className="text-xs text-muted-foreground">Countries</div>
-          </CardContent>
-        </Card>
+        {[
+          { label: 'Total Threats', value: stats.total, color: 'text-primary' },
+          { label: 'Critical', value: stats.critical, color: 'text-red-500' },
+          { label: 'High', value: stats.high, color: 'text-orange-500' },
+          { label: 'Countries', value: stats.countries, color: 'text-cyan-500' },
+        ].map((stat) => (
+          <Card key={stat.label} className="bg-card border-border">
+            <CardContent className="p-3 text-center">
+              <div className={cn('text-2xl font-bold font-mono', stat.color)}>{stat.value}</div>
+              <div className="text-xs text-muted-foreground">{stat.label}</div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Map */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Globe className="h-5 w-5 text-primary" />
-            Live Threat Map
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <MapPin className="h-5 w-5 text-primary" />
+            Global Threat Distribution
           </CardTitle>
         </CardHeader>
         <CardContent className="relative">
           <canvas
             ref={canvasRef}
-            className="w-full h-[500px] rounded-lg cursor-pointer"
+            className="w-full h-[600px] rounded-lg cursor-pointer"
             onClick={handleCanvasClick}
+            onMouseMove={handleMouseMove}
           />
 
           {/* Tooltip */}
           {hoveredThreat && (
-            <div className="absolute top-4 right-4 bg-card border border-border rounded-lg p-3 shadow-lg max-w-xs">
+            <div
+              className="absolute bg-card/95 border border-border rounded-lg p-3 shadow-xl max-w-xs pointer-events-none z-10"
+              style={{
+                left: Math.min(mousePos.x + 10, (canvasRef.current?.width || 0) - 250),
+                top: mousePos.y + 10,
+              }}
+            >
               <div className="flex items-center gap-2 mb-2">
                 <Badge className={cn(
                   hoveredThreat.severity === 'critical' ? 'bg-red-500' :
                   hoveredThreat.severity === 'high' ? 'bg-orange-500' :
-                  hoveredThreat.severity === 'medium' ? 'bg-yellow-500' :
-                  'bg-blue-500'
+                  hoveredThreat.severity === 'medium' ? 'bg-yellow-500' : 'bg-blue-500'
                 )}>
-                  {hoveredThreat.severity}
+                  {hoveredThreat.severity.toUpperCase()}
                 </Badge>
                 <span className="text-sm font-semibold">{hoveredThreat.threatType}</span>
               </div>
@@ -286,37 +300,34 @@ export function EnhancedThreatMap() {
           <div className="absolute bottom-4 left-4 bg-card/90 border border-border rounded-lg p-3">
             <div className="text-xs font-semibold mb-2">Threat Severity</div>
             <div className="space-y-1 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <span>Critical</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-orange-500" />
-                <span>High</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <span>Medium</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
-                <span>Low</span>
-              </div>
+              {['critical', 'high', 'medium', 'low'].map((severity) => (
+                <div key={severity} className="flex items-center gap-2">
+                  <div className={cn(
+                    'w-3 h-3 rounded-full',
+                    severity === 'critical' ? 'bg-red-500' :
+                    severity === 'high' ? 'bg-orange-500' :
+                    severity === 'medium' ? 'bg-yellow-500' : 'bg-blue-500'
+                  )} />
+                  <span className="capitalize">{severity}</span>
+                </div>
+              ))}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Info */}
+      {/* Data Sources */}
       <Card className="bg-primary/5 border-primary/30">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <Zap className="h-5 w-5 text-primary mt-0.5" />
             <div>
-              <h3 className="font-semibold text-foreground">Real-Time Data</h3>
+              <h3 className="font-semibold text-foreground">Live Data Sources</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Threat data from Feodo Tracker, ThreatFox, URLhaus, OpenPhish, and MalwareBazaar. 
-                Geolocation powered by IP-API.com. Data refreshes every 5 minutes.
+                <strong>Feodo Tracker:</strong> Botnet C2 servers • 
+                <strong>URLhaus:</strong> Malware distribution URLs • 
+                <strong>ThreatFox:</strong> Recent IOCs • 
+                Geolocation via ip-api.com
               </p>
             </div>
           </div>
