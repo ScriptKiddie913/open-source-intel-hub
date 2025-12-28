@@ -1,3 +1,4 @@
+// src/components/osint/OSINTSidebar.tsx - UPDATED WITH NEW ROUTES
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,9 @@ import {
   Bug,
   Zap,
   AlertTriangle,
+  User,
+  Network,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -43,6 +47,9 @@ const toolsNavItems: NavItem[] = [
   { name: "IP Analyzer", href: "/ip", icon: Activity, description: "IP Intelligence" },
   { name: "Certificates", href: "/certs", icon: Lock, description: "SSL/TLS Certificates" },
   { name: "Breach Check", href: "/breach", icon: Shield, description: "Email Breach Lookup" },
+  { name: "Username OSINT", href: "/username", icon: User, description: "100+ Platform Enumeration" },
+  { name: "Dark Web", href: "/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
+  { name: "Graph Map", href: "/graph", icon: Network, description: "Maltego-style Visualization" },
 ];
 
 const dataNavItems: NavItem[] = [
@@ -96,12 +103,10 @@ export function OSINTSidebar() {
           </>
         )}
         
-        {/* Active indicator glow */}
         {isActive && (
           <div className="absolute inset-0 bg-primary/5 rounded-lg animate-pulse-ring" />
         )}
 
-        {/* Tooltip for collapsed state */}
         {collapsed && (
           <div className="absolute left-full ml-2 px-2 py-1 bg-popover border border-border rounded-md text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
             {item.name}
@@ -126,7 +131,7 @@ export function OSINTSidebar() {
         {!collapsed && (
           <div>
             <h1 className="font-bold text-foreground tracking-tight">SoTaNik OSINT</h1>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Platform v2.0</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Platform v2.5</p>
           </div>
         )}
       </div>
