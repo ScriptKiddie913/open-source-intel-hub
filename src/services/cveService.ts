@@ -1,4 +1,4 @@
-// CVE and Exploit Database Service
+// Enhanced CVE and Threat Intelligence Service
 
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
 
@@ -35,7 +35,7 @@ export interface ExploitData {
 
 export interface ThreatFeed {
   id: string;
-  type: 'malware' | 'phishing' | 'botnet' | 'c2' | 'exploit';
+  type: 'malware' | 'phishing' | 'botnet' | 'c2' | 'exploit' | 'ransomware' | 'apt';
   indicator: string;
   indicatorType: 'ip' | 'domain' | 'url' | 'hash' | 'email';
   threat: string;
@@ -44,27 +44,62 @@ export interface ThreatFeed {
   lastSeen: string;
   source: string;
   tags: string[];
+  location?: {
+    country: string;
+    city: string;
+    lat: number;
+    lon: number;
+  };
 }
 
-const CVE_CACHE_TTL = 240; // 4 hours
-const EXPLOIT_CACHE_TTL = 360; // 6 hours
-const THREAT_FEED_CACHE_TTL = 15; // 15 minutes
+export interface LiveAttack {
+  id: string;
+  timestamp: Date;
+  sourceIp: string;
+  sourceCountry: string;
+  sourceLocation: { lat: number; lon: number };
+  targetIp: string;
+  targetCountry: string;
+  targetLocation: { lat: number; lon: number };
+  attackType: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  protocol: string;
+  port?: number;
+}
 
-// NVD API (National Vulnerability Database)
+const CVE_CACHE_TTL = 240;
+const EXPLOIT_CACHE_TTL = 360;
+const THREAT_FEED_CACHE_TTL = 5; // 5 minutes for live data
+
+// Get IP geolocation
+async function getGeoLocation(ip: string): Promise<{ country: string; city: string; lat: number; lon: number } | null> {
+  try {
+    const response = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data.status === 'success') {
+      return {
+        country: data.country,
+        city: data.city,
+        lat: data.lat,
+        lon: data.lon,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// NVD API
 export async function searchCVE(query: string, limit = 20): Promise<CVEData[]> {
   const cacheKey = `cve:search:${query}:${limit}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
   try {
-    // NVD API v2
     const response = await fetch(
-      `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(query)}&resultsPerPage=${limit}`,
-      {
-        headers: {
-          'Accept': 'application/json',
-        },
-      }
+      `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(query)}&resultsPerPage=${limit}`
     );
 
     if (!response.ok) throw new Error(`NVD API error: ${response.statusText}`);
@@ -90,7 +125,7 @@ export async function searchCVE(query: string, limit = 20): Promise<CVEData[]> {
         cwe: (cve.weaknesses || []).flatMap((w: any) => 
           w.description?.map((d: any) => d.value) || []
         ),
-        exploitAvailable: false, // Will check ExploitDB
+        exploitAvailable: false,
       });
     }
 
@@ -98,7 +133,7 @@ export async function searchCVE(query: string, limit = 20): Promise<CVEData[]> {
     return cves;
   } catch (error) {
     console.error('CVE search error:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -138,7 +173,6 @@ export async function getCVEDetails(cveId: string): Promise<CVEData | null> {
       exploitAvailable: false,
     };
 
-    // Check if exploit exists
     const exploit = await searchExploitDB(cveId);
     if (exploit.length > 0) {
       cveData.exploitAvailable = true;
@@ -202,14 +236,12 @@ export async function getRecentCVEs(days = 7, limit = 50): Promise<CVEData[]> {
   }
 }
 
-// ExploitDB search via Google Custom Search (public mirror)
 export async function searchExploitDB(query: string, limit = 20): Promise<ExploitData[]> {
   const cacheKey = `exploitdb:${query}:${limit}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
   try {
-    // Using Exploit-DB's CSV feed via GitHub
     const response = await fetch(
       'https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits.csv'
     );
@@ -217,13 +249,12 @@ export async function searchExploitDB(query: string, limit = 20): Promise<Exploi
     if (!response.ok) throw new Error('Failed to fetch ExploitDB feed');
 
     const csvData = await response.text();
-    const lines = csvData.split('\n').slice(1); // Skip header
+    const lines = csvData.split('\n').slice(1);
     const exploits: ExploitData[] = [];
 
     for (const line of lines) {
       if (exploits.length >= limit) break;
       
-      // CSV parsing (simplified)
       const match = line.match(/^"?([^"]*)"?,/);
       if (!match) continue;
 
@@ -262,7 +293,7 @@ export async function searchExploitDB(query: string, limit = 20): Promise<Exploi
   }
 }
 
-// Live Threat Feeds
+// Enhanced Live Threat Feeds with Geolocation
 export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
   const cacheKey = 'threats:live:feeds';
   const cached = await getCachedData(cacheKey);
@@ -271,11 +302,14 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
   const feeds: ThreatFeed[] = [];
 
   try {
-    // Abuse.ch Feodo Tracker (Botnet C2)
+    // Feodo Tracker (Botnet C2) with geolocation
     const feodoResponse = await fetch('https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json');
     if (feodoResponse.ok) {
       const feodoData = await feodoResponse.json();
-      for (const item of feodoData.slice(0, 50)) {
+      
+      for (const item of feodoData.slice(0, 100)) {
+        const geo = await getGeoLocation(item.ip_address);
+        
         feeds.push({
           id: `feodo-${item.ip_address}`,
           type: 'botnet',
@@ -287,6 +321,7 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
           lastSeen: item.last_seen || item.first_seen,
           source: 'Feodo Tracker',
           tags: ['botnet', 'c2', item.malware?.toLowerCase() || ''].filter(Boolean),
+          location: geo || undefined,
         });
       }
     }
@@ -295,7 +330,7 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
     const urlhausResponse = await fetch('https://urlhaus.abuse.ch/downloads/json_recent/');
     if (urlhausResponse.ok) {
       const urlhausData = await urlhausResponse.json();
-      for (const item of urlhausData.slice(0, 30)) {
+      for (const item of urlhausData.slice(0, 50)) {
         feeds.push({
           id: `urlhaus-${item.id}`,
           type: 'malware',
@@ -311,11 +346,11 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
       }
     }
 
-    // OpenPhish (Phishing URLs)
+    // OpenPhish
     const openphishResponse = await fetch('https://openphish.com/feed.txt');
     if (openphishResponse.ok) {
       const openphishData = await openphishResponse.text();
-      const urls = openphishData.split('\n').filter(Boolean).slice(0, 30);
+      const urls = openphishData.split('\n').filter(Boolean).slice(0, 50);
       
       const now = new Date().toISOString();
       for (const url of urls) {
@@ -334,6 +369,42 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
       }
     }
 
+    // ThreatFox (Recent IOCs)
+    const threatfoxResponse = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'get_iocs', days: 1 }),
+    });
+    
+    if (threatfoxResponse.ok) {
+      const threatfoxData = await threatfoxResponse.json();
+      
+      for (const item of (threatfoxData.data || []).slice(0, 50)) {
+        const isIp = item.ioc_type === 'ip:port' || item.ioc_type === 'ip';
+        let geo = null;
+        
+        if (isIp) {
+          const ip = item.ioc.split(':')[0];
+          geo = await getGeoLocation(ip);
+        }
+        
+        feeds.push({
+          id: `threatfox-${item.id}`,
+          type: item.threat_type?.includes('apt') ? 'apt' : 
+                item.threat_type?.includes('ransomware') ? 'ransomware' : 'malware',
+          indicator: item.ioc,
+          indicatorType: isIp ? 'ip' : item.ioc_type.includes('domain') ? 'domain' : 'url',
+          threat: item.malware_printable || item.threat_type || 'Unknown Threat',
+          confidence: item.confidence_level || 80,
+          firstSeen: item.first_seen,
+          lastSeen: item.last_seen || item.first_seen,
+          source: 'ThreatFox',
+          tags: item.tags || [],
+          location: geo || undefined,
+        });
+      }
+    }
+
     await cacheAPIResponse(cacheKey, feeds, THREAT_FEED_CACHE_TTL);
     return feeds;
   } catch (error) {
@@ -348,12 +419,9 @@ export async function getMalwareHashes(limit = 50): Promise<ThreatFeed[]> {
   if (cached) return cached;
 
   try {
-    // MalwareBazaar recent samples
     const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'query=get_recent&selector=100',
     });
 
@@ -383,6 +451,61 @@ export async function getMalwareHashes(limit = 50): Promise<ThreatFeed[]> {
     console.error('Malware hashes error:', error);
     return [];
   }
+}
+
+// Generate simulated live attacks for visualization
+export async function generateLiveAttacks(): Promise<LiveAttack[]> {
+  const attacks: LiveAttack[] = [];
+  
+  // Common attack source countries
+  const sources = [
+    { country: 'China', lat: 35.8617, lon: 104.1954 },
+    { country: 'Russia', lat: 61.5240, lon: 105.3188 },
+    { country: 'United States', lat: 37.0902, lon: -95.7129 },
+    { country: 'North Korea', lat: 40.3399, lon: 127.5101 },
+    { country: 'Iran', lat: 32.4279, lon: 53.6880 },
+    { country: 'Brazil', lat: -14.2350, lon: -51.9253 },
+  ];
+  
+  // Common targets
+  const targets = [
+    { country: 'United States', lat: 37.0902, lon: -95.7129 },
+    { country: 'United Kingdom', lat: 55.3781, lon: -3.4360 },
+    { country: 'Germany', lat: 51.1657, lon: 10.4515 },
+    { country: 'Japan', lat: 36.2048, lon: 138.2529 },
+    { country: 'Australia', lat: -25.2744, lon: 133.7751 },
+    { country: 'India', lat: 20.5937, lon: 78.9629 },
+  ];
+  
+  const attackTypes = [
+    'DDoS', 'SQL Injection', 'Brute Force', 'Malware', 
+    'Ransomware', 'Phishing', 'Port Scan', 'Data Exfiltration'
+  ];
+  
+  const protocols = ['TCP', 'UDP', 'HTTP', 'HTTPS', 'SSH', 'RDP'];
+  const severities: Array<'critical' | 'high' | 'medium' | 'low'> = ['critical', 'high', 'medium', 'low'];
+  
+  for (let i = 0; i < 20; i++) {
+    const source = sources[Math.floor(Math.random() * sources.length)];
+    const target = targets[Math.floor(Math.random() * targets.length)];
+    
+    attacks.push({
+      id: `attack-${Date.now()}-${i}`,
+      timestamp: new Date(Date.now() - Math.random() * 60000),
+      sourceIp: `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+      sourceCountry: source.country,
+      sourceLocation: { lat: source.lat, lon: source.lon },
+      targetIp: `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+      targetCountry: target.country,
+      targetLocation: { lat: target.lat, lon: target.lon },
+      attackType: attackTypes[Math.floor(Math.random() * attackTypes.length)],
+      severity: severities[Math.floor(Math.random() * severities.length)],
+      protocol: protocols[Math.floor(Math.random() * protocols.length)],
+      port: Math.floor(Math.random() * 65535),
+    });
+  }
+  
+  return attacks.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 }
 
 export function getSeverityColor(severity: string): string {
