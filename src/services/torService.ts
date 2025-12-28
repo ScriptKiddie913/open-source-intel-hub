@@ -1,409 +1,158 @@
-// src/services/torService.ts
-// Dark Web Intelligence Service using public onion directory APIs and Tor2Web proxies
+// ============================================================================
+// torService.ts
+// REAL Dark Web Intelligence — Metadata Only (Legal & OSINT-Grade)
+// ============================================================================
+//
+// ✔ Onion discovery via Ahmia & public directories
+// ✔ Paste & leak signal monitoring (Pastebin, Ghostbin, Rentry, GitHub Gists)
+// ✔ Tor2Web uptime checks (no Tor daemon)
+// ✔ No demo data
+// ✔ No simulated intelligence
+// ✔ No dump downloading
+// ✔ No authentication bypass
+//
+// ============================================================================
 
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
+
+/* ============================================================================
+   TYPES
+============================================================================ */
+
+export type RiskLevel = 'critical' | 'high' | 'medium' | 'low';
 
 export interface OnionSite {
   url: string;
   title: string;
   description: string;
   category: string;
-  riskLevel: 'critical' | 'high' | 'medium' | 'low';
+  riskLevel: RiskLevel;
   lastSeen: string;
   status: 'online' | 'offline' | 'unknown';
   tags: string[];
+  discoveredFrom: string;
 }
 
-export interface DarkWebLeak {
+export interface LeakSignal {
   id: string;
   title: string;
-  preview: string;
-  category: string;
-  source: string;
+  indicator: string;
+  source:
+    | 'pastebin'
+    | 'ghostbin'
+    | 'rentry'
+    | 'github_gist'
+    | 'telegram_public';
   timestamp: string;
-  recordCount: number;
-  dataTypes: string[];
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  indicators: string[];
+  url: string;
+  context: string;
 }
 
 export interface PasteData {
   id: string;
   title: string;
-  content: string;
-  author: string;
-  date: string;
   source: string;
-  language: string;
-  size: number;
+  url: string;
+  timestamp: string;
+  indicatorMatches: string[];
 }
 
-// Tor2Web proxies for accessing .onion sites
-const TOR_PROXIES = [
+/* ============================================================================
+   CONSTANTS
+============================================================================ */
+
+// Tor2Web gateways (metadata / HEAD only)
+const TOR2WEB_PROXIES = [
   'https://onion.ws',
   'https://onion.ly',
   'https://tor2web.org',
 ];
 
-// Public dark web directories and indexes
-const DARK_WEB_INDEXES = [
-  'https://ahmia.fi/search/', // Ahmia search engine
+// Onion discovery sources
+const ONION_DIRECTORIES = [
+  {
+    name: 'ahmia',
+    base: 'https://ahmia.fi/search/?q=',
+  },
 ];
 
-// Scrape Ahmia search results
-async function scrapeAhmia(query: string): Promise<OnionSite[]> {
-  const cacheKey = `ahmia:${query}`;
-  const cached = await getCachedData(cacheKey);
-  if (cached) return cached;
+// Indicator patterns
+const EMAIL_REGEX =
+  /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
-  try {
-    // Use a CORS proxy to access Ahmia
-    const response = await fetch(
-      `https://api.allorigins.win/get?url=${encodeURIComponent(
-        `https://ahmia.fi/search/?q=${encodeURIComponent(query)}`
-      )}`
-    );
+const DOMAIN_REGEX =
+  /\b[a-z0-9-]+\.[a-z]{2,}\b/gi;
 
-    if (!response.ok) return [];
+const ONION_REGEX =
+  /([a-z2-7]{16,56}\.onion)/gi;
 
-    const data = await response.json();
-    const html = data.contents;
+/* ============================================================================
+   UTILITIES
+============================================================================ */
 
-    // Parse HTML to extract onion links
-    const sites: OnionSite[] = [];
-    const urlRegex = /([a-z2-7]{16,56}\.onion)/gi;
-    const titleRegex = /<h4[^>]*>(.*?)<\/h4>/gi;
-    const descRegex = /<p[^>]*>(.*?)<\/p>/gi;
-
-    let match;
-    const urls: string[] = [];
-    while ((match = urlRegex.exec(html)) !== null) {
-      if (!urls.includes(match[1])) {
-        urls.push(match[1]);
-      }
-    }
-
-    // Get titles and descriptions
-    const titles: string[] = [];
-    while ((match = titleRegex.exec(html)) !== null) {
-      titles.push(match[1].replace(/<[^>]*>/g, '').trim());
-    }
-
-    const descs: string[] = [];
-    while ((match = descRegex.exec(html)) !== null) {
-      const desc = match[1].replace(/<[^>]*>/g, '').trim();
-      if (desc.length > 20) {
-        descs.push(desc);
-      }
-    }
-
-    // Combine data
-    urls.slice(0, 20).forEach((url, i) => {
-      sites.push({
-        url: url,
-        title: titles[i] || 'Unknown',
-        description: descs[i] || 'No description available',
-        category: categorizeOnion(url, titles[i], descs[i]),
-        riskLevel: calculateRisk(url, titles[i], descs[i]),
-        lastSeen: new Date().toISOString(),
-        status: 'unknown',
-        tags: extractTags(titles[i], descs[i]),
-      });
-    });
-
-    await cacheAPIResponse(cacheKey, sites, 60);
-    return sites;
-  } catch (error) {
-    console.error('Ahmia scrape error:', error);
-    return [];
-  }
+function stripHtml(input: string): string {
+  return input.replace(/<[^>]*>/g, '').trim();
 }
 
-// Scrape paste sites for leaks
-export async function scrapePasteSites(keyword: string): Promise<PasteData[]> {
-  const cacheKey = `pastes:${keyword}`;
-  const cached = await getCachedData(cacheKey);
-  if (cached) return cached;
-
-  const pastes: PasteData[] = [];
-
-  try {
-    // Scrape Pastebin (public pastes)
-    const pbResponse = await fetch(
-      `https://api.allorigins.win/get?url=${encodeURIComponent(
-        `https://pastebin.com/archive`
-      )}`
-    );
-
-    if (pbResponse.ok) {
-      const data = await pbResponse.json();
-      const html = data.contents;
-
-      // Extract paste links
-      const linkRegex = /<a href="\/([A-Za-z0-9]{8})"[^>]*>([^<]+)<\/a>/g;
-      let match;
-      let count = 0;
-
-      while ((match = linkRegex.exec(html)) !== null && count < 10) {
-        const id = match[1];
-        const title = match[2];
-
-        if (
-          title.toLowerCase().includes(keyword.toLowerCase()) ||
-          keyword === '*'
-        ) {
-          pastes.push({
-            id: `pb-${id}`,
-            title: title,
-            content: 'Preview not available - visit link to view',
-            author: 'Anonymous',
-            date: new Date().toISOString(),
-            source: 'Pastebin',
-            language: 'text',
-            size: 0,
-          });
-          count++;
-        }
-      }
-    }
-
-    // Scrape Ghostbin
-    try {
-      const gbResponse = await fetch(
-        `https://api.allorigins.win/get?url=${encodeURIComponent(
-          `https://ghostbin.com/browse`
-        )}`
-      );
-
-      if (gbResponse.ok) {
-        const data = await gbResponse.json();
-        const html = data.contents;
-
-        const linkRegex = /<a href="\/paste\/([A-Za-z0-9]+)"[^>]*>([^<]+)<\/a>/g;
-        let match;
-        let count = 0;
-
-        while ((match = linkRegex.exec(html)) !== null && count < 10) {
-          const id = match[1];
-          const title = match[2];
-
-          if (
-            title.toLowerCase().includes(keyword.toLowerCase()) ||
-            keyword === '*'
-          ) {
-            pastes.push({
-              id: `gb-${id}`,
-              title: title,
-              content: 'Preview not available - visit link to view',
-              author: 'Anonymous',
-              date: new Date().toISOString(),
-              source: 'Ghostbin',
-              language: 'text',
-              size: 0,
-            });
-            count++;
-          }
-        }
-      }
-    } catch (e) {
-      // Ignore individual errors
-    }
-
-    await cacheAPIResponse(cacheKey, pastes, 30);
-    return pastes;
-  } catch (error) {
-    console.error('Paste scrape error:', error);
-    return pastes;
-  }
+function nowISO(): string {
+  return new Date().toISOString();
 }
 
-// Search dark web for leaks
-export async function searchDarkWebLeaks(
-  query: string
-): Promise<DarkWebLeak[]> {
-  const cacheKey = `darkweb:leaks:${query}`;
-  const cached = await getCachedData(cacheKey);
-  if (cached) return cached;
-
-  const leaks: DarkWebLeak[] = [];
-
-  try {
-    // Search Ahmia for leak-related content
-    const sites = await scrapeAhmia(`${query} leak database dump`);
-
-    sites.forEach((site, i) => {
-      if (
-        site.description.toLowerCase().includes('leak') ||
-        site.description.toLowerCase().includes('database') ||
-        site.description.toLowerCase().includes('dump')
-      ) {
-        leaks.push({
-          id: `leak-${i}`,
-          title: site.title,
-          preview: site.description.substring(0, 200),
-          category: site.category,
-          source: site.url,
-          timestamp: site.lastSeen,
-          recordCount: estimateRecordCount(site.description),
-          dataTypes: extractDataTypes(site.description),
-          severity: site.riskLevel,
-          indicators: [site.url],
-        });
-      }
-    });
-
-    // Add simulated intelligence from known dark web marketplaces
-    const simulatedLeaks: DarkWebLeak[] = [
-      {
-        id: 'leak-sim-1',
-        title: 'Corporate Credentials Database',
-        preview:
-          'Employee login credentials from multiple Fortune 500 companies. Includes emails, passwords, VPN access...',
-        category: 'Credentials',
-        source: 'Dark Web Marketplace',
-        timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
-        recordCount: 250000,
-        dataTypes: ['credentials', 'emails', 'passwords', 'vpn_access'],
-        severity: 'critical',
-        indicators: ['marketplace_alpha.onion'],
-      },
-      {
-        id: 'leak-sim-2',
-        title: 'Healthcare Patient Records',
-        preview:
-          'Comprehensive medical records including diagnoses, prescriptions, insurance information...',
-        category: 'Medical',
-        source: 'Darknet Forum',
-        timestamp: new Date(Date.now() - 86400000 * 5).toISOString(),
-        recordCount: 500000,
-        dataTypes: ['medical_records', 'pii', 'insurance', 'ssn'],
-        severity: 'critical',
-        indicators: ['health_leaks.onion'],
-      },
-      {
-        id: 'leak-sim-3',
-        title: 'Financial Transaction Logs',
-        preview:
-          'Banking transaction history, credit card details, account numbers from regional bank...',
-        category: 'Financial',
-        source: 'Carding Forum',
-        timestamp: new Date(Date.now() - 86400000 * 7).toISOString(),
-        recordCount: 180000,
-        dataTypes: ['financial', 'credit_cards', 'bank_accounts'],
-        severity: 'high',
-        indicators: ['cards_market.onion'],
-      },
-    ];
-
-    leaks.push(...simulatedLeaks);
-
-    await cacheAPIResponse(cacheKey, leaks, 30);
-    return leaks;
-  } catch (error) {
-    console.error('Dark web leak search error:', error);
-    return leaks;
-  }
+function unique<T>(arr: T[]): T[] {
+  return Array.from(new Set(arr));
 }
 
-// Monitor specific onion sites
-export async function monitorOnionSite(
-  onionUrl: string
-): Promise<{ status: 'online' | 'offline'; lastCheck: string; responseTime?: number }> {
-  try {
-    // Try to access via Tor2Web proxy
-    const proxy = TOR_PROXIES[0];
-    const url = onionUrl.replace('.onion', `.onion.${proxy.split('//')[1]}`);
-
-    const startTime = Date.now();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    const response = await fetch(url, {
-      method: 'HEAD',
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-    const responseTime = Date.now() - startTime;
-
-    return {
-      status: response.ok ? 'online' : 'offline',
-      lastCheck: new Date().toISOString(),
-      responseTime,
-    };
-  } catch (error) {
-    return {
-      status: 'offline',
-      lastCheck: new Date().toISOString(),
-    };
-  }
+function clamp(val: number, min: number, max: number): number {
+  return Math.min(Math.max(val, min), max);
 }
 
-// Helper functions
-function categorizeOnion(
-  url: string,
-  title: string,
-  desc: string
-): string {
-  const text = `${url} ${title} ${desc}`.toLowerCase();
+/* ============================================================================
+   RISK & TAGGING
+============================================================================ */
+
+function calculateRisk(text: string): RiskLevel {
+  const t = text.toLowerCase();
 
   if (
-    text.includes('market') ||
-    text.includes('shop') ||
-    text.includes('store')
-  )
-    return 'Marketplace';
-  if (text.includes('forum') || text.includes('board')) return 'Forum';
-  if (text.includes('leak') || text.includes('dump')) return 'Data Leak';
-  if (text.includes('mail') || text.includes('email')) return 'Email Service';
-  if (text.includes('hosting') || text.includes('host')) return 'Hosting';
-  if (text.includes('wiki') || text.includes('directory')) return 'Directory';
-  if (text.includes('news') || text.includes('blog')) return 'News/Blog';
-
-  return 'Unknown';
-}
-
-function calculateRisk(
-  url: string,
-  title: string,
-  desc: string
-): 'critical' | 'high' | 'medium' | 'low' {
-  const text = `${url} ${title} ${desc}`.toLowerCase();
-
-  if (
-    text.includes('weapon') ||
-    text.includes('drug') ||
-    text.includes('exploit') ||
-    text.includes('malware')
-  )
+    t.includes('malware') ||
+    t.includes('exploit') ||
+    t.includes('ransom') ||
+    t.includes('weapon') ||
+    t.includes('drug')
+  ) {
     return 'critical';
+  }
 
   if (
-    text.includes('hack') ||
-    text.includes('crack') ||
-    text.includes('leak') ||
-    text.includes('dump')
-  )
+    t.includes('leak') ||
+    t.includes('dump') ||
+    t.includes('database') ||
+    t.includes('hack')
+  ) {
     return 'high';
+  }
 
-  if (text.includes('market') || text.includes('forum')) return 'medium';
+  if (
+    t.includes('market') ||
+    t.includes('forum') ||
+    t.includes('selling')
+  ) {
+    return 'medium';
+  }
 
   return 'low';
 }
 
-function extractTags(title: string, desc: string): string[] {
-  const text = `${title} ${desc}`.toLowerCase();
-  const tags: string[] = [];
-
+function extractTags(text: string): string[] {
   const keywords = [
-    'marketplace',
+    'market',
     'forum',
     'leak',
     'dump',
-    'hack',
-    'crack',
-    'exploit',
+    'database',
     'malware',
+    'exploit',
+    'credentials',
     'phishing',
     'carding',
     'fraud',
@@ -411,46 +160,388 @@ function extractTags(title: string, desc: string): string[] {
     'weapons',
   ];
 
-  keywords.forEach((keyword) => {
-    if (text.includes(keyword)) tags.push(keyword);
-  });
-
-  return tags.slice(0, 5);
+  const lower = text.toLowerCase();
+  return keywords.filter(k => lower.includes(k)).slice(0, 6);
 }
 
-function estimateRecordCount(text: string): number {
-  const numbers = text.match(/\d+[kKmM]?/g);
-  if (!numbers) return Math.floor(Math.random() * 100000);
+function categorize(text: string): string {
+  const t = text.toLowerCase();
 
-  const lastNum = numbers[numbers.length - 1];
-  const num = parseInt(lastNum);
+  if (t.includes('market')) return 'Marketplace';
+  if (t.includes('forum')) return 'Forum';
+  if (t.includes('leak') || t.includes('dump')) return 'Data Leak';
+  if (t.includes('mail')) return 'Email Service';
+  if (t.includes('hosting')) return 'Hosting';
+  if (t.includes('directory')) return 'Directory';
 
-  if (lastNum.includes('k') || lastNum.includes('K'))
-    return num * 1000;
-  if (lastNum.includes('m') || lastNum.includes('M'))
-    return num * 1000000;
-
-  return num;
+  return 'Unknown';
 }
 
-function extractDataTypes(text: string): string[] {
-  const types: string[] = [];
-  const keywords = {
-    credentials: 'credentials',
-    email: 'emails',
-    password: 'passwords',
-    credit_card: 'credit cards',
-    ssn: 'social security',
-    medical: 'medical',
-    financial: 'bank',
-    pii: 'personal',
-  };
+/* ============================================================================
+   LEVEL A — REAL ONION DISCOVERY (AHMIA)
+============================================================================ */
 
-  Object.entries(keywords).forEach(([type, keyword]) => {
-    if (text.toLowerCase().includes(keyword)) types.push(type);
-  });
+export async function discoverOnionSites(
+  query: string
+): Promise<OnionSite[]> {
+  const cacheKey = `onion:discover:${query}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
 
-  return types.length > 0 ? types : ['unknown'];
+  const results: OnionSite[] = [];
+
+  try {
+    const url = `${ONION_DIRECTORIES[0].base}${encodeURIComponent(
+      query
+    )}`;
+
+    const res = await fetch(
+      `https://api.allorigins.win/get?url=${encodeURIComponent(
+        url
+      )}`
+    );
+
+    if (!res.ok) return [];
+
+    const { contents } = await res.json();
+    const html = contents as string;
+
+    const onions = unique(
+      (html.match(ONION_REGEX) || []).slice(0, 30)
+    );
+
+    const titles = Array.from(
+      html.matchAll(/<h4[^>]*>(.*?)<\/h4>/gi)
+    ).map(m => stripHtml(m[1]));
+
+    const descs = Array.from(
+      html.matchAll(/<p[^>]*>(.*?)<\/p>/gi)
+    ).map(m => stripHtml(m[1]));
+
+    onions.forEach((onion, idx) => {
+      const context =
+        `${titles[idx] || ''} ${descs[idx] || ''}`.trim();
+
+      results.push({
+        url: onion,
+        title: titles[idx] || 'Unknown',
+        description:
+          descs[idx] || 'No description available',
+        category: categorize(context),
+        riskLevel: calculateRisk(context),
+        lastSeen: nowISO(),
+        status: 'unknown',
+        tags: extractTags(context),
+        discoveredFrom: 'ahmia',
+      });
+    });
+
+    await cacheAPIResponse(cacheKey, results, 60);
+    return results;
+  } catch (err) {
+    console.error('Onion discovery error:', err);
+    return [];
+  }
 }
 
-export { scrapeAhmia };
+/* ============================================================================
+   LEVEL A — ONION UPTIME CHECK (Tor2Web)
+============================================================================ */
+
+export async function checkOnionUptime(
+  onion: string
+): Promise<{
+  status: 'online' | 'offline';
+  responseTime?: number;
+  checkedAt: string;
+}> {
+  try {
+    const proxy = TOR2WEB_PROXIES[0];
+    const host = onion.replace(/^https?:\/\//, '');
+    const url = `https://${host}.${proxy.replace(
+      'https://',
+      ''
+    )}`;
+
+    const start = Date.now();
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 10000);
+
+    const res = await fetch(url, {
+      method: 'HEAD',
+      signal: controller.signal,
+    });
+
+    clearTimeout(t);
+
+    return {
+      status: res.ok ? 'online' : 'offline',
+      responseTime: Date.now() - start,
+      checkedAt: nowISO(),
+    };
+  } catch {
+    return {
+      status: 'offline',
+      checkedAt: nowISO(),
+    };
+  }
+}
+
+/* ============================================================================
+   LEVEL B — REAL PASTE & LEAK SIGNALS
+============================================================================ */
+
+/* -----------------------------
+   Pastebin Archive (Metadata)
+------------------------------ */
+
+export async function scanPastebin(
+  indicator: string
+): Promise<LeakSignal[]> {
+  const cacheKey = `pastebin:${indicator}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const signals: LeakSignal[] = [];
+
+  try {
+    const res = await fetch(
+      `https://api.allorigins.win/get?url=${encodeURIComponent(
+        'https://pastebin.com/archive'
+      )}`
+    );
+
+    if (!res.ok) return [];
+
+    const { contents } = await res.json();
+    const html = contents as string;
+
+    const links = Array.from(
+      html.matchAll(
+        /<a href="\/([A-Za-z0-9]{8})"[^>]*>([^<]+)<\/a>/g
+      )
+    ).slice(0, 40);
+
+    links.forEach(([_, id, title]) => {
+      if (
+        title.toLowerCase().includes(indicator.toLowerCase())
+      ) {
+        signals.push({
+          id: `pb-${id}`,
+          title: stripHtml(title),
+          indicator,
+          source: 'pastebin',
+          timestamp: nowISO(),
+          url: `https://pastebin.com/${id}`,
+          context: 'Paste title match',
+        });
+      }
+    });
+
+    await cacheAPIResponse(cacheKey, signals, 30);
+    return signals;
+  } catch (err) {
+    console.error('Pastebin scan error:', err);
+    return [];
+  }
+}
+
+/* -----------------------------
+   Ghostbin Browse (Metadata)
+------------------------------ */
+
+export async function scanGhostbin(
+  indicator: string
+): Promise<LeakSignal[]> {
+  const cacheKey = `ghostbin:${indicator}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const signals: LeakSignal[] = [];
+
+  try {
+    const res = await fetch(
+      `https://api.allorigins.win/get?url=${encodeURIComponent(
+        'https://ghostbin.com/browse'
+      )}`
+    );
+
+    if (!res.ok) return [];
+
+    const { contents } = await res.json();
+    const html = contents as string;
+
+    const links = Array.from(
+      html.matchAll(
+        /<a href="\/paste\/([A-Za-z0-9]+)"[^>]*>([^<]+)<\/a>/g
+      )
+    ).slice(0, 30);
+
+    links.forEach(([_, id, title]) => {
+      if (
+        title.toLowerCase().includes(indicator.toLowerCase())
+      ) {
+        signals.push({
+          id: `gb-${id}`,
+          title: stripHtml(title),
+          indicator,
+          source: 'ghostbin',
+          timestamp: nowISO(),
+          url: `https://ghostbin.com/paste/${id}`,
+          context: 'Ghostbin title match',
+        });
+      }
+    });
+
+    await cacheAPIResponse(cacheKey, signals, 30);
+    return signals;
+  } catch (err) {
+    console.error('Ghostbin scan error:', err);
+    return [];
+  }
+}
+
+/* -----------------------------
+   Rentry Public Notes
+------------------------------ */
+
+export async function scanRentry(
+  indicator: string
+): Promise<LeakSignal[]> {
+  const cacheKey = `rentry:${indicator}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const signals: LeakSignal[] = [];
+
+  try {
+    const res = await fetch(
+      `https://api.allorigins.win/get?url=${encodeURIComponent(
+        `https://rentry.co/search?q=${indicator}`
+      )}`
+    );
+
+    if (!res.ok) return [];
+
+    const { contents } = await res.json();
+    const html = contents as string;
+
+    const links = Array.from(
+      html.matchAll(
+        /href="\/([a-zA-Z0-9_-]+)"/g
+      )
+    ).slice(0, 20);
+
+    links.forEach(([_, id]) => {
+      signals.push({
+        id: `rentry-${id}`,
+        title: `Rentry note reference`,
+        indicator,
+        source: 'rentry',
+        timestamp: nowISO(),
+        url: `https://rentry.co/${id}`,
+        context: 'Rentry public note mention',
+      });
+    });
+
+    await cacheAPIResponse(cacheKey, signals, 30);
+    return signals;
+  } catch (err) {
+    console.error('Rentry scan error:', err);
+    return [];
+  }
+}
+
+/* -----------------------------
+   GitHub Gists (Public Search)
+------------------------------ */
+
+export async function scanGitHubGists(
+  indicator: string
+): Promise<LeakSignal[]> {
+  const cacheKey = `gists:${indicator}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const signals: LeakSignal[] = [];
+
+  try {
+    const res = await fetch(
+      `https://api.allorigins.win/get?url=${encodeURIComponent(
+        `https://github.com/search?q=${indicator}&type=gists`
+      )}`
+    );
+
+    if (!res.ok) return [];
+
+    const { contents } = await res.json();
+    const html = contents as string;
+
+    const links = Array.from(
+      html.matchAll(
+        /href="(\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9]+)"/g
+      )
+    ).slice(0, 20);
+
+    links.forEach(([_, path]) => {
+      signals.push({
+        id: `gist-${path}`,
+        title: 'GitHub Gist reference',
+        indicator,
+        source: 'github_gist',
+        timestamp: nowISO(),
+        url: `https://github.com${path}`,
+        context: 'Public gist search match',
+      });
+    });
+
+    await cacheAPIResponse(cacheKey, signals, 30);
+    return signals;
+  } catch (err) {
+    console.error('GitHub Gist scan error:', err);
+    return [];
+  }
+}
+
+/* ============================================================================
+   AGGREGATOR — REAL SIGNAL SEARCH
+============================================================================ */
+
+export async function searchDarkWebSignals(
+  indicator: string
+): Promise<LeakSignal[]> {
+  const cacheKey = `signals:${indicator}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const [
+    pastebin,
+    ghostbin,
+    rentry,
+    gists,
+  ] = await Promise.all([
+    scanPastebin(indicator),
+    scanGhostbin(indicator),
+    scanRentry(indicator),
+    scanGitHubGists(indicator),
+  ]);
+
+  const all = [
+    ...pastebin,
+    ...ghostbin,
+    ...rentry,
+    ...gists,
+  ];
+
+  await cacheAPIResponse(cacheKey, all, 30);
+  return all;
+}
+
+/* ============================================================================
+   EXPORTS
+============================================================================ */
+
+export {
+  discoverOnionSites,
+  checkOnionUptime,
+};
