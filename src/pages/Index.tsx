@@ -1,3 +1,4 @@
+// src/pages/Index.tsx
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 
@@ -13,6 +14,11 @@ import { ThreatIntelSearch } from "@/components/osint/ThreatIntelSearch";
 import { CVEExplorer } from "@/components/osint/CVEExplorer";
 import { LiveThreatFeed } from "@/components/osint/LiveThreatFeed";
 
+// NEW IMPORTS
+import { UsernameEnumeration } from "@/components/osint/UsernameEnumeration";
+import { DarkWebScanner } from "@/components/osint/DarkWebScanner";
+import { GraphVisualization } from "@/components/osint/GraphVisualization";
+
 import { initDatabase } from "@/lib/database";
 import { cn } from "@/lib/utils";
 
@@ -24,25 +30,12 @@ import {
   Minimize2,
 } from "lucide-react";
 
-/* =====================================================
-   API KEY (CLIENT SIDE, AS REQUESTED)
-===================================================== */
-
-const PERPLEXITY_API_KEY =
-  "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";
-
-/* =====================================================
-   TYPES
-===================================================== */
+const PERPLEXITY_API_KEY = "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";
 
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
-
-/* =====================================================
-   MESSAGE RENDERER (LINK SAFE)
-===================================================== */
 
 function renderMessage(text: string) {
   const parts = text.split(/(https?:\/\/[^\s]+)/g);
@@ -63,10 +56,6 @@ function renderMessage(text: string) {
   );
 }
 
-/* =====================================================
-   FLOATING CHAT
-===================================================== */
-
 function FloatingPerplexityChat() {
   const [open, setOpen] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -77,8 +66,6 @@ function FloatingPerplexityChat() {
 
   const dragging = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
-
-  /* ---------------- DRAG ---------------- */
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (expanded) return;
@@ -113,8 +100,6 @@ function FloatingPerplexityChat() {
       window.removeEventListener("mouseup", onMouseUp);
     };
   }, []);
-
-  /* ---------------- SEND ---------------- */
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -206,7 +191,6 @@ function FloatingPerplexityChat() {
             : { left: position.x, bottom: position.y, position: "fixed" }
         }
       >
-        {/* HEADER */}
         <div
           className="flex items-center justify-between p-2 border-b border-border cursor-move"
           onMouseDown={onMouseDown}
@@ -229,7 +213,6 @@ function FloatingPerplexityChat() {
           </div>
         </div>
 
-        {/* MESSAGES */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm leading-relaxed">
           {messages.length === 0 && (
             <div className="text-center text-muted-foreground py-8">
@@ -258,7 +241,6 @@ function FloatingPerplexityChat() {
           )}
         </div>
 
-        {/* INPUT */}
         <div className="p-2 border-t border-border flex gap-2">
           <input
             className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
@@ -280,10 +262,6 @@ function FloatingPerplexityChat() {
   );
 }
 
-/* =====================================================
-   MAIN INDEX
-===================================================== */
-
 const Index = () => {
   useEffect(() => {
     initDatabase().catch(console.error);
@@ -304,6 +282,12 @@ const Index = () => {
           <Route path="/live-threats" element={<LiveThreatFeed />} />
           <Route path="/import" element={<DataImporter />} />
           <Route path="/settings" element={<SettingsPage />} />
+          
+          {/* NEW ROUTES */}
+          <Route path="/username" element={<UsernameEnumeration />} />
+          <Route path="/darkweb" element={<DarkWebScanner />} />
+          <Route path="/graph" element={<GraphVisualization />} />
+          
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
