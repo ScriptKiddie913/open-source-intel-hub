@@ -1,4 +1,5 @@
 // src/components/osint/GraphVisualization.tsx
+// Maltego-style relationship mapping
 import { useEffect, useRef, useState } from 'react';
 import { Search, Loader2, Plus, Trash2, Download, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
