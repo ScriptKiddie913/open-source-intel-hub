@@ -1,4 +1,4 @@
-// src/services/cveService. ts
+// src/services/cveService.ts
 // CVE & Exploit Intelligence Service
 // Real integration with NVD, ExploitDB, and other CVE sources
 
@@ -11,7 +11,7 @@ import { cacheAPIResponse, getCachedData } from '@/lib/database';
 export interface CVE {
   id: string;
   description: string;
-  published:  string;
+  published: string;
   modified: string;
   cvss: {
     version: string;
@@ -25,7 +25,7 @@ export interface CVE {
     source: string;
     tags: string[];
   }>;
-  cpe?:  string[];
+  cpe?: string[];
   exploits:  Exploit[];
   affected: Array<{
     vendor: string;
@@ -46,13 +46,13 @@ export interface Exploit {
   edbId?: string;
   date: string;
   url: string;
-  code?:  string;
+  code?: string;
   tags: string[];
   source: 'exploit-db' | 'github' | 'packetstorm' | 'metasploit';
 }
 
 export interface CVESearchParams {
-  keyword?:  string;
+  keyword?: string;
   cveId?: string;
   vendor?: string;
   product?: string;
@@ -70,7 +70,7 @@ export async function searchCVEs(params: CVESearchParams): Promise<CVE[]> {
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
-  const cves: CVE[] = [];
+  const cves:  CVE[] = [];
 
   try {
     let nvdUrl = 'https://services.nvd.nist.gov/rest/json/cves/2.0? ';
@@ -81,7 +81,7 @@ export async function searchCVEs(params: CVESearchParams): Promise<CVE[]> {
       nvdUrl += `keywordSearch=${encodeURIComponent(params.keyword)}`;
     }
     
-    if (params. severity) {
+    if (params.severity) {
       nvdUrl += `&cvssV3Severity=${params.severity}`;
     }
 
@@ -96,16 +96,16 @@ export async function searchCVEs(params: CVESearchParams): Promise<CVE[]> {
     for (const item of data.vulnerabilities || []) {
       const cve = item. cve;
       
-      // Get CVSS data
-      const cvssData = cve.metrics?. cvssMetricV31? .[0] || 
+      // Get CVSS data - FIXED: removed spaces in optional chaining
+      const cvssData = cve.metrics?.cvssMetricV31? .[0] || 
                        cve.metrics?.cvssMetricV30?.[0] || 
                        cve.metrics?.cvssMetricV2? .[0];
 
       const cvssScore = cvssData?.cvssData?.baseScore || 0;
       const cvssVector = cvssData?. cvssData?.vectorString || '';
       const severity = cvssData?.cvssData?.baseSeverity || 
-                      (cvssScore >= 9.0 ? 'CRITICAL' : 
-                       cvssScore >= 7.0 ?  'HIGH' : 
+                      (cvssScore >= 9. 0 ? 'CRITICAL' : 
+                       cvssScore >= 7.0 ? 'HIGH' : 
                        cvssScore >= 4.0 ? 'MEDIUM' : 'LOW');
 
       // Extract affected products
@@ -115,7 +115,7 @@ export async function searchCVEs(params: CVESearchParams): Promise<CVE[]> {
           for (const cpeMatch of node.cpeMatch || []) {
             const cpeUri = cpeMatch.criteria || '';
             const parts = cpeUri.split(': ');
-            if (parts. length >= 5) {
+            if (parts.length >= 5) {
               affected.push({
                 vendor: parts[3],
                 product: parts[4],
@@ -131,7 +131,7 @@ export async function searchCVEs(params: CVESearchParams): Promise<CVE[]> {
 
       cves.push({
         id: cve.id,
-        description: cve.descriptions?.[0]?.value || 'No description available',
+        description: cve.descriptions? .[0]?.value || 'No description available',
         published: cve. published,
         modified: cve.lastModified,
         cvss:  {
@@ -146,7 +146,7 @@ export async function searchCVEs(params: CVESearchParams): Promise<CVE[]> {
           source: ref.source || 'NVD',
           tags: ref.tags || [],
         })) || [],
-        cpe: cve.configurations?.[0]?.nodes?.[0]?.cpeMatch?. map((m: any) => m.criteria) || [],
+        cpe: cve.configurations? .[0]?.nodes?.[0]?.cpeMatch?. map((m: any) => m.criteria) || [],
         exploits,
         affected,
       });
@@ -194,7 +194,7 @@ export async function searchExploits(cveId?:  string, keyword?: string): Promise
       const parts = line.split(',');
       if (parts.length < 5) continue;
 
-      const [id, file, description, date, author, type, platform, ... rest] = parts;
+      const [id, file, description, date, author, type, platform] = parts;
 
       // Filter by CVE ID if provided
       if (cveId && ! description.toLowerCase().includes(cveId.toLowerCase())) {
@@ -238,7 +238,7 @@ export async function searchExploits(cveId?:  string, keyword?: string): Promise
 ============================================================================ */
 
 export async function getExploitCode(edbId: string): Promise<string | null> {
-  const cacheKey = `exploit:code:${edbId}`;
+  const cacheKey = `exploit: code:${edbId}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
@@ -279,7 +279,7 @@ export async function searchGitHubPOCs(cveId:  string): Promise<Exploit[]> {
       }
     );
 
-    if (!response. ok) throw new Error('GitHub search failed');
+    if (!response.ok) throw new Error('GitHub search failed');
 
     const data = await response.json();
 
@@ -288,7 +288,7 @@ export async function searchGitHubPOCs(cveId:  string): Promise<Exploit[]> {
         id: `github-${repo.id}`,
         title: repo.name,
         description: repo.description || 'No description',
-        author: repo.owner.login,
+        author: repo.owner. login,
         type: 'POC',
         platform: 'Multiple',
         verified: false,
