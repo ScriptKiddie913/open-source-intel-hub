@@ -1,114 +1,232 @@
-// src/components/osint/OSINTSidebar.tsx - UPDATED WITH NEW ROUTES
-import { useState } from "react";
+// ============================================================================
+// OSINTSidebar.tsx
+// FULL PRODUCTION SIDEBAR – FIXED & VERCEL SAFE
+// Lines ~260+
+// ============================================================================
+
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+
 import {
   LayoutDashboard,
-  Search,
+  Radar,
+  Zap,
+  Bug,
+  Newspaper,
   Globe,
+  Activity,
+  Lock,
   Shield,
-  Bell,
+  User,
+  Eye,
+  Network,
   Upload,
-  Settings,
-  Database,
+  Bell,
   FileText,
+  Database,
+  Settings,
+  Terminal,
+  Search,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
-  Terminal,
-  Lock,
-  Activity,
-  Radar,
-  Bug,
-  Zap,
-  AlertTriangle,
-  User,
-  Network,
-  Eye,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
+/* ============================================================================
+   TYPES
+============================================================================ */
 
 interface NavItem {
   name: string;
   href: string;
   icon: typeof LayoutDashboard;
-  badge?: number;
   description?: string;
+  badge?: number;
+  isNew?: boolean;
 }
 
-const mainNavItems: NavItem[] = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard, description: "Overview & Statistics" },
-  { name: "Threat Intel", href: "/threat-intel", icon: Radar, description: "VirusTotal & Threat Analysis" },
-  { name: "Live Threats", href: "/live-threats", icon: Zap, description: "Real-time Threat Feeds" },
-  { name: "CVE Explorer", href: "/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
+/* ============================================================================
+   NAV CONFIG
+============================================================================ */
+
+// ── Threat / Intel
+const threatNav: NavItem[] = [
+  {
+    name: "Dashboard",
+    href: "/",
+    icon: LayoutDashboard,
+    description: "Overview & statistics",
+  },
+  {
+    name: "Threat Intel",
+    href: "/threat-intel",
+    icon: Radar,
+    description: "IOC & reputation analysis",
+  },
+  {
+    name: "Live Threats",
+    href: "/live-threats",
+    icon: Zap,
+    description: "Real-time attack feeds",
+  },
+  {
+    name: "CVE Explorer",
+    href: "/cve",
+    icon: Bug,
+    description: "Vulnerabilities & exploits",
+  },
+  {
+    name: "News Intel",
+    href: "/news",
+    icon: Newspaper,
+    description: "OSINT news monitoring",
+  },
 ];
 
-const toolsNavItems: NavItem[] = [
-  { name: "Domain Intel", href: "/domain", icon: Globe, description: "DNS & Domain Analysis" },
-  { name: "IP Analyzer", href: "/ip", icon: Activity, description: "IP Intelligence" },
-  { name: "Certificates", href: "/certs", icon: Lock, description: "SSL/TLS Certificates" },
-  { name: "Breach Check", href: "/breach", icon: Shield, description: "Email Breach Lookup" },
-  { name: "Username OSINT", href: "/username", icon: User, description: "100+ Platform Enumeration" },
-  { name: "Dark Web", href: "/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
-  { name: "Graph Map", href: "/graph", icon: Network, description: "Maltego-style Visualization" },
+// ── Analysis Tools
+const toolsNav: NavItem[] = [
+  {
+    name: "Domain Intel",
+    href: "/domain",
+    icon: Globe,
+    description: "DNS & WHOIS analysis",
+  },
+  {
+    name: "IP Analyzer",
+    href: "/ip",
+    icon: Activity,
+    description: "IP reputation & geo",
+  },
+  {
+    name: "Certificates",
+    href: "/certs",
+    icon: Lock,
+    description: "SSL/TLS intelligence",
+  },
+  {
+    name: "Breach Check",
+    href: "/breach",
+    icon: Shield,
+    description: "Email breach lookup",
+  },
+  {
+    name: "Username OSINT",
+    href: "/username",
+    icon: User,
+    description: "Cross-platform search",
+  },
+  {
+    name: "Dark Web",
+    href: "/darkweb",
+    icon: Eye,
+    description: "Leaks & onion discovery",
+  },
+  {
+    name: "Graph Map",
+    href: "/graph",
+    icon: Network,
+    description: "Relationship visualization",
+  },
 ];
 
-const dataNavItems: NavItem[] = [
-  { name: "Import Data", href: "/import", icon: Upload, description: "Upload Datasets" },
-  { name: "Monitors", href: "/monitors", icon: Bell, description: "Active Monitoring" },
-  { name: "Reports", href: "/reports", icon: FileText, description: "Generated Reports" },
+// ── Data
+const dataNav: NavItem[] = [
+  {
+    name: "Import Data",
+    href: "/import",
+    icon: Upload,
+    description: "Upload datasets",
+  },
+  {
+    name: "Monitors",
+    href: "/monitors",
+    icon: Bell,
+    description: "Active monitoring",
+  },
+  {
+    name: "Reports",
+    href: "/reports",
+    icon: FileText,
+    description: "Generated reports",
+  },
 ];
 
-const systemNavItems: NavItem[] = [
-  { name: "Database", href: "/database", icon: Database, description: "Local Data Store" },
-  { name: "Settings", href: "/settings", icon: Settings, description: "Configuration" },
+// ── System
+const systemNav: NavItem[] = [
+  {
+    name: "Database",
+    href: "/database",
+    icon: Database,
+    description: "Local OSINT store",
+  },
+  {
+    name: "Settings",
+    href: "/settings",
+    icon: Settings,
+    description: "Configuration",
+  },
 ];
+
+/* ============================================================================
+   COMPONENT
+============================================================================ */
 
 export function OSINTSidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const [time, setTime] = useState(new Date());
   const location = useLocation();
 
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  /* ------------------------------------------------------------------------ */
+
   const NavLink = ({ item }: { item: NavItem }) => {
-    const isActive = location.pathname === item.href;
-    
+    const active = location.pathname === item.href;
+
     return (
       <Link
         to={item.href}
         className={cn(
-          "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
-          "hover:bg-secondary group relative",
-          isActive
+          "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all",
+          active
             ? "bg-primary/10 text-primary border-l-2 border-primary"
-            : "text-muted-foreground hover:text-foreground"
+            : "text-muted-foreground hover:bg-secondary hover:text-foreground"
         )}
       >
-        <item.icon className={cn(
-          "h-4 w-4 shrink-0 transition-colors",
-          isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-        )} />
+        <item.icon
+          className={cn(
+            "h-4 w-4 shrink-0",
+            active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+          )}
+        />
+
         {!collapsed && (
-          <>
-            <div className="flex-1 truncate">
-              <div className="truncate">{item.name}</div>
-              {item.description && (
-                <div className="text-xs text-muted-foreground/60 truncate mt-0.5">
-                  {item.description}
-                </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate">{item.name}</span>
+              {item.isNew && (
+                <Badge variant="destructive" className="h-4 px-1 text-[9px]">
+                  NEW
+                </Badge>
               )}
             </div>
-            {item.badge !== undefined && item.badge > 0 && (
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-                {item.badge > 99 ? "99+" : item.badge}
-              </span>
+            {item.description && (
+              <p className="mt-0.5 truncate text-xs text-muted-foreground/70">
+                {item.description}
+              </p>
             )}
-          </>
-        )}
-        
-        {isActive && (
-          <div className="absolute inset-0 bg-primary/5 rounded-lg animate-pulse-ring" />
+          </div>
         )}
 
         {collapsed && (
-          <div className="absolute left-full ml-2 px-2 py-1 bg-popover border border-border rounded-md text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+          <div className="pointer-events-none absolute left-full z-50 ml-2 rounded-md border bg-popover px-2 py-1 text-xs opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
             {item.name}
           </div>
         )}
@@ -116,117 +234,90 @@ export function OSINTSidebar() {
     );
   };
 
+  const Section = ({
+    title,
+    icon: Icon,
+    items,
+  }: {
+    title: string;
+    icon: typeof AlertTriangle;
+    items: NavItem[];
+  }) => (
+    <div className="space-y-1">
+      {!collapsed && (
+        <div className="flex items-center gap-2 px-3 py-2">
+          <Icon className="h-3 w-3 text-primary" />
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            {title}
+          </span>
+        </div>
+      )}
+      {items.map(item => (
+        <NavLink key={item.href} item={item} />
+      ))}
+    </div>
+  );
+
+  /* ------------------------------------------------------------------------ */
+
   return (
     <aside
       className={cn(
-        "flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
+        "flex h-screen flex-col border-r bg-sidebar transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 h-16 border-b border-sidebar-border">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-cyber">
+      {/* HEADER */}
+      <div className="flex h-16 items-center gap-3 border-b px-4">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
           <Terminal className="h-4 w-4 text-primary-foreground" />
         </div>
         {!collapsed && (
           <div>
-            <h1 className="font-bold text-foreground tracking-tight">SoTaNik OSINT</h1>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Platform v2.5</p>
+            <h1 className="text-sm font-bold">SoTaNik OSINT</h1>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              Platform v2.6
+            </p>
           </div>
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto p-3 space-y-6">
-        {/* Intelligence */}
-        <div className="space-y-1">
-          {!collapsed && (
-            <div className="flex items-center gap-2 px-3 mb-2">
-              <AlertTriangle className="h-3 w-3 text-primary" />
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
-                Threat Intelligence
-              </p>
-            </div>
-          )}
-          {mainNavItems.map((item) => (
-            <NavLink key={item.href} item={item} />
-          ))}
-        </div>
-
-        {/* Analysis Tools */}
-        <div className="space-y-1">
-          {!collapsed && (
-            <div className="flex items-center gap-2 px-3 mb-2">
-              <Search className="h-3 w-3 text-primary" />
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
-                Analysis Tools
-              </p>
-            </div>
-          )}
-          {toolsNavItems.map((item) => (
-            <NavLink key={item.href} item={item} />
-          ))}
-        </div>
-
-        {/* Data Management */}
-        <div className="space-y-1">
-          {!collapsed && (
-            <div className="flex items-center gap-2 px-3 mb-2">
-              <Database className="h-3 w-3 text-primary" />
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
-                Data Management
-              </p>
-            </div>
-          )}
-          {dataNavItems.map((item) => (
-            <NavLink key={item.href} item={item} />
-          ))}
-        </div>
-
-        {/* System */}
-        <div className="space-y-1">
-          {!collapsed && (
-            <div className="flex items-center gap-2 px-3 mb-2">
-              <Settings className="h-3 w-3 text-primary" />
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
-                System
-              </p>
-            </div>
-          )}
-          {systemNavItems.map((item) => (
-            <NavLink key={item.href} item={item} />
-          ))}
-        </div>
+      {/* NAV */}
+      <nav className="flex-1 space-y-6 overflow-y-auto p-3">
+        <Section title="Threat Intelligence" icon={AlertTriangle} items={threatNav} />
+        <Section title="Analysis Tools" icon={Search} items={toolsNav} />
+        <Section title="Data Management" icon={Database} items={dataNav} />
+        <Section title="System" icon={Settings} items={systemNav} />
       </nav>
 
-      {/* Status Bar */}
+      {/* STATUS */}
       {!collapsed && (
-        <div className="p-3 border-t border-sidebar-border bg-secondary/20">
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-muted-foreground">System Online</span>
-            </div>
+        <div className="border-t bg-secondary/20 p-3 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
+              System Online
+            </span>
             <span className="font-mono text-muted-foreground">
-              {new Date().toLocaleTimeString()}
+              {time.toLocaleTimeString()}
             </span>
           </div>
         </div>
       )}
 
-      {/* Collapse Toggle */}
-      <div className="p-3 border-t border-sidebar-border">
+      {/* TOGGLE */}
+      <div className="border-t p-3">
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setCollapsed(!collapsed)}
-          className="w-full justify-center hover:bg-secondary/50"
+          className="w-full justify-center"
+          onClick={() => setCollapsed(v => !v)}
         >
           {collapsed ? (
             <ChevronRight className="h-4 w-4" />
           ) : (
             <>
-              <ChevronLeft className="h-4 w-4 mr-2" />
+              <ChevronLeft className="mr-2 h-4 w-4" />
               Collapse
             </>
           )}
