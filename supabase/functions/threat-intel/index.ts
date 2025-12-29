@@ -105,10 +105,11 @@ async function queryVirusTotal(type: string, target: string): Promise<any> {
     case 'domain':
       endpoint = `https://www.virustotal.com/api/v3/domains/${target}`;
       break;
-    case 'url':
+    case 'url': {
       const urlId = btoa(target).replace(/=/g, '');
       endpoint = `https://www.virustotal.com/api/v3/urls/${urlId}`;
       break;
+    }
     case 'hash':
       endpoint = `https://www.virustotal.com/api/v3/files/${target}`;
       break;

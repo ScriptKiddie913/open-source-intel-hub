@@ -133,7 +133,11 @@ export function CVEExplorer() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    activeTab === 'exploits' ? handleSearchExploits() : handleSearchCVE();
+                    if (activeTab === 'exploits') {
+                      handleSearchExploits();
+                    } else {
+                      handleSearchCVE();
+                    }
                   }
                 }}
                 placeholder={
