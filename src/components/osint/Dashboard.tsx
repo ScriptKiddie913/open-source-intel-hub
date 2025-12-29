@@ -14,6 +14,10 @@ import {
   Zap,
   TrendingUp,
   Eye,
+  Brain,
+  Newspaper,
+  FileSearch,
+  Bot,
 } from "lucide-react";
 import { StatCard } from "./StatCard";
 import { APIStatusIndicator } from "./APIStatusIndicator";
@@ -31,6 +35,8 @@ import { getRecentCVEs } from "@/services/cveService";
 import { getLiveThreatFeeds } from "@/services/cveService";
 import { resolveDNS } from "@/services/dnsService";
 import { getIPGeolocation } from "@/services/ipService";
+import { getMalwareNews } from "@/services/malwareIntelService";
+import { fetchNewsIntelligence } from "@/services/newsIntelService";
 import { cn } from "@/lib/utils";
 
 type APIStatus = "online" | "offline" | "rate_limited" | "checking";
@@ -42,6 +48,8 @@ interface DashboardMetrics {
   threatScore: number;
   recentCVEs: number;
   liveThreats: number;
+  malwareReports: number;
+  newsAlerts: number;
 }
 
 interface RecentActivityItem {
@@ -60,6 +68,8 @@ export function Dashboard() {
     threatScore: 0,
     recentCVEs: 0,
     liveThreats: 0,
+    malwareReports: 0,
+    newsAlerts: 0,
   });
   const [apiStatus, setApiStatus] = useState<Record<string, APIStatus>>({
     dns: "checking",
@@ -68,9 +78,13 @@ export function Dashboard() {
     certs: "checking",
     nvd: "checking",
     threatFeeds: "checking",
+    malwareIntel: "checking",
+    newsIntel: "checking",
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
   const [recentCVEs, setRecentCVEs] = useState<any[]>([]);
+  const [malwareUpdates, setMalwareUpdates] = useState<any[]>([]);
+  const [newsUpdates, setNewsUpdates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -90,9 +104,11 @@ export function Dashboard() {
       ]);
 
       // Load recent CVEs and threats
-      const [cves, threats] = await Promise.all([
+      const [cves, threats, malware, news] = await Promise.all([
         getRecentCVEs(7, 5).catch(() => []),
         getLiveThreatFeeds().catch(() => []),
+        getMalwareNews().catch(() => []),
+        fetchNewsIntelligence({ query: "cybersecurity", timeframe: "24h", analysis: false }).catch(() => ({ articles: [] })),
       ]);
 
       setMetrics({
@@ -102,10 +118,14 @@ export function Dashboard() {
         threatScore: calculateThreatScore(alerts, threats.length),
         recentCVEs: cves.length,
         liveThreats: threats.length,
+        malwareReports: malware.length,
+        newsAlerts: news.articles?.length || 0,
       });
 
       setRecentActivity(activity);
       setRecentCVEs(cves);
+      setMalwareUpdates(malware.slice(0, 3));
+      setNewsUpdates(news.articles?.slice(0, 3) || []);
 
       // Check API statuses
       checkAPIStatus();
@@ -211,7 +231,7 @@ export function Dashboard() {
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <StatCard
           title="Total Records"
           value={metrics.totalRecords.toLocaleString()}
@@ -236,6 +256,18 @@ export function Dashboard() {
           icon={Shield}
           variant={metrics.threatScore > 50 ? "danger" : metrics.threatScore > 25 ? "warning" : "default"}
         />
+        <StatCard
+          title="Malware Reports"
+          value={metrics.malwareReports}
+          icon={FileSearch}
+          variant="warning"
+        />
+        <StatCard
+          title="News Alerts"
+          value={metrics.newsAlerts}
+          icon={Newspaper}
+          variant="primary"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -252,6 +284,8 @@ export function Dashboard() {
             <APIStatusIndicator name="Certificate Transparency" status={apiStatus.certs} />
             <APIStatusIndicator name="NVD Database" status={apiStatus.nvd} />
             <APIStatusIndicator name="Threat Feeds" status={apiStatus.threatFeeds} />
+            <APIStatusIndicator name="Malware Intelligence" status={apiStatus.malwareIntel} />
+            <APIStatusIndicator name="News Intelligence" status={apiStatus.newsIntel} />
           </div>
         </div>
 
@@ -345,6 +379,132 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* New Intelligence Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Malware Intelligence */}
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileSearch className="h-4 w-4 text-orange-500" />
+              Latest Malware Reports
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {malwareUpdates.length > 0 ? (
+              <div className="space-y-3">
+                {malwareUpdates.map((report, index) => (
+                  <div
+                    key={index}
+                    className="flex items-start gap-3 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+                  >
+                    <ThreatBadge level={report.severity as any} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {report.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {report.family} • {report.origin}
+                      </p>
+                      <div className="flex gap-1 mt-2">
+                        {report.tags?.slice(0, 3).map((tag: string) => (
+                          <Badge key={tag} variant="secondary" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <FileSearch className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                <p className="text-muted-foreground text-sm">No recent malware reports</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* News Intelligence */}
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Newspaper className="h-4 w-4 text-blue-500" />
+              Latest Threat News
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {newsUpdates.length > 0 ? (
+              <div className="space-y-3">
+                {newsUpdates.map((article, index) => (
+                  <div
+                    key={index}
+                    className="flex items-start gap-3 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+                  >
+                    <div className="p-1 rounded bg-blue-500/10">
+                      <Newspaper className="h-3 w-3 text-blue-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {article.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        {article.description}
+                      </p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Badge 
+                          variant={article.sentiment === 'negative' ? 'destructive' : 'secondary'} 
+                          className="text-xs"
+                        >
+                          {article.sentiment || 'neutral'}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {article.source}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Newspaper className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                <p className="text-muted-foreground text-sm">No recent threat news</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* AI Assistant Preview */}
+      <Card className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border-purple-500/30">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-purple-500/10">
+              <Bot className="h-5 w-5 text-purple-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-foreground mb-1 flex items-center gap-2">
+                AI Intelligence Assistant
+                <Badge variant="secondary" className="text-xs">NEW</Badge>
+              </h3>
+              <p className="text-sm text-muted-foreground mb-3">
+                Get instant threat analysis, pattern recognition, and security insights powered by AI.
+              </p>
+              <div className="flex gap-2">
+                <a 
+                  href="/ai-assistant"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs rounded-md transition-colors"
+                >
+                  <Brain className="h-3 w-3" />
+                  Open AI Assistant
+                </a>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Quick Actions */}
       <Card className="bg-card border-border">
         <CardHeader>
@@ -354,13 +514,34 @@ export function Dashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
             <a
               href="/threat-intel"
               className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-primary/50 border border-transparent group"
             >
               <Shield className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
               <span className="text-sm font-medium text-foreground text-center">Threat Intel</span>
+            </a>
+            <a
+              href="/malware-intelligence"
+              className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-orange-500/50 border border-transparent group"
+            >
+              <FileSearch className="h-6 w-6 text-muted-foreground group-hover:text-orange-500 transition-colors" />
+              <span className="text-sm font-medium text-foreground text-center">Malware Intel</span>
+            </a>
+            <a
+              href="/news-intelligence"
+              className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-blue-500/50 border border-transparent group"
+            >
+              <Newspaper className="h-6 w-6 text-muted-foreground group-hover:text-blue-500 transition-colors" />
+              <span className="text-sm font-medium text-foreground text-center">News Intel</span>
+            </a>
+            <a
+              href="/ai-assistant"
+              className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-purple-500/50 border border-transparent group"
+            >
+              <Brain className="h-6 w-6 text-muted-foreground group-hover:text-purple-500 transition-colors" />
+              <span className="text-sm font-medium text-foreground text-center">AI Assistant</span>
             </a>
             <a
               href="/live-threats"
@@ -389,13 +570,6 @@ export function Dashboard() {
             >
               <Activity className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
               <span className="text-sm font-medium text-foreground text-center">IP Analyzer</span>
-            </a>
-            <a
-              href="/import"
-              className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-primary/50 border border-transparent group"
-            >
-              <Upload className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
-              <span className="text-sm font-medium text-foreground text-center">Import Data</span>
             </a>
           </div>
         </CardContent>
