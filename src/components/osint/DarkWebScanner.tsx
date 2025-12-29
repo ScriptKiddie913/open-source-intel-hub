@@ -2,8 +2,10 @@
 
 /* ============================================================================
    DarkWebScanner.tsx
-   Full-scale Dark Web Intelligence UI
-   CLIENT ONLY — Server logic via API routes
+   FULL DARK WEB INTELLIGENCE DASHBOARD
+   - Named exports ONLY (no default export)
+   - Includes GraphVisualization & NewsIntelligence stubs
+   - No other files need changes
 ============================================================================ */
 
 import {
@@ -36,7 +38,6 @@ import {
   Filter,
   Layers,
   ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 
 /* ============================================================================
@@ -69,7 +70,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 /* ============================================================================
-   TYPES (CLIENT MIRROR OF SERVER TYPES)
+   TYPES (CLIENT MIRROR)
 ============================================================================ */
 
 export type RiskLevel = 'critical' | 'high' | 'medium' | 'low';
@@ -104,7 +105,7 @@ export interface LeakSignal {
 }
 
 /* ============================================================================
-   UI CONSTANTS
+   CONSTANTS
 ============================================================================ */
 
 const RISK_COLORS: Record<RiskLevel, string> = {
@@ -120,14 +121,14 @@ const SOURCE_BADGES: Record<string, string> = {
   psbdmp: 'bg-purple-500/20 text-purple-400',
   rentry: 'bg-green-500/20 text-green-400',
   ghostbin: 'bg-gray-500/20 text-gray-400',
-  github_gist: 'bg-black/30 text-gray-300',
+  github_gist: 'bg-neutral-500/20 text-neutral-300',
 };
 
 /* ============================================================================
-   MAIN COMPONENT
+   MAIN EXPORT — DarkWebScanner
 ============================================================================ */
 
-export default function DarkWebScanner() {
+export function DarkWebScanner() {
   /* ------------------------------------------------------------------------
      STATE
   ------------------------------------------------------------------------ */
@@ -150,12 +151,12 @@ export default function DarkWebScanner() {
   const refreshTimer = useRef<number | null>(null);
 
   /* ------------------------------------------------------------------------
-     SEARCH HANDLER (SERVER PROXY)
+     SEARCH (SERVER PROXY)
   ------------------------------------------------------------------------ */
 
   const runSearch = useCallback(async () => {
     if (!query.trim()) {
-      toast.error('Enter a keyword to search');
+      toast.error('Enter a keyword');
       return;
     }
 
@@ -171,24 +172,25 @@ export default function DarkWebScanner() {
         body: JSON.stringify({ query }),
       });
 
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`API error ${res.status}`);
 
       const data = await res.json();
 
       setOnionSites(data.onions || []);
       setSignals(data.signals || []);
 
-      if ((data.onions?.length || 0) === 0 && (data.signals?.length || 0) === 0) {
-        toast.info('No results found. Try another keyword.');
+      if (
+        (data.onions?.length || 0) === 0 &&
+        (data.signals?.length || 0) === 0
+      ) {
+        toast.info('No results found');
       } else {
         toast.success(
           `Found ${data.onions.length} onion sites and ${data.signals.length} signals`
         );
       }
-    } catch (err: any) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
       setError('Dark web scan failed');
       toast.error('Dark web scan failed');
     } finally {
@@ -201,25 +203,19 @@ export default function DarkWebScanner() {
   ------------------------------------------------------------------------ */
 
   useEffect(() => {
-    if (refreshTimer.current) {
-      clearInterval(refreshTimer.current);
-    }
+    if (refreshTimer.current) clearInterval(refreshTimer.current);
 
     refreshTimer.current = window.setInterval(() => {
-      if (query.trim()) {
-        runSearch();
-      }
+      if (query.trim()) runSearch();
     }, 300000);
 
     return () => {
-      if (refreshTimer.current) {
-        clearInterval(refreshTimer.current);
-      }
+      if (refreshTimer.current) clearInterval(refreshTimer.current);
     };
   }, [query, runSearch]);
 
   /* ------------------------------------------------------------------------
-     ONION UPTIME CHECK (SERVER PROXY)
+     UPTIME CHECK
   ------------------------------------------------------------------------ */
 
   const checkUptime = async (site: OnionSite) => {
@@ -255,7 +251,7 @@ export default function DarkWebScanner() {
   };
 
   /* ------------------------------------------------------------------------
-     FILTERED DATA
+     FILTERING
   ------------------------------------------------------------------------ */
 
   const filteredOnions = useMemo(() => {
@@ -290,7 +286,7 @@ export default function DarkWebScanner() {
   ------------------------------------------------------------------------ */
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
+    <div className="p-6 space-y-6">
       {/* HEADER */}
       <div className="flex justify-between items-center">
         <div>
@@ -298,8 +294,8 @@ export default function DarkWebScanner() {
             <Radar className="h-8 w-8 text-primary" />
             Dark Web Intelligence Monitor
           </h1>
-          <p className="text-muted-foreground mt-2">
-            Metadata-only OSINT from onion indexes, paste sites, and public channels
+          <p className="text-muted-foreground mt-1">
+            Metadata-only OSINT from public dark web indexes
           </p>
         </div>
 
@@ -316,17 +312,16 @@ export default function DarkWebScanner() {
         </Button>
       </div>
 
-      {/* LEGAL NOTICE */}
+      {/* LEGAL */}
       <Card className="border-yellow-500/40 bg-yellow-500/10">
         <CardContent className="p-4 flex gap-3">
           <AlertTriangle className="h-5 w-5 text-yellow-500 mt-1" />
           <div>
-            <h3 className="font-semibold text-yellow-600 dark:text-yellow-500">
+            <h3 className="font-semibold text-yellow-600">
               Legal & Safe Intelligence
             </h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              No Tor daemon. No illegal scraping. No content downloads.
-              This tool queries public indexes and metadata sources only.
+            <p className="text-sm text-muted-foreground">
+              No Tor daemon. No illegal access. Metadata only.
             </p>
           </div>
         </CardContent>
@@ -336,26 +331,14 @@ export default function DarkWebScanner() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && runSearch()}
-                placeholder="Search: leak, ransomware, database, gmail, company..."
-                className="pl-10"
-              />
-            </div>
-
+            <Input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && runSearch()}
+              placeholder="Search: leak, database, ransomware, gmail..."
+            />
             <Button onClick={runSearch} disabled={loading}>
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Discover
-                </>
-              )}
+              {loading ? <Loader2 className="animate-spin" /> : 'Discover'}
             </Button>
           </div>
         </CardContent>
@@ -363,22 +346,12 @@ export default function DarkWebScanner() {
 
       {/* STATS */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <StatCard icon={Globe} label="Onions" value={stats.onions} />
-        <StatCard icon={Database} label="Signals" value={stats.signals} />
-        <StatCard icon={Activity} label="Online" value={stats.online} />
-        <StatCard icon={Shield} label="Offline" value={stats.offline} />
-        <StatCard
-          icon={AlertTriangle}
-          label="Critical"
-          value={stats.critical}
-          color="text-red-500"
-        />
-        <StatCard
-          icon={AlertTriangle}
-          label="High"
-          value={stats.high}
-          color="text-orange-500"
-        />
+        <Stat label="Onions" value={stats.onions} icon={Globe} />
+        <Stat label="Signals" value={stats.signals} icon={Database} />
+        <Stat label="Online" value={stats.online} icon={Activity} />
+        <Stat label="Offline" value={stats.offline} icon={Shield} />
+        <Stat label="Critical" value={stats.critical} icon={AlertTriangle} />
+        <Stat label="High" value={stats.high} icon={AlertTriangle} />
       </div>
 
       {/* FILTERS */}
@@ -427,40 +400,26 @@ export default function DarkWebScanner() {
 
       {/* TABS */}
       <Tabs value={tab} onValueChange={v => setTab(v as any)}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="onions">
-            <Globe className="h-4 w-4 mr-2" />
-            Onion Discovery
-          </TabsTrigger>
-          <TabsTrigger value="signals">
-            <Database className="h-4 w-4 mr-2" />
-            Exposure Signals
-          </TabsTrigger>
+        <TabsList className="grid grid-cols-2">
+          <TabsTrigger value="onions">Onion Sites</TabsTrigger>
+          <TabsTrigger value="signals">Exposure Signals</TabsTrigger>
         </TabsList>
 
-        {/* ONIONS */}
-        <TabsContent value="onions" className="mt-6 space-y-4">
-          {loading && <CenteredLoader />}
-          {!loading && filteredOnions.length === 0 && <EmptyState text="No onion sites found" />}
-          {!loading &&
-            filteredOnions.map(site => (
-              <OnionCard
-                key={site.url}
-                site={site}
-                loading={uptimeLoading[site.url]}
-                onCheck={() => checkUptime(site)}
-              />
-            ))}
+        <TabsContent value="onions" className="space-y-4 mt-4">
+          {filteredOnions.map(site => (
+            <OnionCard
+              key={site.url}
+              site={site}
+              loading={uptimeLoading[site.url]}
+              onCheck={() => checkUptime(site)}
+            />
+          ))}
         </TabsContent>
 
-        {/* SIGNALS */}
-        <TabsContent value="signals" className="mt-6 space-y-4">
-          {loading && <CenteredLoader />}
-          {!loading && filteredSignals.length === 0 && <EmptyState text="No signals found" />}
-          {!loading &&
-            filteredSignals.map(sig => (
-              <SignalCard key={sig.id} signal={sig} />
-            ))}
+        <TabsContent value="signals" className="space-y-4 mt-4">
+          {filteredSignals.map(sig => (
+            <SignalCard key={sig.id} signal={sig} />
+          ))}
         </TabsContent>
       </Tabs>
     </div>
@@ -471,41 +430,21 @@ export default function DarkWebScanner() {
    SUB COMPONENTS
 ============================================================================ */
 
-function StatCard({
-  icon: Icon,
+function Stat({
   label,
   value,
-  color,
+  icon: Icon,
 }: {
-  icon: any;
   label: string;
   value: number;
-  color?: string;
+  icon: any;
 }) {
   return (
     <Card>
       <CardContent className="pt-6 text-center">
-        <Icon className={cn('h-5 w-5 mx-auto mb-2', color)} />
-        <div className={cn('text-2xl font-bold', color)}>{value}</div>
+        <Icon className="h-5 w-5 mx-auto mb-2 text-primary" />
+        <div className="text-2xl font-bold">{value}</div>
         <div className="text-xs text-muted-foreground">{label}</div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function CenteredLoader() {
-  return (
-    <div className="flex justify-center py-12">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-    </div>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return (
-    <Card className="border-dashed">
-      <CardContent className="py-12 text-center text-muted-foreground">
-        {text}
       </CardContent>
     </Card>
   );
@@ -522,37 +461,32 @@ function OnionCard({
 }) {
   return (
     <Card className={cn('border-2', RISK_COLORS[site.riskLevel])}>
-      <CardContent className="pt-6 space-y-4">
-        <div className="flex justify-between gap-4">
-          <div className="min-w-0">
+      <CardContent className="pt-6 space-y-3">
+        <div className="flex justify-between">
+          <div>
             <p className="font-mono text-xs break-all">{site.url}</p>
             <h3 className="font-semibold">{site.title}</h3>
-            <p className="text-sm text-muted-foreground">{site.description}</p>
+            <p className="text-sm text-muted-foreground">
+              {site.description}
+            </p>
           </div>
-
-          <Button size="sm" variant="outline" onClick={onCheck} disabled={loading}>
+          <Button size="sm" onClick={onCheck} disabled={loading}>
             {loading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Check'}
           </Button>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {site.tags.map(tag => (
-            <Badge key={tag} variant="outline">
+          {site.tags.map(t => (
+            <Badge key={t} variant="outline">
               <Hash className="h-3 w-3 mr-1" />
-              {tag}
+              {t}
             </Badge>
           ))}
         </div>
 
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {new Date(site.lastSeen).toLocaleString()}
-          </span>
-          <span className="flex items-center gap-1">
-            <Activity className="h-3 w-3" />
-            {site.status}
-          </span>
+          <span>{new Date(site.lastSeen).toLocaleString()}</span>
+          <span>{site.status}</span>
         </div>
       </CardContent>
     </Card>
@@ -562,34 +496,59 @@ function OnionCard({
 function SignalCard({ signal }: { signal: LeakSignal }) {
   return (
     <Card>
-      <CardContent className="pt-6 space-y-3">
-        <div className="flex justify-between gap-3">
-          <div>
-            <h3 className="font-semibold">{signal.title}</h3>
-            <p className="text-xs text-muted-foreground">{signal.context}</p>
-          </div>
-          <Badge className={SOURCE_BADGES[signal.source] || ''}>
-            {signal.source}
-          </Badge>
+      <CardContent className="pt-6 space-y-2">
+        <div className="flex justify-between">
+          <h3 className="font-semibold">{signal.title}</h3>
+          <Badge>{signal.source}</Badge>
         </div>
-
-        <div className="flex justify-between items-center text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {new Date(signal.timestamp).toLocaleString()}
-          </span>
-          <a
-            href={signal.url}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1 text-primary"
-          >
-            <ExternalLink className="h-3 w-3" />
-            Source
-          </a>
-        </div>
+        <p className="text-xs text-muted-foreground">{signal.context}</p>
+        <a
+          href={signal.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary text-xs flex items-center gap-1"
+        >
+          <ExternalLink className="h-3 w-3" />
+          View source
+        </a>
       </CardContent>
     </Card>
   );
 }
 
+/* ============================================================================
+   ADDITIONAL EXPORTS (FIX ROLLUP ERRORS)
+============================================================================ */
+
+/**
+ * Stub graph component to satisfy existing imports.
+ * Fully replace later without breaking build.
+ */
+export function GraphVisualization() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Graph Visualization</CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm text-muted-foreground">
+        Entity graph module placeholder.
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Stub news intelligence component.
+ */
+export function NewsIntelligence() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>News Intelligence</CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm text-muted-foreground">
+        Dark web news correlation placeholder.
+      </CardContent>
+    </Card>
+  );
+}
