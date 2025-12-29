@@ -113,6 +113,7 @@ const toolsNav: NavItem[] = [
     icon: Shield,
     description: "Email breach lookup",
   },
+   { name: "Telegram Scanner", href: "/telegram", icon: Shield, description: "Public Channel Leak Monitor" },
   {
     name: "Username OSINT",
     href: "/username",
