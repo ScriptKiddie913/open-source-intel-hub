@@ -1,66 +1,42 @@
-// src/components/osint/CVEExplorer.tsx
 import { useState, useEffect } from 'react';
-import {
-  Bug,
-  Search,
-  Loader2,
-  Shield,
-  Code,
-  ExternalLink,
-  Download,
-  AlertTriangle,
-  Calendar,
-  TrendingUp,
-  Copy,
-  Github,
-  FileCode,
-} from 'lucide-react';
+import { Shield, Search, Loader2, ExternalLink, AlertTriangle, Clock, Code, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { 
+  searchCVE, 
+  getCVEDetails, 
+  getRecentCVEs, 
+  searchExploitDB,
+  getSeverityColor,
+  getSeverityBg,
+  CVEData,
+  ExploitData 
+} from '@/services/cveService';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import {
-  searchCVEs,
-  getRecentCVEs,
-  searchExploits,
-  searchGitHubPOCs,
-  getExploitCode,
-  getSeverityColor,
-  type CVE,
-  type Exploit,
-} from '@/services/cveService';
 
 export function CVEExplorer() {
-  const [activeTab, setActiveTab] = useState<'search' | 'recent' | 'exploits'>('recent');
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<CVE[]>([]);
-  const [recentCVEs, setRecentCVEs] = useState<CVE[]>([]);
-  const [exploits, setExploits] = useState<Exploit[]>([]);
-  
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [selectedCVE, setSelectedCVE] = useState<CVE | null>(null);
-  const [selectedExploit, setSelectedExploit] = useState<Exploit | null>(null);
-  const [exploitCode, setExploitCode] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'search' | 'recent' | 'exploits'>('recent');
+  const [cveResults, setCveResults] = useState<CVEData[]>([]);
+  const [exploitResults, setExploitResults] = useState<ExploitData[]>([]);
+  const [selectedCVE, setSelectedCVE] = useState<CVEData | null>(null);
 
   useEffect(() => {
-    loadRecentCVEs();
-  }, []);
+    if (activeTab === 'recent') {
+      loadRecentCVEs();
+    }
+  }, [activeTab]);
 
   const loadRecentCVEs = async () => {
     setLoading(true);
     try {
       const cves = await getRecentCVEs(7, 30);
-      setRecentCVEs(cves);
+      setCveResults(cves);
     } catch (error) {
       toast.error('Failed to load recent CVEs');
     } finally {
@@ -68,396 +44,398 @@ export function CVEExplorer() {
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      toast.error('Enter a CVE ID or keyword');
+  const handleSearchCVE = async () => {
+    if (!query.trim()) {
+      toast.error('Please enter a search query');
       return;
     }
 
     setLoading(true);
-    try {
-      const isCVEId = /^CVE-\d{4}-\d{4,}$/i.test(searchQuery. trim());
-      
-      const results = await searchCVEs(
-        isCVEId 
-          ? { cveId: searchQuery.trim().toUpperCase() }
-          : { keyword: searchQuery.trim() }
-      );
+    setCveResults([]);
+    setSelectedCVE(null);
 
-      setSearchResults(results);
-      
-      if (results.length === 0) {
-        toast.info('No CVEs found');
+    try {
+      if (query.match(/^CVE-\d{4}-\d{4,}$/i)) {
+        // Direct CVE lookup
+        const cve = await getCVEDetails(query.toUpperCase());
+        if (cve) {
+          setCveResults([cve]);
+          setSelectedCVE(cve);
+        } else {
+          toast.error('CVE not found');
+        }
       } else {
+        // Search
+        const results = await searchCVE(query, 30);
+        setCveResults(results);
         toast.success(`Found ${results.length} CVEs`);
       }
     } catch (error) {
-      toast.error('Search failed');
+      toast.error('CVE search failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const loadExploits = async () => {
+  const handleSearchExploits = async () => {
+    if (!query.trim()) {
+      toast.error('Please enter a search query');
+      return;
+    }
+
     setLoading(true);
+    setExploitResults([]);
+
     try {
-      const exp = await searchExploits();
-      setExploits(exp);
+      const results = await searchExploitDB(query, 50);
+      setExploitResults(results);
+      toast.success(`Found ${results.length} exploits`);
     } catch (error) {
-      toast.error('Failed to load exploits');
+      toast.error('Exploit search failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const viewCVEDetails = async (cve: CVE) => {
+  const handleSelectCVE = async (cve: CVEData) => {
     setSelectedCVE(cve);
-    
-    // Load GitHub POCs
-    if (cve.exploits.length === 0) {
-      const githubPocs = await searchGitHubPOCs(cve.id);
-      cve.exploits = [... cve.exploits, ...githubPocs];
+    if (!cve.exploitAvailable) {
+      // Try to fetch exploit details
+      try {
+        const details = await getCVEDetails(cve.id);
+        if (details) {
+          setSelectedCVE(details);
+        }
+      } catch (error) {
+        console.error('Failed to fetch CVE details:', error);
+      }
     }
-  };
-
-  const viewExploitCode = async (exploit: Exploit) => {
-    setSelectedExploit(exploit);
-    setExploitCode(null);
-    
-    if (exploit.edbId) {
-      const code = await getExploitCode(exploit.edbId);
-      setExploitCode(code);
-    }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
   };
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <Shield className="h-8 w-8 text-primary" />
-            CVE & Exploit Explorer
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Search CVEs, view exploits, and find POCs from NVD, ExploitDB, and GitHub
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={loadRecentCVEs}>
-          <TrendingUp className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">CVE & Exploit Database</h1>
+        <p className="text-muted-foreground text-sm mt-1">
+          Search vulnerabilities, CVEs, and public exploits
+        </p>
       </div>
 
-      <Card className="border-primary/30">
-        <CardContent className="pt-6">
+      {/* Search Bar */}
+      <Card className="bg-card border-border">
+        <CardContent className="p-4">
           <div className="flex gap-3">
-            <div className="flex-1 relative">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Search by CVE ID (CVE-2024-1234) or keyword..."
-                className="pl-10"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    activeTab === 'exploits' ? handleSearchExploits() : handleSearchCVE();
+                  }
+                }}
+                placeholder={
+                  activeTab === 'exploits' 
+                    ? 'Search exploits (e.g., "wordpress", "CVE-2021-44228")'
+                    : 'Search CVEs (e.g., "CVE-2021-44228", "log4j")'
+                }
+                className="pl-10 bg-background"
               />
             </div>
-            <Button onClick={handleSearch} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            <Button 
+              onClick={activeTab === 'exploits' ? handleSearchExploits : handleSearchCVE}
+              disabled={loading}
+              className="min-w-[100px]"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Search className="h-4 w-4 mr-2" />
+                  Search
+                </>
+              )}
             </Button>
           </div>
         </CardContent>
       </Card>
 
+      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="recent">Recent CVEs</TabsTrigger>
-          <TabsTrigger value="search">Search Results</TabsTrigger>
-          <TabsTrigger value="exploits" onClick={() => exploits.length === 0 && loadExploits()}>
+        <TabsList className="bg-secondary/50 border border-border">
+          <TabsTrigger value="recent" className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Recent CVEs
+          </TabsTrigger>
+          <TabsTrigger value="search" className="flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            CVE Search
+          </TabsTrigger>
+          <TabsTrigger value="exploits" className="flex items-center gap-2">
+            <Code className="h-4 w-4" />
             Exploits
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="recent" className="space-y-4 mt-6">
-          {loading && (
-            <div className="flex justify-center py-12">
+        {/* Recent CVEs */}
+        <TabsContent value="recent" className="mt-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {cveResults.map((cve) => (
+                <CVECard key={cve.id} cve={cve} onSelect={handleSelectCVE} />
+              ))}
+            </div>
           )}
-
-          {!loading && recentCVEs.map(cve => (
-            <CVECard key={cve.id} cve={cve} onClick={() => viewCVEDetails(cve)} />
-          ))}
         </TabsContent>
 
-        <TabsContent value="search" className="space-y-4 mt-6">
-          {! loading && searchResults.length === 0 && (
-            <Card className="border-dashed">
-              <CardContent className="pt-12 pb-12 text-center">
-                <Search className="h-16 w-16 mx-auto text-muted-foreground opacity-50 mb-4" />
-                <p className="text-muted-foreground">No search results.  Try searching for a CVE or keyword.</p>
-              </CardContent>
-            </Card>
+        {/* CVE Search */}
+        <TabsContent value="search" className="mt-4">
+          {selectedCVE ? (
+            <CVEDetails cve={selectedCVE} onBack={() => setSelectedCVE(null)} />
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {cveResults.map((cve) => (
+                <CVECard key={cve.id} cve={cve} onSelect={handleSelectCVE} />
+              ))}
+              {cveResults.length === 0 && !loading && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Shield className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                  <p>Search for CVEs by ID or keywords</p>
+                </div>
+              )}
+            </div>
           )}
-
-          {searchResults.map(cve => (
-            <CVECard key={cve. id} cve={cve} onClick={() => viewCVEDetails(cve)} />
-          ))}
         </TabsContent>
 
-        <TabsContent value="exploits" className="space-y-4 mt-6">
-          {exploits.map(exploit => (
-            <ExploitCard key={exploit.id} exploit={exploit} onClick={() => viewExploitCode(exploit)} />
-          ))}
+        {/* Exploits */}
+        <TabsContent value="exploits" className="mt-4">
+          <div className="grid grid-cols-1 gap-4">
+            {exploitResults.map((exploit) => (
+              <ExploitCard key={exploit.id} exploit={exploit} />
+            ))}
+            {exploitResults.length === 0 && !loading && (
+              <div className="text-center py-12 text-muted-foreground">
+                <Code className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                <p>Search for public exploits</p>
+              </div>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
-
-      {/* CVE Details Dialog */}
-      {selectedCVE && (
-        <Dialog open={!!selectedCVE} onOpenChange={() => setSelectedCVE(null)}>
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <div className="flex items-center justify-between">
-                <DialogTitle className="text-2xl">{selectedCVE.id}</DialogTitle>
-                <Badge variant="outline" className={cn('text-lg px-4 py-1', getSeverityColor(selectedCVE.cvss.severity))}>
-                  {selectedCVE.cvss.severity} {selectedCVE.cvss.score}
-                </Badge>
-              </div>
-            </DialogHeader>
-
-            <div className="space-y-6">
-              <div>
-                <h3 className="font-semibold mb-2">Description</h3>
-                <p className="text-sm text-muted-foreground">{selectedCVE.description}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <h3 className="font-semibold mb-2">Published</h3>
-                  <p className="text-sm">{new Date(selectedCVE.published).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-2">Modified</h3>
-                  <p className="text-sm">{new Date(selectedCVE.modified).toLocaleDateString()}</p>
-                </div>
-              </div>
-
-              {selectedCVE.cvss.vector && (
-                <div>
-                  <h3 className="font-semibold mb-2">CVSS Vector</h3>
-                  <code className="text-xs bg-secondary p-2 rounded block">{selectedCVE.cvss.vector}</code>
-                </div>
-              )}
-
-              {selectedCVE.cwe && selectedCVE.cwe.length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-2">CWE</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedCVE.cwe.map(cwe => (
-                      <Badge key={cwe} variant="outline">{cwe}</Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedCVE.affected. length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-2">Affected Products</h3>
-                  <div className="space-y-2">
-                    {selectedCVE.affected. slice(0, 5).map((aff, idx) => (
-                      <div key={idx} className="text-sm bg-secondary p-2 rounded">
-                        <strong>{aff.vendor}</strong> {aff.product} {aff.versions.join(', ')}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedCVE.exploits.length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-2 flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-red-500" />
-                    Available Exploits & POCs ({selectedCVE.exploits. length})
-                  </h3>
-                  <div className="space-y-2">
-                    {selectedCVE.exploits.map(exploit => (
-                      <Card key={exploit.id} className="cursor-pointer hover:border-primary/50" onClick={() => viewExploitCode(exploit)}>
-                        <CardContent className="pt-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-sm">{exploit.title}</h4>
-                              <p className="text-xs text-muted-foreground mt-1">{exploit.author}</p>
-                            </div>
-                            <Badge variant="secondary" className="text-xs">
-                              {exploit. source === 'github' ? <Github className="h-3 w-3 mr-1" /> : null}
-                              {exploit.source}
-                            </Badge>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedCVE.references.length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-2">References</h3>
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {selectedCVE.references.map((ref, idx) => (
-                      <a
-                        key={idx}
-                        href={ref.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline flex items-center gap-1 break-all"
-                      >
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                        {ref.url}
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Exploit Code Dialog */}
-      {selectedExploit && (
-        <Dialog open={!!selectedExploit} onOpenChange={() => { setSelectedExploit(null); setExploitCode(null); }}>
-          <DialogContent className="max-w-5xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Code className="h-5 w-5" />
-                {selectedExploit.title}
-              </DialogTitle>
-            </DialogHeader>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm">
-                  <strong>Author:</strong> {selectedExploit.author}
-                </div>
-                <div className="flex gap-2">
-                  <Badge variant="secondary">{selectedExploit.type}</Badge>
-                  <Badge variant="secondary">{selectedExploit.platform}</Badge>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" asChild>
-                  <a href={selectedExploit.url} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    View on {selectedExploit.source}
-                  </a>
-                </Button>
-                {exploitCode && (
-                  <Button variant="outline" size="sm" onClick={() => copyToClipboard(exploitCode)}>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy Code
-                  </Button>
-                )}
-              </div>
-
-              {exploitCode ?  (
-                <div>
-                  <h3 className="font-semibold mb-2">Exploit Code</h3>
-                  <pre className="text-xs bg-secondary p-4 rounded overflow-x-auto max-h-96">
-                    <code>{exploitCode}</code>
-                  </pre>
-                </div>
-              ) : selectedExploit.edbId ?  (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileCode className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>Exploit code not available.  Visit the source URL to view. </p>
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   );
 }
 
-function CVECard({ cve, onClick }: { cve:  CVE; onClick: () => void }) {
+function CVECard({ cve, onSelect }: { cve: CVEData; onSelect: (cve: CVEData) => void }) {
   return (
-    <Card className="cursor-pointer hover:border-primary/50 transition-all" onClick={onClick}>
-      <CardContent className="pt-6">
+    <Card 
+      className={cn(
+        'bg-card border hover:border-primary/50 transition-all cursor-pointer',
+        getSeverityBg(cve.cvss.severity)
+      )}
+      onClick={() => onSelect(cve)}
+    >
+      <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h3 className="font-semibold text-lg">{cve.id}</h3>
-              <Badge variant="outline" className={cn(getSeverityColor(cve.cvss.severity))}>
-                {cve.cvss.severity} {cve.cvss.score}
-              </Badge>
-              {cve.exploits.length > 0 && (
-                <Badge variant="destructive" className="text-xs">
-                  <AlertTriangle className="h-3 w-3 mr-1" />
-                  {cve. exploits.length} Exploit{cve.exploits. length > 1 ? 's' : ''}
-                </Badge>
-              )}
+          <div className="flex items-center gap-3">
+            <div className={cn('p-2 rounded-lg', getSeverityBg(cve.cvss.severity))}>
+              <Shield className={cn('h-5 w-5', getSeverityColor(cve.cvss.severity))} />
             </div>
-            <p className="text-sm text-muted-foreground line-clamp-2">{cve.description}</p>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-mono font-bold text-foreground">{cve.id}</h3>
+                {cve.exploitAvailable && (
+                  <Badge variant="destructive" className="text-xs">
+                    <AlertTriangle className="h-3 w-3 mr-1" />
+                    Exploit Available
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Published: {new Date(cve.published).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className={cn('text-2xl font-bold font-mono', getSeverityColor(cve.cvss.severity))}>
+              {cve.cvss.score.toFixed(1)}
+            </div>
+            <div className="text-xs text-muted-foreground">{cve.cvss.severity}</div>
           </div>
         </div>
 
-        <div className="flex items-center gap-6 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            {new Date(cve.published).toLocaleDateString()}
-          </span>
-          {cve.cwe && cve.cwe.length > 0 && (
-            <span className="flex items-center gap-1">
-              <Bug className="h-3 w-3" />
-              {cve.cwe[0]}
-            </span>
-          )}
-          {cve.affected.length > 0 && (
-            <span>
-              {cve.affected[0].vendor} {cve. affected[0].product}
-            </span>
-          )}
+        <p className="text-sm text-foreground line-clamp-2 mb-3">
+          {cve.description}
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          {cve.cwe.slice(0, 3).map((cwe, i) => (
+            <Badge key={i} variant="outline" className="text-xs">
+              {cwe}
+            </Badge>
+          ))}
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function ExploitCard({ exploit, onClick }: { exploit: Exploit; onClick: () => void }) {
+function CVEDetails({ cve, onBack }: { cve: CVEData; onBack: () => void }) {
   return (
-    <Card className="cursor-pointer hover:border-primary/50 transition-all" onClick={onClick}>
-      <CardContent className="pt-6">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1">
-            <h3 className="font-semibold">{exploit.title}</h3>
-            <p className="text-xs text-muted-foreground mt-1">by {exploit.author}</p>
+    <div className="space-y-4">
+      <Button variant="outline" onClick={onBack} size="sm">
+        ← Back to results
+      </Button>
+
+      <Card className={cn('bg-card border', getSeverityBg(cve.cvss.severity))}>
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="font-mono">{cve.id}</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Published: {new Date(cve.published).toLocaleDateString()} | 
+                Modified: {new Date(cve.modified).toLocaleDateString()}
+              </p>
+            </div>
+            <div className="text-right">
+              <div className={cn('text-3xl font-bold font-mono', getSeverityColor(cve.cvss.severity))}>
+                {cve.cvss.score.toFixed(1)}
+              </div>
+              <div className="text-sm text-muted-foreground">{cve.cvss.severity}</div>
+              {cve.exploitAvailable && (
+                <Badge variant="destructive" className="mt-2">
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  Exploit Available
+                </Badge>
+              )}
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Badge variant="secondary">{exploit.type}</Badge>
-            <Badge variant="outline">{exploit.source}</Badge>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-foreground mb-2">Description</h3>
+            <p className="text-sm text-foreground">{cve.description}</p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-foreground mb-2">CVSS Vector</h3>
+            <code className="text-xs bg-secondary p-2 rounded block font-mono">
+              {cve.cvss.vector}
+            </code>
+          </div>
+
+          {cve.cwe.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-foreground mb-2">Weakness Types</h3>
+              <div className="flex flex-wrap gap-2">
+                {cve.cwe.map((cwe, i) => (
+                  <Badge key={i} variant="secondary">{cwe}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {cve.references.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-foreground mb-2">References</h3>
+              <div className="space-y-1">
+                {cve.references.map((ref, i) => (
+                  <a 
+                    key={i}
+                    href={ref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    {ref}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {cve.exploitDetails && (
+            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+              <h3 className="font-semibold text-destructive mb-2 flex items-center gap-2">
+                <Code className="h-4 w-4" />
+                Exploit Details
+              </h3>
+              <div className="space-y-2 text-sm">
+                <p><strong>Title:</strong> {cve.exploitDetails.title}</p>
+                <p><strong>Author:</strong> {cve.exploitDetails.author}</p>
+                <p><strong>Type:</strong> {cve.exploitDetails.type}</p>
+                <p><strong>Platform:</strong> {cve.exploitDetails.platform}</p>
+                <a 
+                  href={cve.exploitDetails.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  View on Exploit-DB
+                </a>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ExploitCard({ exploit }: { exploit: ExploitData }) {
+  return (
+    <Card className="bg-card border hover:border-primary/50 transition-all">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Code className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-semibold text-foreground">{exploit.title}</h3>
+                {exploit.verified && (
+                  <Badge variant="secondary" className="text-xs">Verified</Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                EDB-ID: {exploit.edbId} | {exploit.date}
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span>{exploit.platform}</span>
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            {new Date(exploit.date).toLocaleDateString()}
-          </span>
-          {exploit.cveId && (
-            <span className="font-mono">{exploit.cveId}</span>
-          )}
+        <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3">
+          <span>Type: <strong>{exploit.type}</strong></span>
+          <span>Platform: <strong>{exploit.platform}</strong></span>
+          <span>Author: <strong>{exploit.author}</strong></span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-2">
+            {exploit.cve?.slice(0, 3).map((cve, i) => (
+              <Badge key={i} variant="outline" className="text-xs">
+                {cve}
+              </Badge>
+            ))}
+          </div>
+          <a
+            href={exploit.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-xs text-primary hover:underline"
+          >
+            <ExternalLink className="h-3 w-3" />
+            View Source
+          </a>
         </div>
       </CardContent>
     </Card>
