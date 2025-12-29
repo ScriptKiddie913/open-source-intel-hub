@@ -12,23 +12,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { fetchLiveThreatMap } from '@/services/realTimeThreatService'; // <-- ADD THIS IMPORT
 
-/*
-|--------------------------------------------------------------------------
-| TEMPORARY API KEY (WILL BE FIXED LATER)
-|--------------------------------------------------------------------------
-| WARNING:
-| This key is exposed to the client.
-| You explicitly requested this approach.
-*/
-
-const API_KEY = "sk_live_123456";
-
-/*
-|--------------------------------------------------------------------------
-| Types
-|--------------------------------------------------------------------------
-*/
+// Remove the fake API_KEY - you don't need it! 
 
 export type ThreatSeverity =
   | 'critical'
@@ -44,17 +30,11 @@ export interface ThreatPoint {
   country: string;
   indicator: string;
   threatType: string;
-  severity: ThreatSeverity;
+  severity:  ThreatSeverity;
   source: string;
   count: number;
   timestamp: string;
 }
-
-/*
-|--------------------------------------------------------------------------
-| Component
-|--------------------------------------------------------------------------
-*/
 
 export function LiveThreatFeed() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,12 +45,6 @@ export function LiveThreatFeed() {
   const [hoveredThreat, setHoveredThreat] = useState<ThreatPoint | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-
-  /*
-  |--------------------------------------------------------------------------
-  | Effects
-  |--------------------------------------------------------------------------
-  */
 
   useEffect(() => {
     loadThreats();
@@ -90,29 +64,13 @@ export function LiveThreatFeed() {
     drawMap();
   }, [threats, hoveredThreat]);
 
-  /*
-  |--------------------------------------------------------------------------
-  | Load Threat Intelligence (REAL DATA)
-  |--------------------------------------------------------------------------
-  */
-
+  // ✅ UPDATED: Use the REAL threat intelligence service
   const loadThreats = async () => {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/live-threats', {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch live threat data');
-      }
-
-      const data: ThreatPoint[] = await response.json();
+      // Call the REAL service that fetches from Feodo, URLhaus, ThreatFox
+      const data = await fetchLiveThreatMap();
 
       setThreats(data);
       setLastUpdate(new Date());
@@ -130,12 +88,6 @@ export function LiveThreatFeed() {
     }
   };
 
-  /*
-  |--------------------------------------------------------------------------
-  | Canvas Rendering
-  |--------------------------------------------------------------------------
-  */
-
   const drawMap = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -144,7 +96,7 @@ export function LiveThreatFeed() {
     if (!ctx) return;
 
     canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
+    canvas. height = canvas.offsetHeight;
 
     // Background
     ctx.fillStyle = '#0a0e27';
@@ -171,11 +123,11 @@ export function LiveThreatFeed() {
     const latToY = (lat: number) =>
       ((90 - lat) / 180) * canvas.height;
 
-    const lonToX = (lon: number) =>
+    const lonToX = (lon:  number) =>
       ((lon + 180) / 360) * canvas.width;
 
-    const severityColors: Record<ThreatSeverity, string> = {
-      critical: '#ef4444',
+    const severityColors:  Record<ThreatSeverity, string> = {
+      critical:  '#ef4444',
       high: '#f97316',
       medium: '#eab308',
       low: '#3b82f6'
@@ -187,118 +139,72 @@ export function LiveThreatFeed() {
       const radius = Math.min(5 + threat.count * 2, 25);
       const color = severityColors[threat.severity];
 
-      // Glow
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius + 12);
-      gradient.addColorStop(0, color);
+      // Glow effect
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 2);
+      gradient.addColorStop(0, color + '40');
       gradient.addColorStop(1, 'transparent');
-
       ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(x, y, radius + 12, 0, Math.PI * 2);
-      ctx.fill();
+      ctx. fillRect(x - radius * 2, y - radius * 2, radius * 4, radius * 4);
 
-      // Core
+      // Threat point
+      ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = color;
       ctx.fill();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.stroke();
 
-      // Critical pulse
+      // Pulse animation for critical threats
       if (threat.severity === 'critical') {
-        const t = Date.now() / 1000;
-        const pulseRadius = radius + Math.sin(t * 3) * 6;
-
-        ctx.beginPath();
-        ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = color + '80';
         ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.4;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-
-      // Count label
-      if (threat.count > 1) {
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 11px JetBrains Mono';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(threat.count.toString(), x, y);
-      }
-
-      // Hover highlight
-      if (hoveredThreat?.id === threat.id) {
-        ctx.strokeStyle = '#00FF9F';
-        ctx.lineWidth = 4;
         ctx.beginPath();
-        ctx.arc(x, y, radius + 16, 0, Math.PI * 2);
+        ctx.arc(x, y, radius + 5, 0, Math. PI * 2);
         ctx.stroke();
       }
     });
   };
 
-  /*
-  |--------------------------------------------------------------------------
-  | Interaction Handlers
-  |--------------------------------------------------------------------------
-  */
-
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasHover = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
+    const x = e.clientX - rect. left;
     const y = e.clientY - rect.top;
-
-    const lonToX = (lon: number) =>
-      ((lon + 180) / 360) * canvas.width;
 
     const latToY = (lat: number) =>
       ((90 - lat) / 180) * canvas.height;
 
-    const clickedThreat = threats.find((threat) => {
+    const lonToX = (lon: number) =>
+      ((lon + 180) / 360) * canvas.width;
+
+    let found:  ThreatPoint | null = null;
+
+    for (const threat of threats) {
       const tx = lonToX(threat.lon);
       const ty = latToY(threat.lat);
-      const distance = Math.hypot(x - tx, y - ty);
       const radius = Math.min(5 + threat.count * 2, 25);
-      return distance <= radius + 16;
-    });
 
-    setHoveredThreat(clickedThreat || null);
-  };
+      const distance = Math.sqrt((x - tx) ** 2 + (y - ty) ** 2);
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
+      if (distance <= radius) {
+        found = threat;
+        break;
+      }
+    }
 
+    setHoveredThreat(found);
     setMousePos({
       x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      y: e.clientY - rect. top
     });
   };
 
-  /*
-  |--------------------------------------------------------------------------
-  | Stats
-  |--------------------------------------------------------------------------
-  */
-
   const stats = {
-    total: threats.length,
-    critical: threats.filter(t => t.severity === 'critical').length,
+    total: threats. length,
+    critical: threats. filter(t => t.severity === 'critical').length,
     high: threats.filter(t => t.severity === 'high').length,
     countries: new Set(threats.map(t => t.country)).size
   };
-
-  /*
-  |--------------------------------------------------------------------------
-  | Render
-  |--------------------------------------------------------------------------
-  */
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -312,44 +218,13 @@ export function LiveThreatFeed() {
         </p>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={autoRefresh ? 'border-primary' : ''}
-          >
-            <Activity className={cn(
-              'h-4 w-4 mr-2',
-              autoRefresh && 'animate-pulse text-primary'
-            )} />
-            Auto Refresh
-          </Button>
-
-          <Button size="sm" onClick={loadThreats} disabled={loading}>
-            <RefreshCw className={cn(
-              'h-4 w-4 mr-2',
-              loading && 'animate-spin'
-            )} />
-            Refresh
-          </Button>
-        </div>
-
-        {lastUpdate && (
-          <div className="text-xs font-mono text-muted-foreground">
-            Updated: {lastUpdate.toLocaleTimeString()}
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Total Threats', value: stats.total, color: 'text-primary' },
           { label: 'Critical', value: stats.critical, color: 'text-red-500' },
           { label: 'High', value: stats.high, color: 'text-orange-500' },
           { label: 'Countries', value: stats.countries, color: 'text-cyan-500' }
-        ].map(stat => (
+        ]. map(stat => (
           <Card key={stat.label}>
             <CardContent className="p-3 text-center">
               <div className={cn('text-2xl font-bold font-mono', stat.color)}>
@@ -365,66 +240,114 @@ export function LiveThreatFeed() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MapPin className="h-5 w-5 text-primary" />
-            Global Threat Distribution
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-primary" />
+              Global Threat Distribution
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAutoRefresh(!autoRefresh)}
+              >
+                <Activity className={cn("h-4 w-4 mr-2", autoRefresh && "animate-pulse")} />
+                Auto-refresh {autoRefresh ? 'On' : 'Off'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadThreats}
+                disabled={loading}
+              >
+                <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+                Refresh
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
-        <CardContent className="relative">
-          <canvas
-            ref={canvasRef}
-            className="w-full h-[600px] rounded-lg cursor-pointer"
-            onClick={handleCanvasClick}
-            onMouseMove={handleMouseMove}
-          />
+        <CardContent>
+          <div className="relative">
+            <canvas
+              ref={canvasRef}
+              className="w-full h-[600px] rounded-lg border border-border bg-background"
+              onMouseMove={handleCanvasHover}
+              onMouseLeave={() => setHoveredThreat(null)}
+            />
 
-          {hoveredThreat && (
-            <div
-              className="absolute bg-card/95 border rounded-lg p-3 shadow-xl max-w-xs pointer-events-none z-10"
-              style={{
-                left: Math.min(
-                  mousePos.x + 10,
-                  (canvasRef.current?.width || 0) - 260
-                ),
-                top: mousePos.y + 10
-              }}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <Badge className={cn(
-                  hoveredThreat.severity === 'critical' ? 'bg-red-500' :
-                  hoveredThreat.severity === 'high' ? 'bg-orange-500' :
-                  hoveredThreat.severity === 'medium' ? 'bg-yellow-500' :
-                  'bg-blue-500'
-                )}>
-                  {hoveredThreat.severity.toUpperCase()}
-                </Badge>
-                <span className="text-sm font-semibold">
-                  {hoveredThreat.threatType}
-                </span>
-              </div>
-
-              <div className="space-y-1 text-xs">
-                <div><strong>Location:</strong> {hoveredThreat.city}, {hoveredThreat.country}</div>
-                <div><strong>Indicator:</strong> <code>{hoveredThreat.indicator}</code></div>
-                <div><strong>Source:</strong> {hoveredThreat.source}</div>
-                <div><strong>Count:</strong> {hoveredThreat.count}</div>
-                <div className="text-muted-foreground">
-                  {new Date(hoveredThreat.timestamp).toLocaleString()}
+            {hoveredThreat && (
+              <div
+                className="absolute bg-popover border border-border rounded-lg p-3 shadow-lg pointer-events-none z-10"
+                style={{
+                  left: mousePos.x + 10,
+                  top:  mousePos.y + 10,
+                }}
+              >
+                <div className="space-y-1 text-xs">
+                  <div className="font-bold text-foreground">{hoveredThreat.threatType}</div>
+                  <div className="text-muted-foreground">
+                    {hoveredThreat.city}, {hoveredThreat. country}
+                  </div>
+                  <div className="font-mono text-xs text-muted-foreground">
+                    {hoveredThreat.indicator}
+                  </div>
+                  <Badge variant="outline" className={cn(
+                    hoveredThreat.severity === 'critical' && 'bg-red-500/20 text-red-500',
+                    hoveredThreat.severity === 'high' && 'bg-orange-500/20 text-orange-500',
+                    hoveredThreat.severity === 'medium' && 'bg-yellow-500/20 text-yellow-500',
+                    hoveredThreat.severity === 'low' && 'bg-blue-500/20 text-blue-500'
+                  )}>
+                    {hoveredThreat.severity. toUpperCase()}
+                  </Badge>
+                  <div className="text-muted-foreground">
+                    Source: {hoveredThreat. source}
+                  </div>
                 </div>
               </div>
+            )}
+          </div>
+
+          {lastUpdate && (
+            <div className="mt-4 text-xs text-muted-foreground text-center">
+              Last updated: {lastUpdate.toLocaleString()}
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Card className="bg-primary/5 border-primary/30">
-        <CardContent className="p-4 flex gap-3">
-          <Zap className="h-5 w-5 text-primary mt-1" />
-          <div>
-            <h3 className="font-semibold">Live Data Sources</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Feodo Tracker (botnet C2) • URLhaus (malware distribution) • ThreatFox (recent IOCs)
-            </p>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5 text-primary" />
+            Recent Threats
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {threats.slice(0, 50).map(threat => (
+              <div
+                key={threat.id}
+                className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+              >
+                <div className="flex-1 space-y-1">
+                  <div className="font-medium text-sm">{threat.threatType}</div>
+                  <div className="text-xs text-muted-foreground font-mono">
+                    {threat.indicator}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {threat.city}, {threat.country} • {threat.source}
+                  </div>
+                </div>
+                <Badge variant="outline" className={cn(
+                  threat.severity === 'critical' && 'bg-red-500/20 text-red-500',
+                  threat.severity === 'high' && 'bg-orange-500/20 text-orange-500',
+                  threat.severity === 'medium' && 'bg-yellow-500/20 text-yellow-500',
+                  threat.severity === 'low' && 'bg-blue-500/20 text-blue-500'
+                )}>
+                  {threat.severity.toUpperCase()}
+                </Badge>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
