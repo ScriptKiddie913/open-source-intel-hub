@@ -15,9 +15,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -26,7 +25,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import {
   enumerateUsername,
   calculateStats,
@@ -67,7 +65,7 @@ export function UsernameEnumeration() {
       if (foundAccounts.length === 0) {
         toast.info('No accounts found with this username');
       } else {
-        toast.success(`Found ${foundAccounts.length} accounts! `);
+        toast. success(`Found ${foundAccounts.length} accounts! `);
       }
     } catch (error) {
       console.error('Username enumeration error:', error);
@@ -90,7 +88,7 @@ export function UsernameEnumeration() {
       ].join(',')),
     ].join('\n');
 
-    const blob = new Blob([csv], { type:  'text/csv' });
+    const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -103,7 +101,7 @@ export function UsernameEnumeration() {
     filterCategory === 'all' || r.category === filterCategory
   );
 
-  const sortedResults = [... filteredResults].sort((a, b) => {
+  const sortedResults = [...filteredResults]. sort((a, b) => {
     switch (sortBy) {
       case 'name':
         return a.platform.localeCompare(b. platform);
@@ -120,7 +118,6 @@ export function UsernameEnumeration() {
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-3">
           <User className="h-8 w-8 text-primary" />
@@ -131,7 +128,6 @@ export function UsernameEnumeration() {
         </p>
       </div>
 
-      {/* Search Bar */}
       <Card className="border-primary/30">
         <CardContent className="pt-6">
           <div className="flex gap-3">
@@ -167,13 +163,17 @@ export function UsernameEnumeration() {
                 <span>Checking platforms...</span>
                 <span>{Math.round(progress)}%</span>
               </div>
-              <Progress value={progress} className="h-2" />
+              <div className="w-full bg-secondary rounded-full h-2">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
+                  style={{ width:  `${progress}%` }}
+                />
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Statistics */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
@@ -218,7 +218,6 @@ export function UsernameEnumeration() {
         </div>
       )}
 
-      {/* Filters and Export */}
       {results.length > 0 && (
         <Card>
           <CardContent className="pt-6">
@@ -261,7 +260,6 @@ export function UsernameEnumeration() {
         </Card>
       )}
 
-      {/* Results */}
       {! loading && results.length === 0 && username && (
         <Card className="border-dashed">
           <CardContent className="pt-12 pb-12 text-center">
@@ -277,9 +275,9 @@ export function UsernameEnumeration() {
       )}
 
       {sortedResults.length > 0 && (
-        <div className="grid grid-cols-1 md: grid-cols-2 lg: grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md: grid-cols-2 lg:grid-cols-3 gap-4">
           {sortedResults.map((result) => (
-            <Card key={result.platform} className="hover:border-primary/50 transition-all">
+            <Card key={result. platform} className="hover:border-primary/50 transition-all">
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
@@ -306,9 +304,9 @@ export function UsernameEnumeration() {
                         <span>👥 {result.profileData. followers}</span>
                       )}
                       {result.profileData.posts !== undefined && (
-                        <span>📝 {result.profileData.posts}</span>
+                        <span>📝 {result. profileData.posts}</span>
                       )}
-                      {result.profileData. verified && (
+                      {result.profileData.verified && (
                         <span>✓ Verified</span>
                       )}
                     </div>
@@ -337,7 +335,6 @@ export function UsernameEnumeration() {
         </div>
       )}
 
-      {/* Info Card */}
       <Card className="border-primary/40 bg-primary/5">
         <CardContent className="p-4 flex gap-3">
           <AlertCircle className="h-5 w-5 text-primary shrink-0" />
