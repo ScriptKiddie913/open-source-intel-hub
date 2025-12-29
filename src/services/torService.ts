@@ -1,5 +1,5 @@
 // ============================================================================
-// torService. ts
+// torService.ts
 // REAL Dark Web Intelligence — Optimized for Speed + Telegram Integration
 // ============================================================================
 
@@ -92,14 +92,13 @@ const TIMEOUTS = {
 };
 
 // Telegram API Configuration
-// NOTE: Replace with your own Telegram Bot Token from @BotFather
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_BOT_TOKEN = '';
 const TELEGRAM_API_BASE = 'https://api.telegram.org/bot';
 
 // Public Telegram scraping endpoints
 const TELEGRAM_SCRAPER_ENDPOINTS = [
-  'https://t.me/s/', // Public channel web view
-  'https://telemetr.io/en/channels/', // Telegram analytics
+  'https://t.me/s/',
+  'https://telemetr.io/en/channels/',
 ];
 
 /* ============================================================================
@@ -124,7 +123,7 @@ function unique<T>(arr: T[]): T[] {
 async function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
-  timeoutMs:  number = 5000
+  timeoutMs: number = 5000
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -211,7 +210,7 @@ function categorize(text: string): string {
   const t = text.toLowerCase();
 
   if (t.includes('market')) return 'Marketplace';
-  if (t. includes('forum')) return 'Forum';
+  if (t.includes('forum')) return 'Forum';
   if (t.includes('leak') || t.includes('dump') || t.includes('breach')) return 'Data Leak';
   if (t.includes('mail')) return 'Email Service';
   if (t.includes('hosting')) return 'Hosting';
@@ -235,7 +234,6 @@ export async function searchTelegramChannels(query: string): Promise<TelegramCha
   const channels: TelegramChannel[] = [];
 
   try {
-    // Method 1: Telemetr.io (Telegram analytics platform)
     const telemetrUrl = `https://telemetr.io/en/channels/search?query=${encodeURIComponent(query)}`;
     
     const response = await fetchWithTimeout(
@@ -298,7 +296,6 @@ export async function scrapeTelegramChannel(
   const messages: TelegramMessage[] = [];
 
   try {
-    // Using public web view (t.me/s/channelname)
     const channelUrl = `https://t.me/s/${channelUsername. replace('@', '')}`;
     
     const response = await fetchWithTimeout(
@@ -311,7 +308,7 @@ export async function scrapeTelegramChannel(
       TIMEOUTS.TELEGRAM_SCAN
     );
 
-    if (!response.ok) {
+    if (!response. ok) {
       console.error('Telegram channel fetch failed:', response.statusText);
       return [];
     }
@@ -320,7 +317,7 @@ export async function scrapeTelegramChannel(
 
     // Extract message data from public web view
     const messageMatches = Array.from(
-      html.matchAll(/<div class="tgme_widget_message[^"]*"[^>]*data-post="[^\/]+\/(\d+)"[^>]*>.*?<div class="tgme_widget_message_text[^"]*"[^>]*>([^<]*(? :<[^>]+>[^<]*)*)<\/div>.*?<time[^>]*datetime="([^"]+)"[^>]*>.*?<span class="tgme_widget_message_views">([^<]+)<\/span>/gs)
+      html.matchAll(/<div class="tgme_widget_message[^"]*"[^>]*data-post="[^\/]+\/(\d+)"[^>]*>.*? <div class="tgme_widget_message_text[^"]*"[^>]*>([^<]*(? :<[^>]+>[^<]*)*)<\/div>.*?<time[^>]*datetime="([^"]+)"[^>]*>.*?<span class="tgme_widget_message_views">([^<]+)<\/span>/gs)
     );
 
     messageMatches.slice(0, limit).forEach(([_, messageId, text, datetime, views]) => {
@@ -332,10 +329,10 @@ export async function scrapeTelegramChannel(
         messageId: parseInt(messageId),
         text: cleanText,
         date: datetime,
-        views: parseInt(views.replace(/[^0-9]/g, '')) || 0,
+        views: parseInt(views. replace(/[^0-9]/g, '')) || 0,
         forwards: 0,
         hasMedia: html.includes(`data-post="${channelUsername}/${messageId}"`) && html.includes('tgme_widget_message_photo'),
-        link: `https://t.me/${channelUsername.replace('@', '')}/${messageId}`,
+        link: `https://t.me/${channelUsername. replace('@', '')}/${messageId}`,
       });
     });
 
@@ -380,7 +377,7 @@ async function scanTelegramMessages(indicator: string): Promise<LeakSignal[]> {
                 channelName: channel.title,
                 subscribers: channel.subscribers,
                 views: msg.views,
-                messageId: msg.messageId,
+                messageId: msg. messageId,
               },
             });
           }
@@ -582,8 +579,8 @@ async function scanPastebin(indicator: string): Promise<LeakSignal[]> {
     const response = await fetchWithTimeout(
       'https://pastebin.com/archive',
       {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        headers:  {
+          'User-Agent':  'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         },
       },
       TIMEOUTS.PASTE_SCAN
@@ -591,7 +588,7 @@ async function scanPastebin(indicator: string): Promise<LeakSignal[]> {
 
     if (!response.ok) return [];
 
-    const html = await response.text();
+    const html = await response. text();
 
     const pasteMatches = Array.from(
       html.matchAll(/<a href="\/([A-Za-z0-9]{8})"[^>]*>([^<]+)<\/a>/g)
@@ -605,7 +602,7 @@ async function scanPastebin(indicator: string): Promise<LeakSignal[]> {
           title: cleanTitle,
           indicator,
           source: 'pastebin',
-          timestamp: nowISO(),
+          timestamp:  nowISO(),
           url: `https://pastebin.com/${pasteId}`,
           context: 'Paste title match',
         });
@@ -680,7 +677,7 @@ async function scanGitHubGists(indicator: string): Promise<LeakSignal[]> {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         },
       },
-      TIMEOUTS. PASTE_SCAN
+      TIMEOUTS.PASTE_SCAN
     );
 
     if (!response.ok) return [];
@@ -819,7 +816,7 @@ export async function searchDarkWebSignals(indicator: string): Promise<LeakSigna
       scanGitHubGists(indicator),
       scanRentry(indicator),
       scanGhostbin(indicator),
-      scanTelegramMessages(indicator), // NEW: Telegram integration
+      scanTelegramMessages(indicator),
     ])
   )
     .filter((result): result is PromiseFulfilledResult<LeakSignal[]> => result.status === 'fulfilled')
