@@ -26,6 +26,7 @@ import {
   Eye,
   Newspaper,
   FileWarning, 
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -46,16 +47,16 @@ const mainNavItems: NavItem[] = [
   { name: "Malware Intel", href: "/malware", icon: FileWarning, description: "Malware Analysis & Tracking" }, // ADD THIS LINE
 ];
 
-const toolsNavItems: NavItem[] = [
-  { name: "Domain Intel", href: "/domain", icon:  Globe, description: "DNS & Domain Analysis" },
-  { name: "IP Analyzer", href: "/ip", icon: Activity, description: "IP Intelligence" },
+const toolsNavItems:  NavItem[] = [
+  { name: "Domain Intel", href: "/domain", icon:   Globe, description: "DNS & Domain Analysis" },
+  { name: "IP Analyzer", href: "/ip", icon:  Activity, description: "IP Intelligence" },
   { name: "Certificates", href: "/certs", icon: Lock, description: "SSL/TLS Certificates" },
-  { name: "Breach Check", href: "/breach", icon:  Shield, description: "Email Breach Lookup" },
+  { name: "Breach Check", href: "/breach", icon:   Shield, description: "Email Breach Lookup" },
+  { name: "Telegram Scanner", href: "/telegram", icon: Send, description: "Public Channel Leak Monitor" }, // ADD THIS
   { name: "Username OSINT", href: "/username", icon: User, description: "100+ Platform Enumeration" },
-  { name:  "Dark Web", href: "/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
-  { name: "Graph Map", href: "/graph", icon:  Network, description: "Maltego-style Visualization" },
+  { name:   "Dark Web", href: "/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
+  { name: "Graph Map", href: "/graph", icon:   Network, description: "Maltego-style Visualization" },
 ];
-
 const dataNavItems: NavItem[] = [
   { name: "Import Data", href: "/import", icon: Upload, description: "Upload Datasets" },
   { name: "Monitors", href: "/monitors", icon:  Bell, description: "Active Monitoring" },
