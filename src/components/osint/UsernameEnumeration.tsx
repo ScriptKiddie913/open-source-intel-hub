@@ -1,101 +1,157 @@
 // src/components/osint/UsernameEnumeration.tsx
 import { useState } from 'react';
-import { User, Search, Loader2, ExternalLink, Bot, Check, X } from 'lucide-react';
+import {
+  User,
+  Search,
+  Loader2,
+  ExternalLink,
+  Download,
+  Filter,
+  BarChart3,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { enumerateUsername, summarizeUsernameResults, UsernameResult } from '@/services/enhancedThreatService';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import {
+  enumerateUsername,
+  calculateStats,
+  getPlatformCategories,
+  type UsernameResult,
+} from '@/services/usernameService';
 
 export function UsernameEnumeration() {
   const [username, setUsername] = useState('');
+  const [results, setResults] = useState<UsernameResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [results, setResults] = useState<UsernameResult[]>([]);
-  const [aiSummary, setAiSummary] = useState<string>('');
-  const [filterType, setFilterType] = useState<string>('all');
-
-  const platformTypes = ['all', 'social', 'dev', 'gaming', 'professional', 'creative'];
+  const [totalPlatforms, setTotalPlatforms] = useState(0);
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'name' | 'category' | 'responseTime'>('name');
 
   const handleSearch = async () => {
-    if (!username.trim()) {
+    if (!username. trim()) {
       toast.error('Please enter a username');
       return;
     }
 
     setLoading(true);
-    setProgress(0);
     setResults([]);
-    setAiSummary('');
+    setProgress(0);
 
     try {
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 10, 90));
-      }, 500);
+      const foundAccounts = await enumerateUsername(
+        username. trim(),
+        (completed, total) => {
+          setProgress((completed / total) * 100);
+          setTotalPlatforms(total);
+        }
+      );
 
-      const foundResults = await enumerateUsername(username.trim());
-      clearInterval(progressInterval);
-      setProgress(100);
-      
-      setResults(foundResults);
-      toast.success(`Found ${foundResults.length} platforms`);
+      setResults(foundAccounts);
 
-      // Generate AI summary
-      if (foundResults.length > 0) {
-        const summary = await summarizeUsernameResults(username, foundResults);
-        setAiSummary(summary);
+      if (foundAccounts.length === 0) {
+        toast.info('No accounts found with this username');
+      } else {
+        toast.success(`Found ${foundAccounts.length} accounts! `);
       }
     } catch (error) {
-      toast.error('Enumeration failed');
-      console.error(error);
+      console.error('Username enumeration error:', error);
+      toast.error('Search failed. Please try again.');
     } finally {
       setLoading(false);
+      setProgress(0);
     }
   };
 
-  const filteredResults = filterType === 'all' 
-    ? results 
-    : results.filter(r => {
-        const url = r.url.toLowerCase();
-        if (filterType === 'social') return url.includes('twitter') || url.includes('instagram') || url.includes('facebook') || url.includes('reddit');
-        if (filterType === 'dev') return url.includes('github') || url.includes('gitlab') || url.includes('stackoverflow');
-        if (filterType === 'gaming') return url.includes('steam') || url.includes('twitch') || url.includes('discord');
-        if (filterType === 'professional') return url.includes('linkedin') || url.includes('medium');
-        if (filterType === 'creative') return url.includes('behance') || url.includes('dribbble') || url.includes('patreon');
-        return true;
-      });
+  const exportResults = () => {
+    const csv = [
+      ['Platform', 'Username', 'URL', 'Category', 'Response Time (ms)']. join(','),
+      ...results.map(r => [
+        r.platform,
+        r.username,
+        r.url,
+        r.category,
+        r.responseTime,
+      ].join(',')),
+    ].join('\n');
+
+    const blob = new Blob([csv], { type:  'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `username-${username}-${Date.now()}.csv`;
+    a.click();
+    toast.success('Results exported');
+  };
+
+  const filteredResults = results.filter(r => 
+    filterCategory === 'all' || r.category === filterCategory
+  );
+
+  const sortedResults = [... filteredResults].sort((a, b) => {
+    switch (sortBy) {
+      case 'name':
+        return a.platform.localeCompare(b. platform);
+      case 'category':
+        return a.category. localeCompare(b.category);
+      case 'responseTime':
+        return a.responseTime - b.responseTime;
+      default:
+        return 0;
+    }
+  });
+
+  const stats = results.length > 0 ? calculateStats(results) : null;
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Username Enumeration</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Search across 100+ platforms with AI-powered analysis
+        <h1 className="text-3xl font-bold flex items-center gap-3">
+          <User className="h-8 w-8 text-primary" />
+          Username Enumeration
+        </h1>
+        <p className="text-muted-foreground mt-2">
+          Search for a username across 60+ platforms - Only shows accounts that actually exist
         </p>
       </div>
 
-      {/* Search */}
-      <Card className="bg-card border-border">
-        <CardContent className="p-4">
+      {/* Search Bar */}
+      <Card className="border-primary/30">
+        <CardContent className="pt-6">
           <div className="flex gap-3">
-            <div className="relative flex-1">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Enter username to enumerate..."
-                className="pl-10 bg-background"
+                onKeyDown={(e) => e.key === 'Enter' && ! loading && handleSearch()}
+                placeholder="Enter username to search..."
+                className="pl-10"
+                disabled={loading}
               />
             </div>
-            <Button onClick={handleSearch} disabled={loading} className="min-w-[120px]">
+            <Button onClick={handleSearch} disabled={loading || !username.trim()}>
               {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Searching...
+                </>
               ) : (
                 <>
                   <Search className="h-4 w-4 mr-2" />
@@ -107,9 +163,9 @@ export function UsernameEnumeration() {
 
           {loading && (
             <div className="mt-4 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Checking platforms...</span>
-                <span className="font-mono text-primary">{progress}%</span>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>Checking platforms...</span>
+                <span>{Math.round(progress)}%</span>
               </div>
               <Progress value={progress} className="h-2" />
             </div>
@@ -117,139 +173,184 @@ export function UsernameEnumeration() {
         </CardContent>
       </Card>
 
-      {/* AI Summary */}
-      {aiSummary && (
-        <Card className="bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <Bot className="h-5 w-5 text-primary" />
-              AI Analysis
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-foreground leading-relaxed">{aiSummary}</p>
+      {/* Statistics */}
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <CheckCircle2 className="h-6 w-6 mx-auto text-green-500 mb-2" />
+                <div className="text-3xl font-bold text-green-500">{stats.totalFound}</div>
+                <div className="text-sm text-muted-foreground">Accounts Found</div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <BarChart3 className="h-6 w-6 mx-auto text-cyan-500 mb-2" />
+                <div className="text-3xl font-bold text-cyan-500">{stats.totalChecked}</div>
+                <div className="text-sm text-muted-foreground">Platforms Checked</div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <Clock className="h-6 w-6 mx-auto text-orange-500 mb-2" />
+                <div className="text-3xl font-bold text-orange-500">{stats.avgResponseTime}ms</div>
+                <div className="text-sm text-muted-foreground">Avg Response</div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <Filter className="h-6 w-6 mx-auto text-purple-500 mb-2" />
+                <div className="text-3xl font-bold text-purple-500">{Object.keys(stats.byCategory).length}</div>
+                <div className="text-sm text-muted-foreground">Categories</div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Filters and Export */}
+      {results.length > 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex flex-wrap gap-3 items-center">
+              <Select value={filterCategory} onValueChange={setFilterCategory}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {getPlatformCategories().map(cat => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Platform Name</SelectItem>
+                  <SelectItem value="category">Category</SelectItem>
+                  <SelectItem value="responseTime">Response Time</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="flex-1" />
+
+              <Badge variant="secondary">
+                Showing {filteredResults.length} of {results.length} results
+              </Badge>
+
+              <Button variant="outline" size="sm" onClick={exportResults}>
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
 
       {/* Results */}
-      {results.length > 0 && (
-        <div className="space-y-4">
-          {/* Stats */}
-          <Card className="bg-card border-border">
-            <CardContent className="p-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-bold font-mono text-primary">{results.length}</div>
-                  <div className="text-xs text-muted-foreground">Platforms Found</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold font-mono text-success">{results.filter(r => r.exists).length}</div>
-                  <div className="text-xs text-muted-foreground">Confirmed</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold font-mono text-cyan-500">
-                    {new Set(results.map(r => r.url.split('.')[0])).size}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Unique Domains</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold font-mono text-orange-500">
-                    {Math.round((results.length / 100) * 100)}%
-                  </div>
-                  <div className="text-xs text-muted-foreground">Coverage</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Filter */}
-          <div className="flex flex-wrap gap-2">
-            {platformTypes.map((type) => (
-              <Button
-                key={type}
-                variant={filterType === type ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterType(type)}
-              >
-                {type.charAt(0).toUpperCase() + type.slice(1)}
-              </Button>
-            ))}
-          </div>
-
-          {/* Platform Results */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredResults.map((result) => (
-              <Card
-                key={result.platform}
-                className="bg-card border hover:border-primary/50 transition-all group"
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      {result.exists ? (
-                        <div className="p-1.5 rounded bg-success/20">
-                          <Check className="h-3 w-3 text-success" />
-                        </div>
-                      ) : (
-                        <div className="p-1.5 rounded bg-muted">
-                          <X className="h-3 w-3 text-muted-foreground" />
-                        </div>
-                      )}
-                      <div>
-                        <h3 className="font-semibold text-foreground text-sm">
-                          {result.platform}
-                        </h3>
-                        <p className="text-xs text-muted-foreground font-mono">
-                          @{result.username}
-                        </p>
-                      </div>
-                    </div>
-                    <a
-                      href={result.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <ExternalLink className="h-4 w-4 text-primary" />
-                    </a>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs">
-                    <Badge variant="outline" className="text-xs">
-                      {result.exists ? 'Found' : 'Not Found'}
-                    </Badge>
-                    <span className="text-muted-foreground font-mono">
-                      {new Date(result.lastChecked).toLocaleTimeString()}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {filteredResults.length === 0 && (
-            <Card className="bg-card border-border">
-              <CardContent className="p-8 text-center">
-                <p className="text-muted-foreground">No platforms found for this filter</p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {/* Empty State */}
-      {!loading && results.length === 0 && (
-        <Card className="bg-card border-border">
-          <CardContent className="p-12 text-center">
-            <User className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-            <p className="text-muted-foreground mb-2">Enter a username to begin enumeration</p>
-            <p className="text-xs text-muted-foreground/60">
-              Checks 100+ platforms including social media, dev sites, gaming, and more
+      {! loading && results.length === 0 && username && (
+        <Card className="border-dashed">
+          <CardContent className="pt-12 pb-12 text-center">
+            <XCircle className="h-16 w-16 mx-auto text-muted-foreground opacity-50 mb-4" />
+            <p className="text-muted-foreground">
+              No accounts found for username "<strong>{username}</strong>"
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Try a different username or check the spelling
             </p>
           </CardContent>
         </Card>
       )}
+
+      {sortedResults.length > 0 && (
+        <div className="grid grid-cols-1 md: grid-cols-2 lg: grid-cols-3 gap-4">
+          {sortedResults.map((result) => (
+            <Card key={result.platform} className="hover:border-primary/50 transition-all">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="text-3xl">{result.icon}</div>
+                    <div>
+                      <h3 className="font-semibold">{result.platform}</h3>
+                      <Badge variant="secondary" className="text-xs mt-1">
+                        {result.category}
+                      </Badge>
+                    </div>
+                  </div>
+                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                </div>
+
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <User className="h-3 w-3" />
+                    <span className="font-mono">{result.username}</span>
+                  </div>
+
+                  {result.profileData && (
+                    <div className="flex gap-4 text-xs text-muted-foreground">
+                      {result.profileData.followers !== undefined && (
+                        <span>👥 {result.profileData. followers}</span>
+                      )}
+                      {result.profileData.posts !== undefined && (
+                        <span>📝 {result.profileData.posts}</span>
+                      )}
+                      {result.profileData. verified && (
+                        <span>✓ Verified</span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <span>{result. responseTime}ms</span>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-4"
+                  asChild
+                >
+                  <a href={result.url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-3 w-3 mr-2" />
+                    View Profile
+                  </a>
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Info Card */}
+      <Card className="border-primary/40 bg-primary/5">
+        <CardContent className="p-4 flex gap-3">
+          <AlertCircle className="h-5 w-5 text-primary shrink-0" />
+          <div>
+            <h3 className="font-semibold text-primary">Verification Method</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              This tool only shows accounts that actually exist. We verify each platform using
+              HTTP status codes, page content analysis, and official APIs where available.
+              False positives are eliminated. 
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
