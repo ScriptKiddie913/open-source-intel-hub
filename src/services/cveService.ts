@@ -1,135 +1,158 @@
-// Enhanced CVE and Threat Intelligence Service
+// src/services/cveService. ts
+// CVE & Exploit Intelligence Service
+// Real integration with NVD, ExploitDB, and other CVE sources
 
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
 
-export interface CVEData {
+/* ============================================================================
+   TYPES
+============================================================================ */
+
+export interface CVE {
   id: string;
   description: string;
-  published: string;
+  published:  string;
   modified: string;
   cvss: {
+    version: string;
     score: number;
-    severity: string;
+    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
     vector: string;
   };
-  references: string[];
-  cwe: string[];
-  exploitAvailable: boolean;
-  exploitDetails?: ExploitData;
+  cwe?:  string[];
+  references:  Array<{
+    url: string;
+    source: string;
+    tags: string[];
+  }>;
+  cpe?:  string[];
+  exploits:  Exploit[];
+  affected: Array<{
+    vendor: string;
+    product: string;
+    versions: string[];
+  }>;
 }
 
-export interface ExploitData {
+export interface Exploit {
   id: string;
   title: string;
   description: string;
   author: string;
   type: string;
   platform: string;
-  date: string;
-  edbId: string;
-  cve?: string[];
   verified: boolean;
-  sourceUrl: string;
-  code?: string;
-}
-
-export interface ThreatFeed {
-  id: string;
-  type: 'malware' | 'phishing' | 'botnet' | 'c2' | 'exploit' | 'ransomware' | 'apt';
-  indicator: string;
-  indicatorType: 'ip' | 'domain' | 'url' | 'hash' | 'email';
-  threat: string;
-  confidence: number;
-  firstSeen: string;
-  lastSeen: string;
-  source: string;
+  cveId?:  string;
+  edbId?: string;
+  date: string;
+  url: string;
+  code?:  string;
   tags: string[];
-  location?: {
-    country: string;
-    city: string;
-    lat: number;
-    lon: number;
-  };
+  source: 'exploit-db' | 'github' | 'packetstorm' | 'metasploit';
 }
 
-export interface LiveAttack {
-  id: string;
-  timestamp: Date;
-  sourceIp: string;
-  sourceCountry: string;
-  sourceLocation: { lat: number; lon: number };
-  targetIp: string;
-  targetCountry: string;
-  targetLocation: { lat: number; lon: number };
-  attackType: string;
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  protocol: string;
-  port?: number;
+export interface CVESearchParams {
+  keyword?:  string;
+  cveId?: string;
+  vendor?: string;
+  product?: string;
+  year?: string;
+  severity?: string;
+  hasExploit?: boolean;
 }
 
-const CVE_CACHE_TTL = 240;
-const EXPLOIT_CACHE_TTL = 360;
-const THREAT_FEED_CACHE_TTL = 5; // 5 minutes for live data
+/* ============================================================================
+   NVD CVE API - NATIONAL VULNERABILITY DATABASE
+============================================================================ */
 
-// Get IP geolocation
-async function getGeoLocation(ip: string): Promise<{ country: string; city: string; lat: number; lon: number } | null> {
-  try {
-    const response = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon`);
-    if (!response.ok) return null;
-    const data = await response.json();
-    if (data.status === 'success') {
-      return {
-        country: data.country,
-        city: data.city,
-        lat: data.lat,
-        lon: data.lon,
-      };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-// NVD API
-export async function searchCVE(query: string, limit = 20): Promise<CVEData[]> {
-  const cacheKey = `cve:search:${query}:${limit}`;
+export async function searchCVEs(params: CVESearchParams): Promise<CVE[]> {
+  const cacheKey = `cve:search:${JSON.stringify(params)}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
-  try {
-    const response = await fetch(
-      `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(query)}&resultsPerPage=${limit}`
-    );
+  const cves: CVE[] = [];
 
-    if (!response.ok) throw new Error(`NVD API error: ${response.statusText}`);
+  try {
+    let nvdUrl = 'https://services.nvd.nist.gov/rest/json/cves/2.0? ';
+    
+    if (params. cveId) {
+      nvdUrl += `cveId=${params.cveId}`;
+    } else if (params.keyword) {
+      nvdUrl += `keywordSearch=${encodeURIComponent(params.keyword)}`;
+    }
+    
+    if (params. severity) {
+      nvdUrl += `&cvssV3Severity=${params.severity}`;
+    }
+
+    nvdUrl += '&resultsPerPage=50';
+
+    const response = await fetch(nvdUrl);
+    
+    if (!response.ok) throw new Error('NVD API failed');
 
     const data = await response.json();
-    const cves: CVEData[] = [];
 
     for (const item of data.vulnerabilities || []) {
-      const cve = item.cve;
-      const metrics = cve.metrics?.cvssMetricV31?.[0] || cve.metrics?.cvssMetricV30?.[0] || cve.metrics?.cvssMetricV2?.[0];
+      const cve = item. cve;
       
+      // Get CVSS data
+      const cvssData = cve.metrics?. cvssMetricV31? .[0] || 
+                       cve.metrics?.cvssMetricV30?.[0] || 
+                       cve.metrics?.cvssMetricV2? .[0];
+
+      const cvssScore = cvssData?.cvssData?.baseScore || 0;
+      const cvssVector = cvssData?. cvssData?.vectorString || '';
+      const severity = cvssData?.cvssData?.baseSeverity || 
+                      (cvssScore >= 9.0 ? 'CRITICAL' : 
+                       cvssScore >= 7.0 ?  'HIGH' : 
+                       cvssScore >= 4.0 ? 'MEDIUM' : 'LOW');
+
+      // Extract affected products
+      const affected = [];
+      for (const config of cve.configurations || []) {
+        for (const node of config.nodes || []) {
+          for (const cpeMatch of node.cpeMatch || []) {
+            const cpeUri = cpeMatch.criteria || '';
+            const parts = cpeUri.split(': ');
+            if (parts. length >= 5) {
+              affected.push({
+                vendor: parts[3],
+                product: parts[4],
+                versions: [parts[5] || '*'],
+              });
+            }
+          }
+        }
+      }
+
+      // Fetch exploits for this CVE
+      const exploits = await searchExploits(cve.id);
+
       cves.push({
         id: cve.id,
-        description: cve.descriptions?.find((d: any) => d.lang === 'en')?.value || 'No description',
-        published: cve.published,
+        description: cve.descriptions?.[0]?.value || 'No description available',
+        published: cve. published,
         modified: cve.lastModified,
-        cvss: {
-          score: metrics?.cvssData?.baseScore || 0,
-          severity: metrics?.cvssData?.baseSeverity || 'UNKNOWN',
-          vector: metrics?.cvssData?.vectorString || '',
+        cvss:  {
+          version: cvssData?.cvssData?.version || '3.1',
+          score: cvssScore,
+          severity: severity as any,
+          vector: cvssVector,
         },
-        references: (cve.references || []).map((r: any) => r.url).slice(0, 5),
-        cwe: (cve.weaknesses || []).flatMap((w: any) => 
-          w.description?.map((d: any) => d.value) || []
-        ),
-        exploitAvailable: false,
+        cwe: cve.weaknesses? .[0]?.description?. map((d: any) => d.value) || [],
+        references: cve.references?. map((ref: any) => ({
+          url: ref.url,
+          source: ref.source || 'NVD',
+          tags: ref.tags || [],
+        })) || [],
+        cpe: cve.configurations?.[0]?.nodes?.[0]?.cpeMatch?. map((m: any) => m.criteria) || [],
+        exploits,
+        affected,
       });
     }
 
-    await cacheAPIResponse(cacheKey, cves, CVE_CACHE_TTL);
+    await cacheAPIResponse(cacheKey, cves, 3600);
     return cves;
   } catch (error) {
     console.error('CVE search error:', error);
@@ -137,57 +160,159 @@ export async function searchCVE(query: string, limit = 20): Promise<CVEData[]> {
   }
 }
 
-export async function getCVEDetails(cveId: string): Promise<CVEData | null> {
-  const cacheKey = `cve:details:${cveId}`;
+/* ============================================================================
+   GET SINGLE CVE DETAILS
+============================================================================ */
+
+export async function getCVEDetails(cveId: string): Promise<CVE | null> {
+  const results = await searchCVEs({ cveId });
+  return results[0] || null;
+}
+
+/* ============================================================================
+   EXPLOIT-DB SEARCH
+============================================================================ */
+
+export async function searchExploits(cveId?:  string, keyword?: string): Promise<Exploit[]> {
+  const cacheKey = `exploits:${cveId || keyword || 'recent'}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const exploits:  Exploit[] = [];
+
+  try {
+    // ExploitDB CSV data (public)
+    const edbUrl = 'https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits. csv';
+    const response = await fetch(edbUrl);
+    
+    if (!response.ok) throw new Error('ExploitDB fetch failed');
+
+    const csvText = await response.text();
+    const lines = csvText.split('\n').slice(1); // Skip header
+
+    for (const line of lines. slice(0, 100)) {
+      const parts = line.split(',');
+      if (parts.length < 5) continue;
+
+      const [id, file, description, date, author, type, platform, ... rest] = parts;
+
+      // Filter by CVE ID if provided
+      if (cveId && ! description.toLowerCase().includes(cveId.toLowerCase())) {
+        continue;
+      }
+
+      // Filter by keyword if provided
+      if (keyword && !description.toLowerCase().includes(keyword.toLowerCase())) {
+        continue;
+      }
+
+      exploits.push({
+        id: `edb-${id}`,
+        edbId: id,
+        title: description. replace(/"/g, ''),
+        description:  description.replace(/"/g, ''),
+        author: author.replace(/"/g, ''),
+        type: type.replace(/"/g, ''),
+        platform: platform.replace(/"/g, ''),
+        verified: true,
+        cveId: extractCVEFromText(description),
+        date: date,
+        url: `https://www.exploit-db.com/exploits/${id}`,
+        tags: [type. replace(/"/g, ''), platform.replace(/"/g, '')],
+        source: 'exploit-db',
+      });
+
+      if (exploits.length >= 20) break;
+    }
+
+    await cacheAPIResponse(cacheKey, exploits, 3600);
+    return exploits;
+  } catch (error) {
+    console.error('ExploitDB search error:', error);
+    return [];
+  }
+}
+
+/* ============================================================================
+   GET EXPLOIT CODE
+============================================================================ */
+
+export async function getExploitCode(edbId: string): Promise<string | null> {
+  const cacheKey = `exploit:code:${edbId}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
   try {
-    const response = await fetch(
-      `https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=${cveId}`
-    );
-
+    const response = await fetch(`https://www.exploit-db.com/download/${edbId}`);
+    
     if (!response.ok) return null;
 
-    const data = await response.json();
-    const cve = data.vulnerabilities?.[0]?.cve;
+    const code = await response.text();
     
-    if (!cve) return null;
-
-    const metrics = cve.metrics?.cvssMetricV31?.[0] || cve.metrics?.cvssMetricV30?.[0] || cve.metrics?.cvssMetricV2?.[0];
-    
-    const cveData: CVEData = {
-      id: cve.id,
-      description: cve.descriptions?.find((d: any) => d.lang === 'en')?.value || 'No description',
-      published: cve.published,
-      modified: cve.lastModified,
-      cvss: {
-        score: metrics?.cvssData?.baseScore || 0,
-        severity: metrics?.cvssData?.baseSeverity || 'UNKNOWN',
-        vector: metrics?.cvssData?.vectorString || '',
-      },
-      references: (cve.references || []).map((r: any) => r.url),
-      cwe: (cve.weaknesses || []).flatMap((w: any) => 
-        w.description?.map((d: any) => d.value) || []
-      ),
-      exploitAvailable: false,
-    };
-
-    const exploit = await searchExploitDB(cveId);
-    if (exploit.length > 0) {
-      cveData.exploitAvailable = true;
-      cveData.exploitDetails = exploit[0];
-    }
-
-    await cacheAPIResponse(cacheKey, cveData, CVE_CACHE_TTL);
-    return cveData;
+    await cacheAPIResponse(cacheKey, code, 86400);
+    return code;
   } catch (error) {
-    console.error('CVE details error:', error);
+    console.error('Get exploit code error:', error);
     return null;
   }
 }
 
-export async function getRecentCVEs(days = 7, limit = 50): Promise<CVEData[]> {
+/* ============================================================================
+   GITHUB POC SEARCH
+============================================================================ */
+
+export async function searchGitHubPOCs(cveId:  string): Promise<Exploit[]> {
+  const cacheKey = `github:poc:${cveId}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const pocs: Exploit[] = [];
+
+  try {
+    const response = await fetch(
+      `https://api.github.com/search/repositories?q=${cveId}+poc+OR+exploit&sort=stars&order=desc`,
+      {
+        headers: {
+          'Accept': 'application/vnd. github.v3+json',
+          'User-Agent': 'OSINT-Platform',
+        },
+      }
+    );
+
+    if (!response. ok) throw new Error('GitHub search failed');
+
+    const data = await response.json();
+
+    for (const repo of data.items?. slice(0, 10) || []) {
+      pocs.push({
+        id: `github-${repo.id}`,
+        title: repo.name,
+        description: repo.description || 'No description',
+        author: repo.owner.login,
+        type: 'POC',
+        platform: 'Multiple',
+        verified: false,
+        cveId,
+        date: repo.created_at,
+        url: repo.html_url,
+        tags: ['poc', 'github', ... repo.topics || []],
+        source: 'github',
+      });
+    }
+
+    await cacheAPIResponse(cacheKey, pocs, 3600);
+    return pocs;
+  } catch (error) {
+    console.error('GitHub POC search error:', error);
+    return [];
+  }
+}
+
+/* ============================================================================
+   RECENT CVES
+============================================================================ */
+
+export async function getRecentCVEs(days: number = 7, limit: number = 50): Promise<CVE[]> {
   const cacheKey = `cve:recent:${days}:${limit}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
@@ -197,38 +322,47 @@ export async function getRecentCVEs(days = 7, limit = 50): Promise<CVEData[]> {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const response = await fetch(
-      `https://services.nvd.nist.gov/rest/json/cves/2.0?pubStartDate=${startDate.toISOString()}&pubEndDate=${endDate.toISOString()}&resultsPerPage=${limit}`
-    );
+    const nvdUrl = `https://services.nvd.nist.gov/rest/json/cves/2.0?pubStartDate=${startDate.toISOString()}&pubEndDate=${endDate. toISOString()}&resultsPerPage=${limit}`;
 
-    if (!response.ok) throw new Error('Failed to fetch recent CVEs');
+    const response = await fetch(nvdUrl);
+    
+    if (!response.ok) throw new Error('NVD API failed');
 
     const data = await response.json();
-    const cves: CVEData[] = [];
+    const cves: CVE[] = [];
 
     for (const item of data.vulnerabilities || []) {
       const cve = item.cve;
-      const metrics = cve.metrics?.cvssMetricV31?.[0] || cve.metrics?.cvssMetricV30?.[0] || cve.metrics?.cvssMetricV2?.[0];
       
+      const cvssData = cve.metrics?.cvssMetricV31? .[0] || 
+                       cve.metrics?.cvssMetricV30?.[0];
+
+      const cvssScore = cvssData?.cvssData?.baseScore || 0;
+      const severity = cvssData?.cvssData?.baseSeverity || 'LOW';
+
       cves.push({
         id: cve.id,
-        description: cve.descriptions?.find((d: any) => d.lang === 'en')?.value || 'No description',
+        description: cve.descriptions?.[0]?.value || '',
         published: cve.published,
-        modified: cve.lastModified,
+        modified: cve. lastModified,
         cvss: {
-          score: metrics?.cvssData?.baseScore || 0,
-          severity: metrics?.cvssData?.baseSeverity || 'UNKNOWN',
-          vector: metrics?.cvssData?.vectorString || '',
+          version: '3.1',
+          score: cvssScore,
+          severity:  severity as any,
+          vector:  cvssData?.cvssData?.vectorString || '',
         },
-        references: (cve.references || []).map((r: any) => r.url).slice(0, 3),
-        cwe: (cve.weaknesses || []).flatMap((w: any) => 
-          w.description?.map((d: any) => d.value) || []
-        ).slice(0, 2),
-        exploitAvailable: false,
+        cwe: cve.weaknesses?.[0]?.description?.map((d: any) => d.value) || [],
+        references:  cve.references?.map((ref: any) => ({
+          url: ref.url,
+          source: ref.source || 'NVD',
+          tags: ref.tags || [],
+        })) || [],
+        exploits: [],
+        affected: [],
       });
     }
 
-    await cacheAPIResponse(cacheKey, cves, CVE_CACHE_TTL);
+    await cacheAPIResponse(cacheKey, cves, 1800);
     return cves;
   } catch (error) {
     console.error('Recent CVEs error:', error);
@@ -236,292 +370,21 @@ export async function getRecentCVEs(days = 7, limit = 50): Promise<CVEData[]> {
   }
 }
 
-export async function searchExploitDB(query: string, limit = 20): Promise<ExploitData[]> {
-  const cacheKey = `exploitdb:${query}:${limit}`;
-  const cached = await getCachedData(cacheKey);
-  if (cached) return cached;
+/* ============================================================================
+   UTILITY FUNCTIONS
+============================================================================ */
 
-  try {
-    const response = await fetch(
-      'https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits.csv'
-    );
-
-    if (!response.ok) throw new Error('Failed to fetch ExploitDB feed');
-
-    const csvData = await response.text();
-    const lines = csvData.split('\n').slice(1);
-    const exploits: ExploitData[] = [];
-
-    for (const line of lines) {
-      if (exploits.length >= limit) break;
-      
-      const match = line.match(/^"?([^"]*)"?,/);
-      if (!match) continue;
-
-      const parts = line.split(',');
-      if (parts.length < 5) continue;
-
-      const id = parts[0]?.replace(/"/g, '') || '';
-      const title = parts[2]?.replace(/"/g, '') || '';
-      const type = parts[4]?.replace(/"/g, '') || '';
-      const platform = parts[5]?.replace(/"/g, '') || '';
-      
-      if (
-        title.toLowerCase().includes(query.toLowerCase()) ||
-        id.includes(query)
-      ) {
-        exploits.push({
-          id: `edb-${id}`,
-          title,
-          description: title,
-          author: parts[3]?.replace(/"/g, '') || 'Unknown',
-          type,
-          platform,
-          date: parts[1]?.replace(/"/g, '') || '',
-          edbId: id,
-          verified: parts[6]?.includes('1') || false,
-          sourceUrl: `https://www.exploit-db.com/exploits/${id}`,
-        });
-      }
-    }
-
-    await cacheAPIResponse(cacheKey, exploits, EXPLOIT_CACHE_TTL);
-    return exploits;
-  } catch (error) {
-    console.error('ExploitDB search error:', error);
-    return [];
-  }
-}
-
-// Enhanced Live Threat Feeds with Geolocation
-export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
-  const cacheKey = 'threats:live:feeds';
-  const cached = await getCachedData(cacheKey);
-  if (cached) return cached;
-
-  const feeds: ThreatFeed[] = [];
-
-  try {
-    // Feodo Tracker (Botnet C2) with geolocation
-    const feodoResponse = await fetch('https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json');
-    if (feodoResponse.ok) {
-      const feodoData = await feodoResponse.json();
-      
-      for (const item of feodoData.slice(0, 100)) {
-        const geo = await getGeoLocation(item.ip_address);
-        
-        feeds.push({
-          id: `feodo-${item.ip_address}`,
-          type: 'botnet',
-          indicator: item.ip_address,
-          indicatorType: 'ip',
-          threat: item.malware || 'Botnet C2',
-          confidence: 95,
-          firstSeen: item.first_seen,
-          lastSeen: item.last_seen || item.first_seen,
-          source: 'Feodo Tracker',
-          tags: ['botnet', 'c2', item.malware?.toLowerCase() || ''].filter(Boolean),
-          location: geo || undefined,
-        });
-      }
-    }
-
-    // URLhaus (Malware URLs)
-    const urlhausResponse = await fetch('https://urlhaus.abuse.ch/downloads/json_recent/');
-    if (urlhausResponse.ok) {
-      const urlhausData = await urlhausResponse.json();
-      for (const item of urlhausData.slice(0, 50)) {
-        feeds.push({
-          id: `urlhaus-${item.id}`,
-          type: 'malware',
-          indicator: item.url,
-          indicatorType: 'url',
-          threat: item.threat || 'Malware Distribution',
-          confidence: 90,
-          firstSeen: item.date_added,
-          lastSeen: item.date_added,
-          source: 'URLhaus',
-          tags: item.tags || [],
-        });
-      }
-    }
-
-    // OpenPhish
-    const openphishResponse = await fetch('https://openphish.com/feed.txt');
-    if (openphishResponse.ok) {
-      const openphishData = await openphishResponse.text();
-      const urls = openphishData.split('\n').filter(Boolean).slice(0, 50);
-      
-      const now = new Date().toISOString();
-      for (const url of urls) {
-        feeds.push({
-          id: `openphish-${Buffer.from(url).toString('base64').slice(0, 16)}`,
-          type: 'phishing',
-          indicator: url,
-          indicatorType: 'url',
-          threat: 'Phishing',
-          confidence: 85,
-          firstSeen: now,
-          lastSeen: now,
-          source: 'OpenPhish',
-          tags: ['phishing'],
-        });
-      }
-    }
-
-    // ThreatFox (Recent IOCs)
-    const threatfoxResponse = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: 'get_iocs', days: 1 }),
-    });
-    
-    if (threatfoxResponse.ok) {
-      const threatfoxData = await threatfoxResponse.json();
-      
-      for (const item of (threatfoxData.data || []).slice(0, 50)) {
-        const isIp = item.ioc_type === 'ip:port' || item.ioc_type === 'ip';
-        let geo = null;
-        
-        if (isIp) {
-          const ip = item.ioc.split(':')[0];
-          geo = await getGeoLocation(ip);
-        }
-        
-        feeds.push({
-          id: `threatfox-${item.id}`,
-          type: item.threat_type?.includes('apt') ? 'apt' : 
-                item.threat_type?.includes('ransomware') ? 'ransomware' : 'malware',
-          indicator: item.ioc,
-          indicatorType: isIp ? 'ip' : item.ioc_type.includes('domain') ? 'domain' : 'url',
-          threat: item.malware_printable || item.threat_type || 'Unknown Threat',
-          confidence: item.confidence_level || 80,
-          firstSeen: item.first_seen,
-          lastSeen: item.last_seen || item.first_seen,
-          source: 'ThreatFox',
-          tags: item.tags || [],
-          location: geo || undefined,
-        });
-      }
-    }
-
-    await cacheAPIResponse(cacheKey, feeds, THREAT_FEED_CACHE_TTL);
-    return feeds;
-  } catch (error) {
-    console.error('Live threat feeds error:', error);
-    return feeds;
-  }
-}
-
-export async function getMalwareHashes(limit = 50): Promise<ThreatFeed[]> {
-  const cacheKey = `threats:malware:hashes:${limit}`;
-  const cached = await getCachedData(cacheKey);
-  if (cached) return cached;
-
-  try {
-    const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'query=get_recent&selector=100',
-    });
-
-    if (!response.ok) throw new Error('MalwareBazaar API error');
-
-    const data = await response.json();
-    const feeds: ThreatFeed[] = [];
-
-    for (const sample of (data.data || []).slice(0, limit)) {
-      feeds.push({
-        id: `malware-${sample.sha256_hash}`,
-        type: 'malware',
-        indicator: sample.sha256_hash,
-        indicatorType: 'hash',
-        threat: sample.signature || 'Unknown Malware',
-        confidence: 95,
-        firstSeen: sample.first_seen,
-        lastSeen: sample.first_seen,
-        source: 'MalwareBazaar',
-        tags: sample.tags || [],
-      });
-    }
-
-    await cacheAPIResponse(cacheKey, feeds, THREAT_FEED_CACHE_TTL);
-    return feeds;
-  } catch (error) {
-    console.error('Malware hashes error:', error);
-    return [];
-  }
-}
-
-// Generate simulated live attacks for visualization
-export async function generateLiveAttacks(): Promise<LiveAttack[]> {
-  const attacks: LiveAttack[] = [];
-  
-  // Common attack source countries
-  const sources = [
-    { country: 'China', lat: 35.8617, lon: 104.1954 },
-    { country: 'Russia', lat: 61.5240, lon: 105.3188 },
-    { country: 'United States', lat: 37.0902, lon: -95.7129 },
-    { country: 'North Korea', lat: 40.3399, lon: 127.5101 },
-    { country: 'Iran', lat: 32.4279, lon: 53.6880 },
-    { country: 'Brazil', lat: -14.2350, lon: -51.9253 },
-  ];
-  
-  // Common targets
-  const targets = [
-    { country: 'United States', lat: 37.0902, lon: -95.7129 },
-    { country: 'United Kingdom', lat: 55.3781, lon: -3.4360 },
-    { country: 'Germany', lat: 51.1657, lon: 10.4515 },
-    { country: 'Japan', lat: 36.2048, lon: 138.2529 },
-    { country: 'Australia', lat: -25.2744, lon: 133.7751 },
-    { country: 'India', lat: 20.5937, lon: 78.9629 },
-  ];
-  
-  const attackTypes = [
-    'DDoS', 'SQL Injection', 'Brute Force', 'Malware', 
-    'Ransomware', 'Phishing', 'Port Scan', 'Data Exfiltration'
-  ];
-  
-  const protocols = ['TCP', 'UDP', 'HTTP', 'HTTPS', 'SSH', 'RDP'];
-  const severities: Array<'critical' | 'high' | 'medium' | 'low'> = ['critical', 'high', 'medium', 'low'];
-  
-  for (let i = 0; i < 20; i++) {
-    const source = sources[Math.floor(Math.random() * sources.length)];
-    const target = targets[Math.floor(Math.random() * targets.length)];
-    
-    attacks.push({
-      id: `attack-${Date.now()}-${i}`,
-      timestamp: new Date(Date.now() - Math.random() * 60000),
-      sourceIp: `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
-      sourceCountry: source.country,
-      sourceLocation: { lat: source.lat, lon: source.lon },
-      targetIp: `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
-      targetCountry: target.country,
-      targetLocation: { lat: target.lat, lon: target.lon },
-      attackType: attackTypes[Math.floor(Math.random() * attackTypes.length)],
-      severity: severities[Math.floor(Math.random() * severities.length)],
-      protocol: protocols[Math.floor(Math.random() * protocols.length)],
-      port: Math.floor(Math.random() * 65535),
-    });
-  }
-  
-  return attacks.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+function extractCVEFromText(text: string): string | undefined {
+  const match = text.match(/CVE-\d{4}-\d{4,}/i);
+  return match ? match[0]. toUpperCase() : undefined;
 }
 
 export function getSeverityColor(severity: string): string {
-  const s = severity.toUpperCase();
-  if (s === 'CRITICAL') return 'text-red-600';
-  if (s === 'HIGH') return 'text-orange-500';
-  if (s === 'MEDIUM') return 'text-yellow-500';
-  if (s === 'LOW') return 'text-blue-500';
-  return 'text-gray-500';
-}
-
-export function getSeverityBg(severity: string): string {
-  const s = severity.toUpperCase();
-  if (s === 'CRITICAL') return 'bg-red-500/20 border-red-500/50';
-  if (s === 'HIGH') return 'bg-orange-500/20 border-orange-500/50';
-  if (s === 'MEDIUM') return 'bg-yellow-500/20 border-yellow-500/50';
-  if (s === 'LOW') return 'bg-blue-500/20 border-blue-500/50';
-  return 'bg-gray-500/20 border-gray-500/50';
+  switch (severity. toUpperCase()) {
+    case 'CRITICAL': return 'text-red-500 border-red-500';
+    case 'HIGH': return 'text-orange-500 border-orange-500';
+    case 'MEDIUM': return 'text-yellow-500 border-yellow-500';
+    case 'LOW': return 'text-blue-500 border-blue-500';
+    default: return 'text-gray-500 border-gray-500';
+  }
 }
