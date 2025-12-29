@@ -2,6 +2,22 @@
 
 An advanced Open Source Intelligence (OSINT) platform featuring comprehensive threat analysis, malware intelligence, and real-time news monitoring capabilities.
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/open-source-intel-hub)
+
+## 🚀 Quick Deploy to Vercel
+
+1. **Fork this repository**
+2. **Connect to Vercel**: Import your repository to Vercel
+3. **Add Environment Variables**:
+   ```
+   VITE_SUPABASE_PROJECT_ID=your_project_id
+   VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+   VITE_SUPABASE_URL=your_supabase_url
+   ```
+4. **Deploy**: Your OSINT hub will be live in minutes!
+
+📖 **Full deployment guide**: [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md)
+
 ## 🚀 New Features (v2.5)
 
 ### 4. Malware Intelligence Hub

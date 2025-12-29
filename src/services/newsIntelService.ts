@@ -150,8 +150,9 @@ const mockTopics = [
 ];
 
 export async function fetchNewsIntelligence(params: NewsIntelligenceRequest) {
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1500));
+  try {
+    // Simulate API call delay (reduced for production)
+    await new Promise(resolve => setTimeout(resolve, 800));
 
   // Filter articles based on query and timeframe
   let filteredArticles = mockNewsArticles.filter(article => {
@@ -210,11 +211,19 @@ export async function fetchNewsIntelligence(params: NewsIntelligenceRequest) {
     analysis = generateNewsAnalysis(filteredArticles, params.query);
   }
 
-  return {
-    articles: filteredArticles,
-    analysis,
-    totalFound: filteredArticles.length
-  };
+    return {
+      articles: filteredArticles,
+      analysis,
+      totalFound: filteredArticles.length
+    };
+  } catch (error) {
+    console.error('Error fetching news intelligence:', error);
+    return {
+      articles: [],
+      analysis: null,
+      totalFound: 0
+    };
+  }
 }
 
 function generateNewsAnalysis(articles: NewsArticle[], query: string): NewsAnalysis {
@@ -290,11 +299,16 @@ function generateNewsAnalysis(articles: NewsArticle[], query: string): NewsAnaly
 }
 
 export async function getNewsTopics(): Promise<string[]> {
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  // In a real implementation, this would fetch trending topics from news APIs
-  return mockTopics.sort(() => Math.random() - 0.5).slice(0, 8);
+  try {
+    // Simulate API call delay (reduced for production)
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // In a real implementation, this would fetch trending topics from news APIs
+    return mockTopics.sort(() => Math.random() - 0.5).slice(0, 8);
+  } catch (error) {
+    console.error('Error fetching news topics:', error);
+    return mockTopics.slice(0, 8);
+  }
 }
 
 // Real-world integration placeholders
