@@ -13,7 +13,8 @@ import { SettingsPage } from "@/components/osint/SettingsPage";
 import { ThreatIntelSearch } from "@/components/osint/ThreatIntelSearch";
 import { CVEExplorer } from "@/components/osint/CVEExplorer";
 import { LiveThreatFeed } from "@/components/osint/LiveThreatFeed";
-
+import { MalwareIntelligence } from "@/components/osint/MalwareIntelligence";
+import { TelegramScanner } from "@/components/osint/TelegramScanner";
 // NEW IMPORTS
 import { UsernameEnumeration } from "@/components/osint/UsernameEnumeration";
 import { DarkWebScanner } from "@/components/osint/DarkWebScanner";
@@ -289,7 +290,12 @@ const Index = () => {
           <Route path="/darkweb" element={<DarkWebScanner />} />
           <Route path="/graph" element={<GraphVisualization />} />
           <Route path="/news" element={<NewsIntelligence />} />
+<<<<<<< HEAD
           
+=======
+          <Route path="/malware" element={<MalwareIntelligence />} />
+          <Route path="/telegram" element={<TelegramScanner />} />
+>>>>>>> 67fafda40324cc9a6bd6884a9e025dba2a448055
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
