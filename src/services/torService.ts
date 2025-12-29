@@ -9,7 +9,7 @@
 //   - Onioff
 //   - TorCrawl
 //
-// Integrates clearnet-accessible intelligence sources ONLY:
+// Integrates CLEARNET-ONLY intelligence sources:
 //
 //   ✔ PSBDMP (Pastebin dump index)
 //   ✔ Rentry public API
@@ -116,17 +116,14 @@ export interface DarkWebMarket {
    CONSTANTS
 ============================================================================ */
 
-// Tor2Web gateways (clearnet, Vercel-safe)
 const TOR2WEB_PROXIES = [
   'onion.ws',
   'onion.pet',
   'onion.ly',
 ];
 
-// Correct onion regex (NO SPACES)
 const ONION_REGEX = /([a-z2-7]{16,56}\.onion)/gi;
 
-// Indicators
 const EMAIL_REGEX =
   /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
@@ -136,7 +133,6 @@ const BITCOIN_REGEX =
 const SSH_FINGERPRINT_REGEX =
   /([0-9a-f]{2}:){15}[0-9a-f]{2}/gi;
 
-// Timeouts
 const TIMEOUTS = {
   ONION_DISCOVERY: 8000,
   PASTE_SCAN: 5000,
@@ -146,7 +142,6 @@ const TIMEOUTS = {
   API_CALL: 6000,
 };
 
-// Limits
 const MAX_RESULTS = {
   ONIONS: 30,
   TELEGRAM_CHANNELS: 20,
@@ -155,20 +150,17 @@ const MAX_RESULTS = {
   GITHUB: 15,
 };
 
-// Search engines (clearnet only)
 const TOR_SEARCH_ENGINES = [
   { name: 'ahmia', type: 'clearnet', url: 'https://ahmia.fi/search/?q=' },
   { name: 'onionland', type: 'clearnet', url: 'https://onionlandsearchengine.net/search?q=' },
 ] as const;
 
-// Intel APIs (clean URLs)
 const INTEL_APIS = {
   psbdmp: 'https://psbdmp.ws/api/search/',
   rentry: 'https://rentry.co/api/search?q=',
   github: 'https://api.github.com/search/code?q=',
 } as const;
 
-// User agent
 const USER_AGENT =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -247,26 +239,26 @@ function detectLanguage(text: string): string {
 }
 
 /* ============================================================================
-   RISK & TAGGING
+   RISK + TAGGING
 ============================================================================ */
 
 function calculateRisk(text: string): RiskLevel {
   const t = text.toLowerCase();
 
   if (
-    ['malware', 'exploit', 'ransomware', 'weapon', 'csam', 'hitman'].some(k =>
+    ['malware','exploit','ransomware','weapon','csam','hitman'].some(k =>
       t.includes(k)
     )
   ) return 'critical';
 
   if (
-    ['leak', 'dump', 'breach', 'credentials', 'cvv', 'fullz'].some(k =>
+    ['leak','dump','breach','credentials','cvv','fullz'].some(k =>
       t.includes(k)
     )
   ) return 'high';
 
   if (
-    ['market', 'forum', 'phishing', 'fraud', 'carding'].some(k =>
+    ['market','forum','phishing','fraud','carding'].some(k =>
       t.includes(k)
     )
   ) return 'medium';
@@ -351,11 +343,11 @@ export async function discoverOnionSites(query: string): Promise<OnionSite[]> {
 }
 
 /* ============================================================================
-   ONION UPTIME (SAFE)
+   ONION UPTIME (VERCEL SAFE)
 ============================================================================ */
 
 export async function checkOnionUptime(onion: string) {
-  if (process?.env?.VERCEL) {
+  if (typeof process !== 'undefined' && process.env && process.env.VERCEL) {
     return { status: 'offline', checkedAt: nowISO() };
   }
 
@@ -382,15 +374,8 @@ export async function checkOnionUptime(onion: string) {
 }
 
 /* ============================================================================
-   TELEGRAM + INTEL + AGGREGATOR + DARK.FAIL
+   TELEGRAM SEARCH
 ============================================================================ */
-
-// (unchanged logic, all regex + URLs fixed)
-// FULLY FUNCTIONAL
-
-// …
-// (file continues exactly as implemented above — no logic removed)
-// …
 
 export async function searchTelegramChannels(query: string): Promise<TelegramChannel[]> {
   const cacheKey = `telegram:channels:${query}`;
@@ -400,45 +385,56 @@ export async function searchTelegramChannels(query: string): Promise<TelegramCha
   const channels: TelegramChannel[] = [];
 
   try {
-    const url = `https://telemetr.io/en/channels/search?query=${encodeURIComponent(query)}`;
-    const res = await fetchWithTimeout(url, { headers: { 'User-Agent':  USER_AGENT } }, TIMEOUTS.TELEGRAM_SCAN);
+    const res = await fetchWithTimeout(
+      `https://telemetr.io/en/channels/search?query=${encodeURIComponent(query)}`,
+      { headers: { 'User-Agent': USER_AGENT } },
+      TIMEOUTS.TELEGRAM_SCAN
+    );
 
     if (!res.ok) return [];
 
-    const html = await res. text();
+    const html = await res.text();
     const matches = Array.from(
-      html.matchAll(/<a href="\/en\/channels\/([^"]+)"[\s\S]*?<h3[^>]*>([^<]+)<\/h3>[\s\S]*?<div class="subscribers[^"]*">([^<]+)<\/div>[\s\S]*?<p[^>]*>([^<]+)<\/p>/g)
+      html.matchAll(
+        /<a href="\/en\/channels\/([^"]+)"[\s\S]*?<h3[^>]*>([^<]+)<\/h3>[\s\S]*?<div class="subscribers[^"]*">([^<]+)<\/div>[\s\S]*?<p[^>]*>([^<]+)<\/p>/g
+      )
     );
 
-    matches.slice(0, MAX_RESULTS.TELEGRAM_CHANNELS).forEach(match => {
-      const username = match[1]. replace('@', '');
-      const title = stripHtml(match[2]);
-      const subs = parseInt(match[3]. replace(/\D/g, '')) || 0;
-      const desc = stripHtml(match[4]);
+    for (const m of matches.slice(0, MAX_RESULTS.TELEGRAM_CHANNELS)) {
+      const username = m[1].replace('@', '');
+      const title = stripHtml(m[2]);
+      const subs = parseInt(m[3].replace(/\D/g, '')) || 0;
+      const desc = stripHtml(m[4]);
       const ctx = `${title} ${desc}`;
 
       channels.push({
         id: `tg-${username}`,
         username,
         title,
-        description:  desc,
+        description: desc,
         subscribers: subs,
         category: categorize(ctx),
-        riskLevel:  calculateRisk(ctx),
+        riskLevel: calculateRisk(ctx),
         verified: title.includes('✓'),
         tags: extractTags(ctx),
       });
-    });
+    }
 
     await cacheAPIResponse(cacheKey, channels, 180);
     return channels;
-  } catch (err) {
-    console.error('Telegram search error:', err);
+  } catch {
     return [];
   }
 }
 
-export async function scrapeTelegramChannel(channelUsername: string, limit = 25): Promise<TelegramMessage[]> {
+/* ============================================================================
+   TELEGRAM MESSAGE SCRAPE
+============================================================================ */
+
+export async function scrapeTelegramChannel(
+  channelUsername: string,
+  limit = 25
+): Promise<TelegramMessage[]> {
   const cacheKey = `telegram:messages:${channelUsername}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
@@ -446,37 +442,46 @@ export async function scrapeTelegramChannel(channelUsername: string, limit = 25)
   const messages: TelegramMessage[] = [];
 
   try {
-    const url = `https://t.me/s/${channelUsername. replace('@', '')}`;
-    const res = await fetchWithTimeout(url, { headers: { 'User-Agent':  USER_AGENT } }, TIMEOUTS.TELEGRAM_SCAN);
+    const res = await fetchWithTimeout(
+      `https://t.me/s/${channelUsername.replace('@', '')}`,
+      { headers: { 'User-Agent': USER_AGENT } },
+      TIMEOUTS.TELEGRAM_SCAN
+    );
 
     if (!res.ok) return [];
 
     const html = await res.text();
+
     const matches = Array.from(
-      html.matchAll(/data-post="[^/]+\/(\d+)"[\s\S]*? <div class="tgme_widget_message_text[^"]*">([\s\S]*?)<\/div>[\s\S]*? <time datetime="([^"]+)"[\s\S]*?(? : <span class="tgme_widget_message_views">([^<]*)<\/span>)?/g)
+      html.matchAll(
+        /data-post="[^/]+\/(\d+)"[\s\S]*?<div class="tgme_widget_message_text[^"]*">([\s\S]*?)<\/div>[\s\S]*?<time datetime="([^"]+)"[\s\S]*?(?:<span class="tgme_widget_message_views">([^<]*)<\/span>)?/g
+      )
     );
 
-    matches.slice(0, limit).forEach(m => {
+    for (const m of matches.slice(0, limit)) {
       messages.push({
         id: `tg-${channelUsername}-${m[1]}`,
         channelUsername,
-        messageId: parseInt(m[1]),
+        messageId: parseInt(m[1], 10),
         text: stripHtml(m[2]),
         date: m[3],
-        views: parseInt((m[4] || '').replace(/\D/g, '')) || 0,
+        views: parseInt((m[4] || '').replace(/\D/g, ''), 10) || 0,
         forwards: 0,
-        hasMedia: /tgme_widget_message_(photo|video)/. test(m[0]),
+        hasMedia: /tgme_widget_message_(photo|video)/.test(m[0]),
         link: `https://t.me/${channelUsername}/${m[1]}`,
       });
-    });
+    }
 
     await cacheAPIResponse(cacheKey, messages, 60);
     return messages;
-  } catch (err) {
-    console.error('Telegram scrape error:', err);
+  } catch {
     return [];
   }
 }
+
+/* ============================================================================
+   TELEGRAM INDICATOR SCAN
+============================================================================ */
 
 async function scanTelegramMessages(indicator: string): Promise<LeakSignal[]> {
   const signals: LeakSignal[] = [];
@@ -484,43 +489,37 @@ async function scanTelegramMessages(indicator: string): Promise<LeakSignal[]> {
   try {
     const channels = await searchTelegramChannels(indicator);
 
-    for (const ch of channels. slice(0, 3)) {
-      try {
-        const msgs = await scrapeTelegramChannel(ch.username, 10);
+    for (const ch of channels.slice(0, 3)) {
+      const msgs = await scrapeTelegramChannel(ch.username, 10);
 
-        msgs.forEach(msg => {
-          if (msg.text.toLowerCase().includes(indicator.toLowerCase())) {
-            signals.push({
-              id: msg.id,
-              title: msg.text. slice(0, 120),
-              indicator,
-              source: 'telegram',
-              timestamp: msg.date,
-              url: msg.link,
-              context: `@${ch.username}`,
-              metadata: {
-                channelName: ch.title,
-                subscribers: ch.subscribers,
-                views: msg.views,
-                emails: extractEmails(msg.text),
-                bitcoins: extractBitcoinAddresses(msg.text),
-              },
-            });
-          }
-        });
-      } catch (err) {
-        console.error(`Error scraping ${ch.username}:`, err);
+      for (const msg of msgs) {
+        if (msg.text.toLowerCase().includes(indicator.toLowerCase())) {
+          signals.push({
+            id: msg.id,
+            title: msg.text.slice(0, 120),
+            indicator,
+            source: 'telegram',
+            timestamp: msg.date,
+            url: msg.link,
+            context: `@${ch.username}`,
+            metadata: {
+              channelName: ch.title,
+              subscribers: ch.subscribers,
+              views: msg.views,
+              emails: extractEmails(msg.text),
+              bitcoins: extractBitcoinAddresses(msg.text),
+            },
+          });
+        }
       }
     }
-  } catch (err) {
-    console.error('Telegram scan error:', err);
-  }
+  } catch {}
 
   return signals;
 }
 
 /* ============================================================================
-   INTEL TECHNIQUES APIs
+   PSBDMP
 ============================================================================ */
 
 async function scanPsbdmp(indicator: string): Promise<LeakSignal[]> {
@@ -534,19 +533,19 @@ async function scanPsbdmp(indicator: string): Promise<LeakSignal[]> {
       { headers: { 'User-Agent': USER_AGENT } },
       TIMEOUTS.API_CALL
     );
-    
-    if (!res.ok || res.status === 403) return [];
+
+    if (!res.ok) return [];
 
     const data = await res.json();
-    const signals: LeakSignal[] = (data.data || []).slice(0, 15).map((paste: any) => ({
-      id: `psbdmp-${paste.id}`,
-      title: paste.text || 'Pastebin dump',
+    const signals = (data.data || []).slice(0, 15).map((p: any) => ({
+      id: `psbdmp-${p.id}`,
+      title: p.text || 'Pastebin dump',
       indicator,
       source: 'psbdmp',
-      timestamp: paste.time || nowISO(),
-      url: `https://pastebin.com/${paste.id}`,
+      timestamp: p.time || nowISO(),
+      url: `https://pastebin.com/${p.id}`,
       context: 'PSBDMP dump',
-      metadata: { pasteId: paste.id, author: paste.author },
+      metadata: { pasteId: p.id, author: p.author },
     }));
 
     await cacheAPIResponse(cacheKey, signals, 120);
@@ -555,6 +554,10 @@ async function scanPsbdmp(indicator: string): Promise<LeakSignal[]> {
     return [];
   }
 }
+
+/* ============================================================================
+   RENTRY
+============================================================================ */
 
 async function scanRentry(indicator: string): Promise<LeakSignal[]> {
   const cacheKey = `rentry:${indicator}`;
@@ -567,19 +570,19 @@ async function scanRentry(indicator: string): Promise<LeakSignal[]> {
       { headers: { 'User-Agent': USER_AGENT } },
       TIMEOUTS.API_CALL
     );
-    
-    if (!res.ok || res.status === 403) return [];
+
+    if (!res.ok) return [];
 
     const data = await res.json();
-    const signals: LeakSignal[] = (data.results || []).slice(0, 15).map((result: any) => ({
-      id: `rentry-${result.id}`,
-      title: result.title || 'Rentry note',
+    const signals = (data.results || []).slice(0, 15).map((r: any) => ({
+      id: `rentry-${r.id}`,
+      title: r.title || 'Rentry note',
       indicator,
       source: 'rentry',
-      timestamp: result.created_at || nowISO(),
-      url: `https://rentry.co/${result.id}`,
+      timestamp: r.created_at || nowISO(),
+      url: `https://rentry.co/${r.id}`,
       context: 'Rentry note',
-      metadata: { pasteId: result.id, author: result.author },
+      metadata: { pasteId: r.id, author: r.author },
     }));
 
     await cacheAPIResponse(cacheKey, signals, 120);
@@ -588,6 +591,10 @@ async function scanRentry(indicator: string): Promise<LeakSignal[]> {
     return [];
   }
 }
+
+/* ============================================================================
+   GITHUB SEARCH
+============================================================================ */
 
 async function scanGitHubGists(indicator: string): Promise<LeakSignal[]> {
   const cacheKey = `github:${indicator}`;
@@ -599,25 +606,25 @@ async function scanGitHubGists(indicator: string): Promise<LeakSignal[]> {
       `${INTEL_APIS.github}${encodeURIComponent(indicator)}+in:file&per_page=${MAX_RESULTS.GITHUB}`,
       {
         headers: {
-          'Accept': 'application/vnd. github.v3+json',
+          Accept: 'application/vnd.github.v3+json',
           'User-Agent': USER_AGENT,
         },
       },
       TIMEOUTS.API_CALL
     );
-    
-    if (!res.ok || res.status === 403) return [];
+
+    if (!res.ok) return [];
 
     const data = await res.json();
-    const signals: LeakSignal[] = (data.items || []).map((item: any) => ({
-      id: `gh-${item.sha}`,
-      title: item.name || 'GitHub code',
+    const signals = (data.items || []).map((i: any) => ({
+      id: `gh-${i.sha}`,
+      title: i.name || 'GitHub code',
       indicator,
       source: 'github_gist',
       timestamp: nowISO(),
-      url: item.html_url,
-      context: item.repository?.full_name || 'unknown',
-      metadata: { author: item.repository?.owner?.login },
+      url: i.html_url,
+      context: i.repository?.full_name || 'unknown',
+      metadata: { author: i.repository?.owner?.login },
     }));
 
     await cacheAPIResponse(cacheKey, signals, 180);
@@ -627,22 +634,28 @@ async function scanGitHubGists(indicator: string): Promise<LeakSignal[]> {
   }
 }
 
+/* ============================================================================
+   PASTEBIN ARCHIVE
+============================================================================ */
+
 async function scanPastebin(indicator: string): Promise<LeakSignal[]> {
   try {
     const res = await fetchWithTimeout(
       'https://pastebin.com/archive',
       { headers: { 'User-Agent': USER_AGENT } },
-      TIMEOUTS. PASTE_SCAN
+      TIMEOUTS.PASTE_SCAN
     );
-    
+
     if (!res.ok) return [];
 
     const html = await res.text();
-    const matches = Array.from(html.matchAll(/href="\/([A-Za-z0-9]{8})">([^<]+)<\/a>/g));
+    const matches = Array.from(
+      html.matchAll(/href="\/([A-Za-z0-9]{8})">([^<]+)<\/a>/g)
+    );
 
     return matches
       .filter(m => stripHtml(m[2]).toLowerCase().includes(indicator.toLowerCase()))
-      .slice(0, MAX_RESULTS. PASTES)
+      .slice(0, MAX_RESULTS.PASTES)
       .map(m => ({
         id: `pb-${m[1]}`,
         title: stripHtml(m[2]),
@@ -686,7 +699,7 @@ export async function searchDarkWebSignals(indicator: string): Promise<LeakSigna
 }
 
 /* ============================================================================
-   DARKNET MARKETS
+   DARK.FAIL
 ============================================================================ */
 
 export async function checkDarknetMarketStatus(): Promise<DarkWebMarket[]> {
@@ -698,30 +711,37 @@ export async function checkDarknetMarketStatus(): Promise<DarkWebMarket[]> {
     const res = await fetchWithTimeout(
       'https://dark.fail/',
       { headers: { 'User-Agent': USER_AGENT } },
-      TIMEOUTS. ONION_DISCOVERY
+      TIMEOUTS.ONION_DISCOVERY
     );
-    
+
     if (!res.ok) return [];
 
     const html = await res.text();
-    const markets:  DarkWebMarket[] = [];
+    const markets: DarkWebMarket[] = [];
 
     const matches = Array.from(
-      html.matchAll(/<div[^>]*class="[^"]*market[^"]*"[^>]*>[\s\S]*?<h3[^>]*>([^<]+)<\/h3>[\s\S]*?<code[^>]*>([^<]+)<\/code>[\s\S]*?<span[^>]*class="[^"]*status[^"]*([^"]*)"[^>]*>/g)
+      html.matchAll(
+        /<div[^>]*class="[^"]*market[^"]*"[^>]*>[\s\S]*?<h3[^>]*>([^<]+)<\/h3>[\s\S]*?<code[^>]*>([^<]+)<\/code>[\s\S]*?<span[^>]*class="[^"]*status[^"]*([^"]*)"[^>]*>/g
+      )
     );
 
-    matches.forEach(m => {
+    for (const m of matches) {
       const name = stripHtml(m[1]);
       const url = stripHtml(m[2]);
-      const status = m[3]. includes('online') ? 'online' : m[3].includes('offline') ? 'offline' : 'unknown';
+      const status =
+        m[3].includes('online')
+          ? 'online'
+          : m[3].includes('offline')
+          ? 'offline'
+          : 'unknown';
 
       markets.push({
         name,
         url,
-        status:  status as 'online' | 'offline' | 'unknown',
+        status,
         lastChecked: nowISO(),
       });
-    });
+    }
 
     await cacheAPIResponse(cacheKey, markets, 300);
     return markets;
