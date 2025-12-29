@@ -1,6 +1,7 @@
 // src/services/cveService.ts
 // CVE & Exploit Intelligence Service
-// Real integration with NVD, ExploitDB, and other CVE sources
+// Real integration with NVD (NIST), ExploitDB, and public OSINT sources
+// NO API KEYS REQUIRED
 
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
 
@@ -9,7 +10,7 @@ import { cacheAPIResponse, getCachedData } from '@/lib/database';
 ============================================================================ */
 
 export interface CVE {
-  id:  string;
+  id: string;
   description: string;
   published: string;
   modified: string;
@@ -19,8 +20,8 @@ export interface CVE {
     severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
     vector: string;
   };
-  cwe?:  string[];
-  references:  Array<{
+  cwe?: string[];
+  references: Array<{
     url: string;
     source: string;
     tags: string[];
@@ -55,65 +56,78 @@ export interface CVESearchParams {
   keyword?: string;
   cveId?: string;
   vendor?: string;
-  product?:  string;
+  product?: string;
   year?: string;
   severity?: string;
   hasExploit?: boolean;
 }
 
 /* ============================================================================
-   NVD CVE API - NATIONAL VULNERABILITY DATABASE
+   NVD – NATIONAL VULNERABILITY DATABASE (NO API KEY)
 ============================================================================ */
 
-export async function searchCVEs(params: CVESearchParams): Promise<CVE[]> {
-  const cacheKey = `cve:search:${JSON. stringify(params)}`;
+export async function searchCVEs(
+  params: CVESearchParams
+): Promise<CVE[]> {
+  const cacheKey = `cve:search:${JSON.stringify(params)}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
-  const cves: CVE[] = [];
+  const results: CVE[] = [];
 
   try {
-    let nvdUrl = 'https://services.nvd.nist.gov/rest/json/cves/2.0? ';
-    
-    if (params. cveId) {
-      nvdUrl += `cveId=${params.cveId}`;
-    } else if (params.keyword) {
-      nvdUrl += `keywordSearch=${encodeURIComponent(params.keyword)}`;
-    }
-    
-    if (params.severity) {
-      nvdUrl += `&cvssV3Severity=${params.severity}`;
+    let nvdUrl =
+      'https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=50';
+
+    if (params.cveId) {
+      nvdUrl += `&cveId=${encodeURIComponent(params.cveId)}`;
     }
 
-    nvdUrl += '&resultsPerPage=50';
+    if (params.keyword) {
+      nvdUrl += `&keywordSearch=${encodeURIComponent(params.keyword)}`;
+    }
+
+    if (params.severity) {
+      nvdUrl += `&cvssV3Severity=${params.severity.toUpperCase()}`;
+    }
 
     const response = await fetch(nvdUrl);
-    
-    if (!response. ok) throw new Error('NVD API failed');
+    if (!response.ok) {
+      throw new Error('NVD API request failed');
+    }
 
     const data = await response.json();
 
-    for (const item of data.vulnerabilities || []) {
-      const cve = item. cve;
-      
-      const cvssData = cve.metrics?.cvssMetricV31? .[0] || 
-                       cve.metrics?.cvssMetricV30?.[0] || 
-                       cve.metrics?.cvssMetricV2? .[0];
+    for (const entry of data.vulnerabilities || []) {
+      const cve = entry.cve;
 
-      const cvssScore = cvssData?.cvssData?.baseScore || 0;
-      const cvssVector = cvssData?. cvssData?.vectorString || '';
-      const severity = cvssData?.cvssData?.baseSeverity || 
-                      (cvssScore >= 9.0 ? 'CRITICAL' : 
-                       cvssScore >= 7.0 ? 'HIGH' : 
-                       cvssScore >= 4.0 ? 'MEDIUM' :  'LOW');
+      const cvssMetric =
+        cve.metrics?.cvssMetricV31?.[0] ||
+        cve.metrics?.cvssMetricV30?.[0] ||
+        cve.metrics?.cvssMetricV2?.[0];
 
-      const affected = [];
+      const cvssScore = cvssMetric?.cvssData?.baseScore ?? 0;
+      const vector = cvssMetric?.cvssData?.vectorString ?? '';
+      const severity =
+        cvssMetric?.cvssData?.baseSeverity ||
+        (cvssScore >= 9
+          ? 'CRITICAL'
+          : cvssScore >= 7
+          ? 'HIGH'
+          : cvssScore >= 4
+          ? 'MEDIUM'
+          : 'LOW');
+
+      const affected: CVE['affected'] = [];
+
       for (const config of cve.configurations || []) {
         for (const node of config.nodes || []) {
-          for (const cpeMatch of node.cpeMatch || []) {
-            const cpeUri = cpeMatch.criteria || '';
-            const parts = cpeUri.split(': ');
-            if (parts.length >= 5) {
+          for (const match of node.cpeMatch || []) {
+            const cpe = match.criteria;
+            if (!cpe) continue;
+
+            const parts = cpe.split(':');
+            if (parts.length >= 6) {
               affected.push({
                 vendor: parts[3],
                 product: parts[4],
@@ -126,65 +140,99 @@ export async function searchCVEs(params: CVESearchParams): Promise<CVE[]> {
 
       const exploits = await searchExploits(cve.id);
 
-      cves.push({
+      results.push({
         id: cve.id,
-        description: cve.descriptions? .[0]?.value || 'No description available',
-        published:  cve.published,
+        description:
+          cve.descriptions?.[0]?.value || 'No description available',
+        published: cve.published,
         modified: cve.lastModified,
         cvss: {
-          version: cvssData?.cvssData?.version || '3.1',
+          version: cvssMetric?.cvssData?.version || '3.1',
           score: cvssScore,
           severity: severity as any,
-          vector: cvssVector,
+          vector,
         },
-        cwe: cve.weaknesses?.[0]?.description?. map((d: any) => d.value) || [],
-        references: cve.references?. map((ref: any) => ({
-          url: ref.url,
-          source: ref.source || 'NVD',
-          tags: ref.tags || [],
-        })) || [],
-        cpe: cve.configurations?.[0]?.nodes?.[0]?.cpeMatch?. map((m: any) => m.criteria) || [],
+        cwe:
+          cve.weaknesses?.[0]?.description?.map(
+            (d: { value: string }) => d.value
+          ) || [],
+        references:
+          cve.references?.map((ref: any) => ({
+            url: ref.url,
+            source: ref.source || 'NVD',
+            tags: ref.tags || [],
+          })) || [],
+        cpe:
+          cve.configurations?.[0]?.nodes?.[0]?.cpeMatch?.map(
+            (m: any) => m.criteria
+          ) || [],
         exploits,
         affected,
       });
     }
 
-    await cacheAPIResponse(cacheKey, cves, 3600);
-    return cves;
+    await cacheAPIResponse(cacheKey, results, 3600);
+    return results;
   } catch (error) {
     console.error('CVE search error:', error);
     return [];
   }
 }
 
-export async function getCVEDetails(cveId: string): Promise<CVE | null> {
+/* ============================================================================
+   SINGLE CVE DETAILS
+============================================================================ */
+
+export async function getCVEDetails(
+  cveId: string
+): Promise<CVE | null> {
   const results = await searchCVEs({ cveId });
   return results[0] || null;
 }
 
-export async function searchExploits(cveId?: string, keyword?: string): Promise<Exploit[]> {
+/* ============================================================================
+   EXPLOIT SEARCH – EXPLOIT-DB (NO API KEY)
+============================================================================ */
+
+export async function searchExploits(
+  cveId?: string,
+  keyword?: string
+): Promise<Exploit[]> {
   const cacheKey = `exploits:${cveId || keyword || 'recent'}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
-  const exploits:  Exploit[] = [];
+  const exploits: Exploit[] = [];
 
   try {
-    const edbUrl = 'https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits. csv';
-    const response = await fetch(edbUrl);
-    
-    if (!response.ok) throw new Error('ExploitDB fetch failed');
+    const response = await fetch(
+      'https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits.csv'
+    );
 
-    const csvText = await response.text();
-    const lines = csvText.split('\n').slice(1);
+    if (!response.ok) {
+      throw new Error('ExploitDB CSV fetch failed');
+    }
 
-    for (const line of lines.slice(0, 100)) {
-      const parts = line. split(',');
-      if (parts.length < 5) continue;
+    const csv = await response.text();
+    const lines = csv.split('\n').slice(1);
 
-      const [id, file, description, date, author, type, platform] = parts;
+    for (const line of lines) {
+      if (exploits.length >= 20) break;
 
-      if (cveId && ! description.toLowerCase().includes(cveId.toLowerCase())) {
+      const parts = line.split(',');
+      if (parts.length < 7) continue;
+
+      const [
+        id,
+        file,
+        description,
+        date,
+        author,
+        type,
+        platform,
+      ] = parts.map((p) => p.replace(/"/g, '').trim());
+
+      if (cveId && !description.toLowerCase().includes(cveId.toLowerCase())) {
         continue;
       }
 
@@ -195,51 +243,62 @@ export async function searchExploits(cveId?: string, keyword?: string): Promise<
       exploits.push({
         id: `edb-${id}`,
         edbId: id,
-        title: description. replace(/"/g, ''),
-        description:  description.replace(/"/g, ''),
-        author: author.replace(/"/g, ''),
-        type: type.replace(/"/g, ''),
-        platform: platform.replace(/"/g, ''),
+        title: description,
+        description,
+        author,
+        type,
+        platform,
         verified: true,
         cveId: extractCVEFromText(description),
-        date: date,
+        date,
         url: `https://www.exploit-db.com/exploits/${id}`,
-        tags: [type.replace(/"/g, ''), platform.replace(/"/g, '')],
+        tags: [type, platform],
         source: 'exploit-db',
       });
-
-      if (exploits.length >= 20) break;
     }
 
     await cacheAPIResponse(cacheKey, exploits, 3600);
     return exploits;
   } catch (error) {
-    console.error('ExploitDB search error:', error);
+    console.error('Exploit search error:', error);
     return [];
   }
 }
 
-export async function getExploitCode(edbId: string): Promise<string | null> {
+/* ============================================================================
+   EXPLOIT SOURCE CODE – EXPLOIT-DB
+============================================================================ */
+
+export async function getExploitCode(
+  edbId: string
+): Promise<string | null> {
   const cacheKey = `exploit:code:${edbId}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
   try {
-    const response = await fetch(`https://www.exploit-db.com/download/${edbId}`);
-    
+    const response = await fetch(
+      `https://www.exploit-db.com/download/${edbId}`
+    );
+
     if (!response.ok) return null;
 
     const code = await response.text();
-    
     await cacheAPIResponse(cacheKey, code, 86400);
     return code;
   } catch (error) {
-    console.error('Get exploit code error:', error);
+    console.error('Exploit code fetch error:', error);
     return null;
   }
 }
 
-export async function searchGitHubPOCs(cveId: string): Promise<Exploit[]> {
+/* ============================================================================
+   GITHUB PROOF-OF-CONCEPT SEARCH (NO AUTH, RATE LIMITED)
+============================================================================ */
+
+export async function searchGitHubPOCs(
+  cveId: string
+): Promise<Exploit[]> {
   const cacheKey = `github:poc:${cveId}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
@@ -248,32 +307,36 @@ export async function searchGitHubPOCs(cveId: string): Promise<Exploit[]> {
 
   try {
     const response = await fetch(
-      `https://api.github.com/search/repositories?q=${cveId}+poc+OR+exploit&sort=stars&order=desc`,
+      `https://api.github.com/search/repositories?q=${encodeURIComponent(
+        `${cveId} poc exploit`
+      )}&sort=stars&order=desc`,
       {
         headers: {
-          'Accept':  'application/vnd. github.v3+json',
+          Accept: 'application/vnd.github.v3+json',
           'User-Agent': 'OSINT-Platform',
         },
       }
     );
 
-    if (!response.ok) throw new Error('GitHub search failed');
+    if (!response.ok) {
+      throw new Error('GitHub search failed');
+    }
 
     const data = await response.json();
 
-    for (const repo of data.items?. slice(0, 10) || []) {
+    for (const repo of data.items?.slice(0, 10) || []) {
       pocs.push({
         id: `github-${repo.id}`,
         title: repo.name,
         description: repo.description || 'No description',
-        author:  repo.owner. login,
+        author: repo.owner.login,
         type: 'POC',
         platform: 'Multiple',
         verified: false,
         cveId,
         date: repo.created_at,
         url: repo.html_url,
-        tags: ['poc', 'github', ... repo.topics || []],
+        tags: ['github', 'poc', ...(repo.topics || [])],
         source: 'github',
       });
     }
@@ -281,56 +344,68 @@ export async function searchGitHubPOCs(cveId: string): Promise<Exploit[]> {
     await cacheAPIResponse(cacheKey, pocs, 3600);
     return pocs;
   } catch (error) {
-    console.error('GitHub POC search error:', error);
+    console.error('GitHub POC error:', error);
     return [];
   }
 }
 
-export async function getRecentCVEs(days: number = 7, limit:  number = 50): Promise<CVE[]> {
+/* ============================================================================
+   RECENT CVES
+============================================================================ */
+
+export async function getRecentCVEs(
+  days: number = 7,
+  limit: number = 50
+): Promise<CVE[]> {
   const cacheKey = `cve:recent:${days}:${limit}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
   try {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days);
 
-    const nvdUrl = `https://services.nvd.nist.gov/rest/json/cves/2.0?pubStartDate=${startDate.toISOString()}&pubEndDate=${endDate.toISOString()}&resultsPerPage=${limit}`;
+    const url =
+      `https://services.nvd.nist.gov/rest/json/cves/2.0` +
+      `?pubStartDate=${start.toISOString()}` +
+      `&pubEndDate=${end.toISOString()}` +
+      `&resultsPerPage=${limit}`;
 
-    const response = await fetch(nvdUrl);
-    
-    if (!response.ok) throw new Error('NVD API failed');
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error('NVD recent CVEs failed');
+    }
 
     const data = await response.json();
     const cves: CVE[] = [];
 
-    for (const item of data.vulnerabilities || []) {
-      const cve = item.cve;
-      
-      const cvssData = cve.metrics?.cvssMetricV31?.[0] || 
-                       cve. metrics?.cvssMetricV30?.[0];
-
-      const cvssScore = cvssData?.cvssData?.baseScore || 0;
-      const severity = cvssData?.cvssData?.baseSeverity || 'LOW';
+    for (const entry of data.vulnerabilities || []) {
+      const cve = entry.cve;
+      const metric = cve.metrics?.cvssMetricV31?.[0];
 
       cves.push({
         id: cve.id,
-        description: cve.descriptions? .[0]?.value || '',
+        description: cve.descriptions?.[0]?.value || '',
         published: cve.published,
         modified: cve.lastModified,
-        cvss:  {
+        cvss: {
           version: '3.1',
-          score: cvssScore,
-          severity: severity as any,
-          vector: cvssData?.cvssData?.vectorString || '',
+          score: metric?.cvssData?.baseScore || 0,
+          severity:
+            (metric?.cvssData?.baseSeverity as any) || 'LOW',
+          vector: metric?.cvssData?.vectorString || '',
         },
-        cwe: cve.weaknesses? .[0]?.description?.map((d: any) => d.value) || [],
-        references: cve.references?.map((ref: any) => ({
-          url:  ref.url,
-          source: ref.source || 'NVD',
-          tags: ref. tags || [],
-        })) || [],
+        cwe:
+          cve.weaknesses?.[0]?.description?.map(
+            (d: any) => d.value
+          ) || [],
+        references:
+          cve.references?.map((ref: any) => ({
+            url: ref.url,
+            source: ref.source || 'NVD',
+            tags: ref.tags || [],
+          })) || [],
         exploits: [],
         affected: [],
       });
@@ -344,17 +419,26 @@ export async function getRecentCVEs(days: number = 7, limit:  number = 50): Prom
   }
 }
 
+/* ============================================================================
+   UTILITIES
+============================================================================ */
+
 function extractCVEFromText(text: string): string | undefined {
   const match = text.match(/CVE-\d{4}-\d{4,}/i);
-  return match ? match[0]. toUpperCase() : undefined;
+  return match ? match[0].toUpperCase() : undefined;
 }
 
 export function getSeverityColor(severity: string): string {
   switch (severity.toUpperCase()) {
-    case 'CRITICAL': return 'text-red-500 border-red-500';
-    case 'HIGH':  return 'text-orange-500 border-orange-500';
-    case 'MEDIUM': return 'text-yellow-500 border-yellow-500';
-    case 'LOW': return 'text-blue-500 border-blue-500';
-    default:  return 'text-gray-500 border-gray-500';
+    case 'CRITICAL':
+      return 'text-red-500 border-red-500';
+    case 'HIGH':
+      return 'text-orange-500 border-orange-500';
+    case 'MEDIUM':
+      return 'text-yellow-500 border-yellow-500';
+    case 'LOW':
+      return 'text-blue-500 border-blue-500';
+    default:
+      return 'text-gray-500 border-gray-500';
   }
 }
