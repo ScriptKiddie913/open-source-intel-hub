@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 
 import { OSINTSidebar } from "@/components/osint/OSINTSidebar";
-import { Dashboard } from "@/components/osint/Dashboard";
+import Dashboard from "@/components/osint/Dashboard";
 import { DomainIntelligence } from "@/components/osint/DomainIntelligence";
 import { IPAnalyzer } from "@/components/osint/IPAnalyzer";
 import { CertificateInspector } from "@/components/osint/CertificateInspector";

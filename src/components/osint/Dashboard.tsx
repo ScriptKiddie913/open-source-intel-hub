@@ -15,16 +15,16 @@ import {
   Activity
 } from 'lucide-react';
 import { 
-  getCVEData, 
-  getThreatIntelligence, 
+  getRecentCVEs, 
+  getLiveThreatFeeds, 
   searchCVE,
   type CVEData,
-  type ThreatIntel
+  type ThreatFeed
 } from '@/services/cveService';
 
 const Dashboard = () => {
   const [cveData, setCveData] = useState<CVEData[]>([]);
-  const [threatIntel, setThreatIntel] = useState<ThreatIntel[]>([]);
+  const [threatIntel, setThreatIntel] = useState<ThreatFeed[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -38,8 +38,8 @@ const Dashboard = () => {
     setLoading(true);
     try {
       const [cves, threats] = await Promise.all([
-        getCVEData(),
-        getThreatIntelligence()
+        getRecentCVEs(),
+        getLiveThreatFeeds()
       ]);
       setCveData(cves);
       setThreatIntel(threats);
@@ -81,10 +81,10 @@ const Dashboard = () => {
 
   const stats = {
     totalCVEs: cveData.length,
-    criticalThreats: cveData.filter(c => c.severity === 'CRITICAL').length,
-    activeThreats: threatIntel.filter(t => t.status === 'active').length,
+    criticalThreats: cveData.filter(c => c.cvss.severity === 'CRITICAL').length,
+    activeThreats: threatIntel.filter(t => t.type === 'apt' || t.type === 'ransomware').length,
     avgScore: cveData.length > 0 
-      ? (cveData.reduce((acc, c) => acc + c.cvssScore, 0) / cveData.length).toFixed(1)
+      ? (cveData.reduce((acc, c) => acc + c.cvss.score, 0) / cveData.length).toFixed(1)
       : '0.0'
   };
 
@@ -202,11 +202,11 @@ const Dashboard = () => {
                             {cve.description}
                           </p>
                           <div className="flex items-center gap-2 mt-2">
-                            <Badge variant={getSeverityColor(cve.severity)}>
-                              {cve.severity}
+                            <Badge variant={getSeverityColor(cve.cvss.severity)}>
+                              {cve.cvss.severity}
                             </Badge>
                             <span className="text-xs text-muted-foreground">
-                              CVSS: {cve.cvssScore}
+                              CVSS: {cve.cvss.score}
                             </span>
                           </div>
                         </div>
@@ -228,14 +228,14 @@ const Dashboard = () => {
                         <div className="flex-1">
                           <div className="font-medium flex items-center gap-2">
                             <Globe className="h-4 w-4" />
-                            {threat.name}
+                            {threat.threat}
                           </div>
                           <p className="text-sm text-muted-foreground line-clamp-2">
-                            {threat.description}
+                            {threat.indicator} ({threat.indicatorType})
                           </p>
                           <div className="flex items-center gap-2 mt-2">
-                            <Badge variant={threat.status === 'active' ? 'destructive' : 'secondary'}>
-                              {threat.status}
+                            <Badge variant={threat.type === 'apt' || threat.type === 'ransomware' ? 'destructive' : 'secondary'}>
+                              {threat.type}
                             </Badge>
                             <span className="text-xs text-muted-foreground">
                               {threat.source}
@@ -263,24 +263,24 @@ const Dashboard = () => {
                         <div>
                           <h3 className="font-semibold text-lg">{cve.id}</h3>
                           <p className="text-sm text-muted-foreground mt-1">
-                            Published: {new Date(cve.publishedDate).toLocaleDateString()}
+                            Published: {new Date(cve.published).toLocaleDateString()}
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-2">
-                          <Badge variant={getSeverityColor(cve.severity)}>
-                            {cve.severity}
+                          <Badge variant={getSeverityColor(cve.cvss.severity)}>
+                            {cve.cvss.severity}
                           </Badge>
-                          <span className="text-sm font-medium">CVSS: {cve.cvssScore}</span>
+                          <span className="text-sm font-medium">CVSS: {cve.cvss.score}</span>
                         </div>
                       </div>
                       <p className="text-sm">{cve.description}</p>
-                      {cve.affectedSystems && cve.affectedSystems.length > 0 && (
+                      {cve.cwe && cve.cwe.length > 0 && (
                         <div className="mt-3">
-                          <p className="text-xs font-medium mb-1">Affected Systems:</p>
+                          <p className="text-xs font-medium mb-1">CWE:</p>
                           <div className="flex flex-wrap gap-1">
-                            {cve.affectedSystems.map((system, idx) => (
+                            {cve.cwe.map((weakness, idx) => (
                               <Badge key={idx} variant="outline" className="text-xs">
-                                {system}
+                                {weakness}
                               </Badge>
                             ))}
                           </div>
@@ -305,25 +305,29 @@ const Dashboard = () => {
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <Globe className="h-5 w-5" />
-                          <h3 className="font-semibold text-lg">{threat.name}</h3>
+                          <h3 className="font-semibold text-lg">{threat.threat}</h3>
                         </div>
-                        <Badge variant={threat.status === 'active' ? 'destructive' : 'secondary'}>
-                          {threat.status}
+                        <Badge variant={threat.type === 'apt' || threat.type === 'ransomware' ? 'destructive' : 'secondary'}>
+                          {threat.type}
                         </Badge>
                       </div>
-                      <p className="text-sm mb-3">{threat.description}</p>
+                      <p className="text-sm mb-3">
+                        {threat.indicatorType}: <span className="font-mono">{threat.indicator}</span>
+                      </p>
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <span>Source: {threat.source}</span>
                         <span>•</span>
-                        <span>Updated: {new Date(threat.lastUpdated).toLocaleDateString()}</span>
+                        <span>Confidence: {threat.confidence}%</span>
+                        <span>•</span>
+                        <span>Last Seen: {new Date(threat.lastSeen).toLocaleDateString()}</span>
                       </div>
-                      {threat.indicators && threat.indicators.length > 0 && (
+                      {threat.tags && threat.tags.length > 0 && (
                         <div className="mt-3">
-                          <p className="text-xs font-medium mb-1">Indicators:</p>
+                          <p className="text-xs font-medium mb-1">Tags:</p>
                           <div className="flex flex-wrap gap-1">
-                            {threat.indicators.map((indicator, idx) => (
+                            {threat.tags.map((tag, idx) => (
                               <Badge key={idx} variant="outline" className="text-xs font-mono">
-                                {indicator}
+                                {tag}
                               </Badge>
                             ))}
                           </div>
