@@ -6,13 +6,13 @@ const TELEGRAM_WEB_API = 'https://t.me';
 // Leak detection patterns
 const LEAK_PATTERNS = {
   email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
-  password: /(?: password|pass|pwd)[\s: =]+[\S]+/gi,
+  password: /(?:password|pass|pwd)[\s:=]+[\S]+/gi,
   creditCard: /\b(?:\d{4}[-\s]?){3}\d{4}\b/g,
-  phone: /\b(? :\+?1[-.]?)?\(?([0-9]{3})\)?[-.]?([0-9]{3})[-.]?([0-9]{4})\b/g,
-  apiKey: /\b(? : api[_-]?key|token)[\s:=]+[a-zA-Z0-9_-]{20,}\b/gi,
+  phone: /\b(?:\+?1[-.]?)?\(?([0-9]{3})\)?[-.]?([0-9]{3})[-.]?([0-9]{4})\b/g,
+  apiKey: /\b(?:api[_-]?key|token)[\s:=]+[a-zA-Z0-9_-]{20,}\b/gi,
   hash: /\b[a-fA-F0-9]{32,64}\b/g,
   ip: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
-  database: /\. sql|\.db|\.dump|database|backup/gi,
+  database: /\.sql|\.db|\.dump|database|backup/gi,
 };
 
 const LEAK_KEYWORDS = [

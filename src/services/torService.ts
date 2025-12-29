@@ -331,7 +331,10 @@ export async function discoverOnionSites(query: string): Promise<OnionSite[]> {
           language: detectLanguage(ctx),
         });
       }
-    } catch {}
+    } catch (error) {
+      // Silently ignore parsing errors for individual onion sites
+      console.debug('Error parsing onion site:', error);
+    }
   }
 
   const uniqueSites = Array.from(
@@ -513,7 +516,10 @@ async function scanTelegramMessages(indicator: string): Promise<LeakSignal[]> {
         }
       }
     }
-  } catch {}
+  } catch (error) {
+    // Silently ignore parsing errors for individual messages
+    console.debug('Error parsing dark web message:', error);
+  }
 
   return signals;
 }
