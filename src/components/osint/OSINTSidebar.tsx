@@ -1,4 +1,4 @@
-// src/components/osint/OSINTSidebar.tsx - UPDATED WITH NEW ROUTES
+// REPLACE the entire import section (lines 1-25) with this:
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ import {
   User,
   Network,
   Eye,
+  Newspaper,  // ← ADD THIS LINE
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -35,11 +36,12 @@ interface NavItem {
   description?: string;
 }
 
-const mainNavItems: NavItem[] = [
+const mainNavItems:  NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, description: "Overview & Statistics" },
   { name: "Threat Intel", href: "/threat-intel", icon: Radar, description: "VirusTotal & Threat Analysis" },
-  { name: "Live Threats", href: "/live-threats", icon: Zap, description: "Real-time Threat Feeds" },
+  { name: "Live Threats", href: "/live-threats", icon:  Zap, description: "Real-time Threat Feeds" },
   { name: "CVE Explorer", href: "/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
+  { name:  "News Intel", href: "/news", icon:  Newspaper, description: "Real-time News & OSINT" },  // ← ADD THIS LINE
 ];
 
 const toolsNavItems: NavItem[] = [
