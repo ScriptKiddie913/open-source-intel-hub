@@ -1,5 +1,5 @@
 // ============================================================================
-// torService.ts
+// torService. ts
 // REAL Dark Web Intelligence — Optimized for Speed + Telegram Integration
 // ============================================================================
 
@@ -12,7 +12,7 @@ import { cacheAPIResponse, getCachedData } from '@/lib/database';
 export type RiskLevel = 'critical' | 'high' | 'medium' | 'low';
 
 export interface OnionSite {
-  url:  string;
+  url: string;
   title: string;
   description: string;
   category: string;
@@ -24,7 +24,7 @@ export interface OnionSite {
 }
 
 export interface LeakSignal {
-  id: string;
+  id:  string;
   title: string;
   indicator: string;
   source: 
@@ -38,7 +38,7 @@ export interface LeakSignal {
   timestamp: string;
   url: string;
   context:  string;
-  metadata?: {
+  metadata?:  {
     channelName?: string;
     subscribers?: number;
     views?: number;
@@ -265,10 +265,10 @@ export async function searchTelegramChannels(query: string): Promise<TelegramCha
 
       channels.push({
         id: `tg-${username}`,
-        username:  username.replace('@', ''),
+        username:  username. replace('@', ''),
         title: cleanTitle,
         description: cleanDesc,
-        subscribers:  parseInt(subscribers. replace(/[^0-9]/g, '')) || 0,
+        subscribers: parseInt(subscribers. replace(/[^0-9]/g, '')) || 0,
         category:  categorize(context),
         riskLevel: calculateRisk(context),
         verified: false,
@@ -315,9 +315,9 @@ export async function scrapeTelegramChannel(
 
     const html = await response.text();
 
-    // Extract message data from public web view
+    // Extract message data from public web view - FIXED REGEX
     const messageMatches = Array.from(
-      html.matchAll(/<div class="tgme_widget_message[^"]*"[^>]*data-post="[^\/]+\/(\d+)"[^>]*>.*? <div class="tgme_widget_message_text[^"]*"[^>]*>([^<]*(? :<[^>]+>[^<]*)*)<\/div>.*?<time[^>]*datetime="([^"]+)"[^>]*>.*?<span class="tgme_widget_message_views">([^<]+)<\/span>/gs)
+      html. matchAll(/<div class="tgme_widget_message[^"]*"[^>]*data-post="[^/]+\/(\d+)"[^>]*>.*?<div class="tgme_widget_message_text[^"]*"[^>]*>([^<]*(? :<[^>]+>[^<]*)*)<\/div>.*?<time[^>]*datetime="([^"]+)"[^>]*>.*?<span class="tgme_widget_message_views">([^<]+)<\/span>/gs)
     );
 
     messageMatches.slice(0, limit).forEach(([_, messageId, text, datetime, views]) => {
@@ -325,14 +325,14 @@ export async function scrapeTelegramChannel(
       
       messages.push({
         id: `tg-msg-${channelUsername}-${messageId}`,
-        channelUsername:  channelUsername.replace('@', ''),
+        channelUsername: channelUsername. replace('@', ''),
         messageId: parseInt(messageId),
         text: cleanText,
         date: datetime,
-        views: parseInt(views. replace(/[^0-9]/g, '')) || 0,
-        forwards: 0,
+        views: parseInt(views.replace(/[^0-9]/g, '')) || 0,
+        forwards:  0,
         hasMedia: html.includes(`data-post="${channelUsername}/${messageId}"`) && html.includes('tgme_widget_message_photo'),
-        link: `https://t.me/${channelUsername. replace('@', '')}/${messageId}`,
+        link: `https://t.me/${channelUsername.replace('@', '')}/${messageId}`,
       });
     });
 
@@ -364,20 +364,20 @@ async function scanTelegramMessages(indicator: string): Promise<LeakSignal[]> {
         const messages = await scrapeTelegramChannel(channel. username, 10);
         
         messages.forEach(msg => {
-          if (msg. text.toLowerCase().includes(indicator.toLowerCase())) {
+          if (msg.text.toLowerCase().includes(indicator.toLowerCase())) {
             signals.push({
               id: msg.id,
               title: msg.text. substring(0, 100) + (msg.text.length > 100 ? '...' : ''),
               indicator,
-              source:  'telegram',
-              timestamp:  msg.date,
+              source: 'telegram',
+              timestamp: msg.date,
               url: msg.link,
               context: `Found in @${channel.username} (${channel.subscribers} subscribers)`,
               metadata: {
                 channelName: channel.title,
                 subscribers: channel.subscribers,
                 views: msg.views,
-                messageId: msg. messageId,
+                messageId: msg.messageId,
               },
             });
           }
@@ -436,7 +436,7 @@ export async function searchTelegramWithBot(
     if (data.result && Array.isArray(data.result. messages)) {
       data.result.messages.forEach((msg: any) => {
         signals.push({
-          id: `tg-bot-${msg.message_id}`,
+          id: `tg-bot-${msg. message_id}`,
           title: msg.text || 'Telegram message',
           indicator: query,
           source: 'telegram',
@@ -536,7 +536,7 @@ export async function checkOnionUptime(
   try {
     const host = onion.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const proxy = TOR2WEB_PROXIES[0];
-    const url = `https://${host}.${proxy}`;
+    const url = `https://${host}. ${proxy}`;
 
     const start = Date.now();
 
@@ -579,8 +579,8 @@ async function scanPastebin(indicator: string): Promise<LeakSignal[]> {
     const response = await fetchWithTimeout(
       'https://pastebin.com/archive',
       {
-        headers:  {
-          'User-Agent':  'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         },
       },
       TIMEOUTS.PASTE_SCAN
@@ -588,7 +588,7 @@ async function scanPastebin(indicator: string): Promise<LeakSignal[]> {
 
     if (!response.ok) return [];
 
-    const html = await response. text();
+    const html = await response.text();
 
     const pasteMatches = Array.from(
       html.matchAll(/<a href="\/([A-Za-z0-9]{8})"[^>]*>([^<]+)<\/a>/g)
@@ -629,7 +629,7 @@ async function scanPsbdmp(indicator: string): Promise<LeakSignal[]> {
       `https://psbdmp.ws/api/search/${encodeURIComponent(indicator)}`,
       {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'User-Agent':  'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         },
       },
       TIMEOUTS.PASTE_SCAN
@@ -853,7 +853,7 @@ export async function checkDarknetMarketStatus(): Promise<Array<{
     const markets:  Array<{ name: string; url: string; status: 'online' | 'offline' | 'unknown'; lastChecked: string }> = [];
 
     const marketMatches = Array.from(
-      html.matchAll(/<div class="market"[^>]*>.*?<h3>([^<]+)<\/h3>.*?<code>([^<]+)<\/code>.*?<span class="status ([^"]+)">/gs)
+      html. matchAll(/<div class="market"[^>]*>.*?<h3>([^<]+)<\/h3>.*?<code>([^<]+)<\/code>.*?<span class="status ([^"]+)">/gs)
     );
 
     marketMatches.forEach(([_, name, url, status]) => {
