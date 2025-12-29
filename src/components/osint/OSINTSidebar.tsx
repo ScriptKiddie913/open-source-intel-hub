@@ -25,6 +25,7 @@ import {
   Network,
   Eye,
   Newspaper,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -51,6 +52,7 @@ const toolsNavItems: NavItem[] = [
   { name: "Breach Check", href: "/breach", icon:  Shield, description: "Email Breach Lookup" },
   { name: "Username OSINT", href: "/username", icon: User, description: "100+ Platform Enumeration" },
   { name:  "Dark Web", href: "/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
+  { name: "Telegram Intel", href: "/telegram", icon:  Send, description: "Telegram Leak & OSINT Monitor" },
   { name: "Graph Map", href: "/graph", icon:  Network, description: "Maltego-style Visualization" },
 ];
 
