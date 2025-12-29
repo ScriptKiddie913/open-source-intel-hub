@@ -1,4 +1,4 @@
-// src/components/osint/OSINTSidebar.tsx - UPDATED WITH NEW ROUTES
+// src/components/osint/OSINTSidebar.tsx - COMPLETE WITH NEWS INTEL
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ import {
   User,
   Network,
   Eye,
+  Newspaper,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -37,30 +38,31 @@ interface NavItem {
 
 const mainNavItems: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, description: "Overview & Statistics" },
-  { name: "Threat Intel", href: "/threat-intel", icon: Radar, description: "VirusTotal & Threat Analysis" },
-  { name: "Live Threats", href: "/live-threats", icon: Zap, description: "Real-time Threat Feeds" },
+  { name: "Threat Intel", href: "/threat-intel", icon:  Radar, description: "VirusTotal & Threat Analysis" },
+  { name: "Live Threats", href: "/live-threats", icon:  Zap, description: "Real-time Threat Feeds" },
   { name: "CVE Explorer", href: "/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
+  { name: "News Intel", href: "/news", icon: Newspaper, description: "Real-time News & OSINT" },
 ];
 
 const toolsNavItems: NavItem[] = [
-  { name: "Domain Intel", href: "/domain", icon: Globe, description: "DNS & Domain Analysis" },
+  { name: "Domain Intel", href: "/domain", icon:  Globe, description: "DNS & Domain Analysis" },
   { name: "IP Analyzer", href: "/ip", icon: Activity, description: "IP Intelligence" },
   { name: "Certificates", href: "/certs", icon: Lock, description: "SSL/TLS Certificates" },
-  { name: "Breach Check", href: "/breach", icon: Shield, description: "Email Breach Lookup" },
+  { name: "Breach Check", href: "/breach", icon:  Shield, description: "Email Breach Lookup" },
   { name: "Username OSINT", href: "/username", icon: User, description: "100+ Platform Enumeration" },
-  { name: "Dark Web", href: "/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
-  { name: "Graph Map", href: "/graph", icon: Network, description: "Maltego-style Visualization" },
+  { name:  "Dark Web", href: "/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
+  { name: "Graph Map", href: "/graph", icon:  Network, description: "Maltego-style Visualization" },
 ];
 
 const dataNavItems: NavItem[] = [
   { name: "Import Data", href: "/import", icon: Upload, description: "Upload Datasets" },
-  { name: "Monitors", href: "/monitors", icon: Bell, description: "Active Monitoring" },
-  { name: "Reports", href: "/reports", icon: FileText, description: "Generated Reports" },
+  { name: "Monitors", href: "/monitors", icon:  Bell, description: "Active Monitoring" },
+  { name: "Reports", href: "/reports", icon:  FileText, description: "Generated Reports" },
 ];
 
 const systemNavItems: NavItem[] = [
-  { name: "Database", href: "/database", icon: Database, description: "Local Data Store" },
-  { name: "Settings", href: "/settings", icon: Settings, description: "Configuration" },
+  { name: "Database", href: "/database", icon:  Database, description: "Local Data Store" },
+  { name: "Settings", href: "/settings", icon:  Settings, description: "Configuration" },
 ];
 
 export function OSINTSidebar() {
@@ -75,17 +77,17 @@ export function OSINTSidebar() {
         to={item.href}
         className={cn(
           "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
-          "hover:bg-secondary group relative",
+          "hover: bg-secondary group relative",
           isActive
             ? "bg-primary/10 text-primary border-l-2 border-primary"
-            : "text-muted-foreground hover:text-foreground"
+            :  "text-muted-foreground hover:text-foreground"
         )}
       >
         <item.icon className={cn(
           "h-4 w-4 shrink-0 transition-colors",
           isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
         )} />
-        {!collapsed && (
+        {! collapsed && (
           <>
             <div className="flex-1 truncate">
               <div className="truncate">{item.name}</div>
@@ -97,7 +99,7 @@ export function OSINTSidebar() {
             </div>
             {item.badge !== undefined && item.badge > 0 && (
               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-                {item.badge > 99 ? "99+" : item.badge}
+                {item. badge > 99 ? "99+" :  item.badge}
               </span>
             )}
           </>
@@ -120,7 +122,7 @@ export function OSINTSidebar() {
     <aside
       className={cn(
         "flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
-        collapsed ? "w-16" : "w-64"
+        collapsed ? "w-16" :  "w-64"
       )}
     >
       {/* Header */}
@@ -140,7 +142,7 @@ export function OSINTSidebar() {
       <nav className="flex-1 overflow-y-auto p-3 space-y-6">
         {/* Intelligence */}
         <div className="space-y-1">
-          {!collapsed && (
+          {! collapsed && (
             <div className="flex items-center gap-2 px-3 mb-2">
               <AlertTriangle className="h-3 w-3 text-primary" />
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
