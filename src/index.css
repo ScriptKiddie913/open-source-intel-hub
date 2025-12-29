@@ -146,11 +146,27 @@
     animation: flicker 0.15s infinite;
   }
 
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.3s ease-out;
+  }
+
+  .animate-pulse-ring {
+    animation: pulse-ring 2s ease-in-out infinite;
+  }
+
   .grid-cyber {
     background-image: 
       linear-gradient(hsl(var(--border) / 0.3) 1px, transparent 1px),
       linear-gradient(90deg, hsl(var(--border) / 0.3) 1px, transparent 1px);
     background-size: 40px 40px;
+  }
+
+  .gradient-cyber {
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--accent) / 0.1));
   }
 }
 
@@ -179,7 +195,44 @@
   50% { opacity: 0.8; }
 }
 
-/* Matrix rain effect for backgrounds */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+}
+
+/* Enhanced matrix rain effect for backgrounds */
 .matrix-bg {
   position: relative;
   overflow: hidden;
@@ -191,4 +244,19 @@
   inset: 0;
   background: var(--gradient-glow);
   pointer-events: none;
+}
+
+/* Stealth mode inspired styling */
+.stealth-card {
+  background: linear-gradient(135deg, 
+    hsl(var(--card) / 0.95) 0%, 
+    hsl(var(--card) / 0.85) 100%);
+  border: 1px solid hsl(var(--border) / 0.5);
+  backdrop-filter: blur(10px);
+}
+
+.stealth-glow:hover {
+  box-shadow: 
+    0 0 20px hsl(var(--primary) / 0.2),
+    inset 0 0 20px hsl(var(--primary) / 0.05);
 }

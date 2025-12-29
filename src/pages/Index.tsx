@@ -1,4 +1,3 @@
-// src/pages/Index.tsx
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 
@@ -14,10 +13,13 @@ import { ThreatIntelSearch } from "@/components/osint/ThreatIntelSearch";
 import { CVEExplorer } from "@/components/osint/CVEExplorer";
 import { LiveThreatFeed } from "@/components/osint/LiveThreatFeed";
 
-// NEW IMPORTS
+// NEW ENHANCED IMPORTS
 import { UsernameEnumeration } from "@/components/osint/UsernameEnumeration";
 import { DarkWebScanner } from "@/components/osint/DarkWebScanner";
 import { GraphVisualization } from "@/components/osint/GraphVisualization";
+import { MalwareIntelligence } from "@/components/osint/MalwareIntelligence";
+import { NewsIntelligenceScanner } from "@/components/osint/NewsIntelligenceScanner";
+import { AIAssistant } from "@/components/osint/AIAssistant";
 
 import { initDatabase } from "@/lib/database";
 import { cn } from "@/lib/utils";
@@ -274,6 +276,9 @@ const Index = () => {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/threat-intel" element={<ThreatIntelSearch />} />
+          <Route path="/malware" element={<MalwareIntelligence />} />
+          <Route path="/news" element={<NewsIntelligenceScanner />} />
+          <Route path="/ai-assistant" element={<AIAssistant />} />
           <Route path="/domain" element={<DomainIntelligence />} />
           <Route path="/ip" element={<IPAnalyzer />} />
           <Route path="/certs" element={<CertificateInspector />} />
@@ -283,7 +288,7 @@ const Index = () => {
           <Route path="/import" element={<DataImporter />} />
           <Route path="/settings" element={<SettingsPage />} />
           
-          {/* NEW ROUTES */}
+          {/* ENHANCED ROUTES */}
           <Route path="/username" element={<UsernameEnumeration />} />
           <Route path="/darkweb" element={<DarkWebScanner />} />
           <Route path="/graph" element={<GraphVisualization />} />

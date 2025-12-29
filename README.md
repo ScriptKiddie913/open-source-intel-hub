@@ -1,26 +1,110 @@
-# Welcome to your Lovable project
+# SoTaNik OSINT Intelligence Hub
 
-## Project info
+An advanced Open Source Intelligence (OSINT) platform featuring comprehensive threat analysis, malware intelligence, and real-time news monitoring capabilities.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## 🚀 New Features (v2.5)
 
-## How can I edit this code?
+### 4. Malware Intelligence Hub
+- **Latest Malware Analysis**: Real-time tracking of new malware families, attack patterns, and origins
+- **File/URL/Hash Analysis**: Comprehensive malware detection using multiple engines
+- **Threat Family Classification**: Detailed information on active malware families and their tactics
+- **IOC Extraction**: Automatic extraction and correlation of Indicators of Compromise
 
-There are several ways of editing your application.
+### 5. News Intelligence Scanner
+- **Real-time News Monitoring**: Automated fetching of cybersecurity-related news articles
+- **Sentiment Analysis**: AI-powered sentiment analysis of news content
+- **Entity Recognition**: Extraction of key entities and topics from news articles
+- **Alert System**: Customizable alerts for specific keywords and threat types
+- **Trend Analysis**: Analysis of emerging threats and attack patterns
 
-**Use Lovable**
+### 6. Enhanced Dashboard (Dark Theme)
+- **Modern Dark UI**: Professional dark theme optimized for security operations
+- **Expanded Metrics**: New metrics for malware detections, news alerts, and AI analysis
+- **Enhanced Quick Actions**: Direct access to all new features from the dashboard
+- **Real-time Status**: Live status indicators for all data sources including new services
+- **AI-powered Insights**: Intelligent analysis and recommendations
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+### 🤖 Overall AI Features
+- **AI Intelligence Assistant**: Interactive chat interface for threat analysis
+- **Pattern Recognition**: Automated detection of threat patterns and anomalies
+- **Risk Assessment**: AI-powered risk scoring and impact analysis
+- **Correlation Engine**: Cross-reference indicators across multiple data sources
+- **Predictive Analysis**: Threat forecasting and trend prediction
 
-Changes made via Lovable will be committed automatically to this repo.
+## 🎯 Core Features
 
-**Use your preferred IDE**
+### Intelligence Gathering
+- **Domain Intelligence**: DNS analysis, subdomain enumeration, WHOIS data
+- **IP Analysis**: Geolocation, ASN information, reputation checking
+- **Certificate Inspection**: SSL/TLS certificate analysis and monitoring
+- **Breach Checking**: Email breach lookup across multiple databases
+- **Username OSINT**: Social media and platform enumeration (100+ platforms)
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Threat Analysis
+- **CVE Explorer**: Vulnerability database with real-time updates
+- **Live Threat Feeds**: Real-time threat intelligence from multiple sources
+- **Dark Web Scanner**: Dark web monitoring and leak detection
+- **Graph Visualization**: Maltego-style network analysis and mapping
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Data Management
+- **Data Import/Export**: Support for multiple data formats
+- **Local Database**: IndexedDB for offline data storage
+- **Monitoring System**: Automated monitoring and alerting
+- **Report Generation**: Comprehensive threat intelligence reports
 
-Follow these steps:
+## 🏗️ Architecture
+
+### Frontend Stack
+- **React 18** with TypeScript for type-safe development
+- **Vite** for fast build and development
+- **Tailwind CSS** for modern, responsive styling
+- **shadcn/ui** components for consistent UI elements
+- **Radix UI** primitives for accessibility
+
+### Backend Integration
+- **Supabase** for real-time database and authentication
+- **Public APIs** integration for threat intelligence
+- **CORS proxies** for cross-origin data fetching
+- **Service workers** for offline capabilities
+
+### AI & Analytics
+- **Pattern analysis** algorithms
+- **Sentiment analysis** for news intelligence
+- **Entity recognition** for content analysis
+- **Risk scoring** models
+
+## 🚦 API Status
+
+The platform integrates with multiple public and private APIs:
+
+- ✅ **Google DNS API** - Domain resolution
+- ✅ **IP Geolocation API** - Location services  
+- ✅ **Shodan InternetDB** - Port and service scanning
+- ✅ **Certificate Transparency** - SSL certificate monitoring
+- ✅ **NVD Database** - CVE and vulnerability data
+- ✅ **Malware Intelligence** - Threat detection services
+- ✅ **News Feeds** - Real-time security news
+- ✅ **Threat Feeds** - Live threat intelligence
+
+## 🎨 UI/UX Features
+
+- **Dark Theme Optimized**: Professional dark interface for security operations
+- **Responsive Design**: Works on desktop, tablet, and mobile devices
+- **Real-time Updates**: Live data refresh and notifications
+- **Keyboard Shortcuts**: Power user productivity features
+- **Accessibility**: WCAG compliant design
+- **Performance**: Optimized for large datasets and real-time analysis
+
+## 📊 Dashboard Metrics
+
+- **Total Records**: Comprehensive data tracking
+- **Malware Detections**: Real-time malware analysis results
+- **News Alerts**: Security-related news monitoring
+- **AI Analyses**: Automated intelligence processing
+- **Live Threats**: Active threat monitoring
+- **Threat Score**: Dynamic risk assessment
+
+## 🔧 Quick Start
 
 ```sh
 # Step 1: Clone the repository using the project's Git URL.

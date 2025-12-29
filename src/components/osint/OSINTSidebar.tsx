@@ -24,6 +24,10 @@ import {
   User,
   Network,
   Eye,
+  Skull,
+  Newspaper,
+  Brain,
+  FileSearch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -38,6 +42,8 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, description: "Overview & Statistics" },
   { name: "Threat Intel", href: "/threat-intel", icon: Radar, description: "VirusTotal & Threat Analysis" },
+  { name: "Malware Hub", href: "/malware", icon: Skull, description: "Malware Intelligence & Analysis" },
+  { name: "News Scanner", href: "/news", icon: Newspaper, description: "Real-time News Intelligence" },
   { name: "Live Threats", href: "/live-threats", icon: Zap, description: "Real-time Threat Feeds" },
   { name: "CVE Explorer", href: "/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
 ];
@@ -50,6 +56,7 @@ const toolsNavItems: NavItem[] = [
   { name: "Username OSINT", href: "/username", icon: User, description: "100+ Platform Enumeration" },
   { name: "Dark Web", href: "/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
   { name: "Graph Map", href: "/graph", icon: Network, description: "Maltego-style Visualization" },
+  { name: "AI Assistant", href: "/ai-assistant", icon: Brain, description: "AI-Powered Analysis" },
 ];
 
 const dataNavItems: NavItem[] = [
