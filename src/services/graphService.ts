@@ -47,8 +47,8 @@ export interface GraphNode {
   type: EntityType;
   label: string;
   value: string;
-  properties: Record<string, any>;
-  position: { x: number; y:  number };
+  properties:  Record<string, any>;
+  position: { x: number; y: number };
   color?:  string;
   icon?: string;
   size?: number;
@@ -91,10 +91,10 @@ export interface Transform {
 
 export const ENTITY_CONFIG:  Record<EntityType, { color: string; icon: string }> = {
   domain: { color: '#3b82f6', icon: '🌐' },
-  ip:  { color: '#10b981', icon: '📡' },
+  ip: { color: '#10b981', icon: '📡' },
   email: { color: '#f59e0b', icon: '📧' },
-  person: { color: '#8b5cf6', icon: '👤' },
-  organization: { color: '#ec4899', icon: '🏢' },
+  person:  { color: '#8b5cf6', icon: '👤' },
+  organization:  { color: '#ec4899', icon: '🏢' },
   phone: { color: '#06b6d4', icon: '📞' },
   url:  { color: '#6366f1', icon: '🔗' },
   hash: { color: '#f97316', icon: '🔐' },
@@ -105,7 +105,7 @@ export const ENTITY_CONFIG:  Record<EntityType, { color: string; icon: string }>
   asn:  { color: '#7c3aed', icon: '🏗️' },
   geolocation: { color: '#14b8a6', icon: '📍' },
   social_profile: { color: '#d946ef', icon: '👥' },
-  breach: { color:  '#b91c1c', icon: '💥' },
+  breach: { color: '#b91c1c', icon: '💥' },
   paste: { color: '#ea580c', icon: '📄' },
 };
 
@@ -113,7 +113,7 @@ export const ENTITY_CONFIG:  Record<EntityType, { color: string; icon: string }>
    AVAILABLE TRANSFORMS - MAPPED TO ENTITY TYPES
 ============================================================================ */
 
-export const AVAILABLE_TRANSFORMS:  Transform[] = [
+export const AVAILABLE_TRANSFORMS: Transform[] = [
   {
     id: 'dns_resolve',
     name: 'DNS Resolve',
@@ -166,7 +166,7 @@ export const AVAILABLE_TRANSFORMS:  Transform[] = [
   {
     id: 'port_scan',
     name: 'Port Scan',
-    description: 'Scan open ports',
+    description:  'Scan open ports',
     supportedTypes:  ['ip'],
     icon: '🔌',
   },
@@ -191,7 +191,7 @@ export const AVAILABLE_TRANSFORMS:  Transform[] = [
 ============================================================================ */
 
 async function transformDnsResolve(node: GraphNode): Promise<GraphNode[]> {
-  const cacheKey = `transform: dns: ${node.value}`;
+  const cacheKey = `transform:dns:${node.value}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
@@ -218,9 +218,9 @@ async function transformDnsResolve(node: GraphNode): Promise<GraphNode[]> {
             },
             position: {
               x: node.position.x + 250,
-              y: node.position.y + (idx * 80) - 40,
+              y: node. position.y + (idx * 80) - 40,
             },
-            color: ENTITY_CONFIG. ip.color,
+            color:  ENTITY_CONFIG.ip.color,
             icon: ENTITY_CONFIG.ip.icon,
             size: 50,
           });
@@ -250,8 +250,8 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
   try {
     // Using RDAP for structured data
     const apiUrl = node.type === 'ip' 
-      ? `https://rdap. arin.net/registry/ip/${node.value}`
-      : `https://rdap.verisign.com/com/v1/domain/${node.value}`;
+      ? `https://rdap.arin.net/registry/ip/${node.value}`
+      : `https://rdap.verisign. com/com/v1/domain/${node.value}`;
 
     const response = await fetch(apiUrl);
     if (!response.ok) throw new Error('WHOIS lookup failed');
@@ -274,7 +274,7 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
             source: 'whois',
           },
           position: {
-            x: node.position.x + 250,
+            x:  node.position.x + 250,
             y: node.position.y - 100 + (idx * 120),
           },
           color:  ENTITY_CONFIG.organization.color,
@@ -304,7 +304,7 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    const response = await fetch(`https://crt.sh/?q=%. ${node.value}&output=json`);
+    const response = await fetch(`https://crt.sh/?q=%.${node.value}&output=json`);
     if (!response.ok) throw new Error('Subdomain enum failed');
 
     const data = await response.json();
@@ -313,7 +313,7 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
     data.forEach((cert: any) => {
       const names = cert.name_value.split('\n');
       names.forEach((name: string) => {
-        if (name.endsWith(node.value) && name !== node.value && !name.includes('*')) {
+        if (name.endsWith(node.value) && name !== node.value && ! name.includes('*')) {
           subdomains. add(name);
         }
       });
@@ -400,7 +400,7 @@ async function transformGeolocation(node: GraphNode): Promise<GraphNode[]> {
             type: 'ISP',
           },
           position: {
-            x: node. position.x + 250,
+            x: node.position.x + 250,
             y: node.position.y + 80,
           },
           color: ENTITY_CONFIG.organization.color,
@@ -530,8 +530,8 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
           properties: {
             type: 'Certificate Authority',
           },
-          position: {
-            x: node. position.x + 500,
+          position:  {
+            x: node.position.x + 500,
             y: node.position.y - 100,
           },
           color: ENTITY_CONFIG.organization.color,
@@ -562,7 +562,7 @@ async function transformBreachCheck(node:  GraphNode): Promise<GraphNode[]> {
 
   try {
     const response = await fetch(
-      `https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(node.value)}? truncateResponse=false`,
+      `https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(node.value)}?truncateResponse=false`,
       { headers: { 'User-Agent': 'OSINT-Platform' } }
     );
 
@@ -581,12 +581,12 @@ async function transformBreachCheck(node:  GraphNode): Promise<GraphNode[]> {
             pwnCount: breach.PwnCount,
             dataClasses: breach.DataClasses,
           },
-          position:  {
+          position: {
             x: node.position.x + 300,
             y: node.position.y - 200 + (idx * 60),
           },
-          color: ENTITY_CONFIG.breach.color,
-          icon: ENTITY_CONFIG.breach. icon,
+          color:  ENTITY_CONFIG.breach.color,
+          icon: ENTITY_CONFIG.breach.icon,
           size: 45,
           metadata: {
             riskLevel: 'high',
@@ -681,7 +681,7 @@ export async function executeTransform(
       case 'subdomain_enum':
         newNodes = await transformSubdomainEnum(node);
         break;
-      case 'geolocation': 
+      case 'geolocation':  
         newNodes = await transformGeolocation(node);
         break;
       case 'port_scan':
@@ -690,13 +690,13 @@ export async function executeTransform(
       case 'ssl_cert':
         newNodes = await transformSslCert(node);
         break;
-      case 'breach_check':
+      case 'breach_check': 
         newNodes = await transformBreachCheck(node);
         break;
-      case 'reverse_ip': 
+      case 'reverse_ip':  
         newNodes = await transformReverseIp(node);
         break;
-      default: 
+      default:  
         throw new Error(`Transform ${transformId} not implemented`);
     }
   } catch (error) {
@@ -732,7 +732,7 @@ export function createEntity(
   position: { x: number; y: number }
 ): GraphNode {
   return {
-    id: `${type}-${value}-${Date. now()}`,
+    id: `${type}-${value}-${Date.now()}`,
     type,
     label: value,
     value,
