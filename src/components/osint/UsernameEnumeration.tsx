@@ -1,4 +1,6 @@
 // src/components/osint/UsernameEnumeration.tsx
+'use client';
+
 import { useState } from 'react';
 import {
   User,
@@ -29,15 +31,31 @@ import {
   enumerateUsername,
   calculateStats,
   getPlatformCategories,
-  type UsernameResult,
 } from '@/services/usernameService';
+
+interface UsernameResult {
+  platform: string;
+  username:  string;
+  exists: boolean;
+  url: string;
+  profileData?: {
+    bio?: string;
+    followers?: number;
+    posts?: number;
+    verified?: boolean;
+    avatarUrl?: string;
+  };
+  category: string;
+  icon:  string;
+  checkedAt:  string;
+  responseTime: number;
+}
 
 export function UsernameEnumeration() {
   const [username, setUsername] = useState('');
   const [results, setResults] = useState<UsernameResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [totalPlatforms, setTotalPlatforms] = useState(0);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'name' | 'category' | 'responseTime'>('name');
 
@@ -53,10 +71,9 @@ export function UsernameEnumeration() {
 
     try {
       const foundAccounts = await enumerateUsername(
-        username. trim(),
+        username.trim(),
         (completed, total) => {
           setProgress((completed / total) * 100);
-          setTotalPlatforms(total);
         }
       );
 
@@ -65,7 +82,7 @@ export function UsernameEnumeration() {
       if (foundAccounts.length === 0) {
         toast.info('No accounts found with this username');
       } else {
-        toast. success(`Found ${foundAccounts.length} accounts! `);
+        toast.success(`Found ${foundAccounts.length} accounts! `);
       }
     } catch (error) {
       console.error('Username enumeration error:', error);
@@ -84,16 +101,17 @@ export function UsernameEnumeration() {
         r.username,
         r.url,
         r.category,
-        r.responseTime,
+        r.responseTime.toString(),
       ].join(',')),
     ].join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
+    const url = URL. createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `username-${username}-${Date.now()}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
     toast.success('Results exported');
   };
 
@@ -101,7 +119,7 @@ export function UsernameEnumeration() {
     filterCategory === 'all' || r.category === filterCategory
   );
 
-  const sortedResults = [...filteredResults]. sort((a, b) => {
+  const sortedResults = [... filteredResults].sort((a, b) => {
     switch (sortBy) {
       case 'name':
         return a.platform.localeCompare(b. platform);
@@ -118,16 +136,18 @@ export function UsernameEnumeration() {
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
+      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-3">
           <User className="h-8 w-8 text-primary" />
           Username Enumeration
         </h1>
         <p className="text-muted-foreground mt-2">
-          Search for a username across 60+ platforms - Only shows accounts that actually exist
+          Search for a username across 35+ platforms - Only shows accounts that actually exist
         </p>
       </div>
 
+      {/* Search Bar */}
       <Card className="border-primary/30">
         <CardContent className="pt-6">
           <div className="flex gap-3">
@@ -146,7 +166,7 @@ export function UsernameEnumeration() {
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Searching...
+                  Searching... 
                 </>
               ) : (
                 <>
@@ -157,16 +177,17 @@ export function UsernameEnumeration() {
             </Button>
           </div>
 
+          {/* Progress Bar */}
           {loading && (
             <div className="mt-4 space-y-2">
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>Checking platforms...</span>
                 <span>{Math.round(progress)}%</span>
               </div>
-              <div className="w-full bg-secondary rounded-full h-2">
+              <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
                 <div
-                  className="bg-primary h-2 rounded-full transition-all duration-300"
-                  style={{ width:  `${progress}%` }}
+                  className="bg-primary h-full rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
                 />
               </div>
             </div>
@@ -174,6 +195,7 @@ export function UsernameEnumeration() {
         </CardContent>
       </Card>
 
+      {/* Statistics */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
@@ -218,6 +240,7 @@ export function UsernameEnumeration() {
         </div>
       )}
 
+      {/* Filters */}
       {results.length > 0 && (
         <Card>
           <CardContent className="pt-6">
@@ -248,24 +271,25 @@ export function UsernameEnumeration() {
               <div className="flex-1" />
 
               <Badge variant="secondary">
-                Showing {filteredResults.length} of {results.length} results
+                {filteredResults.length} of {results.length} results
               </Badge>
 
               <Button variant="outline" size="sm" onClick={exportResults}>
                 <Download className="h-4 w-4 mr-2" />
-                Export CSV
+                Export
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
+      {/* Empty State */}
       {! loading && results.length === 0 && username && (
         <Card className="border-dashed">
           <CardContent className="pt-12 pb-12 text-center">
             <XCircle className="h-16 w-16 mx-auto text-muted-foreground opacity-50 mb-4" />
             <p className="text-muted-foreground">
-              No accounts found for username "<strong>{username}</strong>"
+              No accounts found for username &quot;<strong>{username}</strong>&quot;
             </p>
             <p className="text-sm text-muted-foreground mt-2">
               Try a different username or check the spelling
@@ -274,10 +298,11 @@ export function UsernameEnumeration() {
         </Card>
       )}
 
+      {/* Results Grid */}
       {sortedResults.length > 0 && (
-        <div className="grid grid-cols-1 md: grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sortedResults.map((result) => (
-            <Card key={result. platform} className="hover:border-primary/50 transition-all">
+            <Card key={result.platform} className="hover:border-primary/50 transition-all">
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
@@ -289,7 +314,7 @@ export function UsernameEnumeration() {
                       </Badge>
                     </div>
                   </div>
-                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
                 </div>
 
                 <div className="space-y-2 text-sm">
@@ -314,7 +339,7 @@ export function UsernameEnumeration() {
 
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
-                    <span>{result. responseTime}ms</span>
+                    <span>{result.responseTime}ms</span>
                   </div>
                 </div>
 
@@ -335,6 +360,7 @@ export function UsernameEnumeration() {
         </div>
       )}
 
+      {/* Info Card */}
       <Card className="border-primary/40 bg-primary/5">
         <CardContent className="p-4 flex gap-3">
           <AlertCircle className="h-5 w-5 text-primary shrink-0" />
