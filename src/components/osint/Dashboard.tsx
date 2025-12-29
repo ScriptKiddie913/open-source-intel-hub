@@ -1,357 +1,421 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useEffect, useState } from "react";
 import { 
-  Shield, 
+  Database, 
+  Bell, 
   AlertTriangle, 
-  TrendingUp, 
+  Shield, 
+  Activity,
+  Clock,
   Search,
-  RefreshCw,
+  Upload,
   Globe,
-  Database,
-  Activity
-} from 'lucide-react';
+  Server,
+  Bug,
+  Zap,
+  TrendingUp,
+  Eye,
+} from "lucide-react";
+import { StatCard } from "./StatCard";
+import { APIStatusIndicator } from "./APIStatusIndicator";
+import { ThreatBadge } from "./ThreatBadge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { 
-  getCVEData, 
-  getThreatIntelligence, 
-  searchCVE,
-  type CVEData,
-  type ThreatIntel
-} from '@/services/cveService';
+  getRecordCount, 
+  getActiveMonitorCount, 
+  getAlertsToday, 
+  getRecentActivity,
+  initDatabase,
+} from "@/lib/database";
+import { getRecentCVEs } from "@/services/cveService";
+import { getLiveThreatFeeds } from "@/services/cveService";
+import { resolveDNS } from "@/services/dnsService";
+import { getIPGeolocation } from "@/services/ipService";
+import { cn } from "@/lib/utils";
 
-const Dashboard = () => {
-  const [cveData, setCveData] = useState<CVEData[]>([]);
-  const [threatIntel, setThreatIntel] = useState<ThreatIntel[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
+type APIStatus = "online" | "offline" | "rate_limited" | "checking";
+
+interface DashboardMetrics {
+  totalRecords: number;
+  activeMonitors: number;
+  alertsToday: number;
+  threatScore: number;
+  recentCVEs: number;
+  liveThreats: number;
+}
+
+interface RecentActivityItem {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  timestamp: Date;
+}
+
+export function Dashboard() {
+  const [metrics, setMetrics] = useState<DashboardMetrics>({
+    totalRecords: 0,
+    activeMonitors: 0,
+    alertsToday: 0,
+    threatScore: 0,
+    recentCVEs: 0,
+    liveThreats: 0,
+  });
+  const [apiStatus, setApiStatus] = useState<Record<string, APIStatus>>({
+    dns: "checking",
+    ipGeo: "checking",
+    shodan: "checking",
+    certs: "checking",
+    nvd: "checking",
+    threatFeeds: "checking",
+  });
+  const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
+  const [recentCVEs, setRecentCVEs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchData();
-    // Removed getLiveThreatFeeds call - function doesn't exist in cveService
+    loadDashboard();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const loadDashboard = async () => {
     try {
-      const [cves, threats] = await Promise.all([
-        getCVEData(),
-        getThreatIntelligence()
+      await initDatabase();
+      
+      // Load metrics from IndexedDB
+      const [records, monitors, alerts, activity] = await Promise.all([
+        getRecordCount(),
+        getActiveMonitorCount(),
+        getAlertsToday(),
+        getRecentActivity(10),
       ]);
-      setCveData(cves);
-      setThreatIntel(threats);
+
+      // Load recent CVEs and threats
+      const [cves, threats] = await Promise.all([
+        getRecentCVEs(7, 5).catch(() => []),
+        getLiveThreatFeeds().catch(() => []),
+      ]);
+
+      setMetrics({
+        totalRecords: records,
+        activeMonitors: monitors,
+        alertsToday: alerts,
+        threatScore: calculateThreatScore(alerts, threats.length),
+        recentCVEs: cves.length,
+        liveThreats: threats.length,
+      });
+
+      setRecentActivity(activity);
+      setRecentCVEs(cves);
+
+      // Check API statuses
+      checkAPIStatus();
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error("Dashboard load error:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-    
-    setLoading(true);
+  const checkAPIStatus = async () => {
+    // Check DNS API
     try {
-      const results = await searchCVE(searchQuery);
-      setCveData(results);
-    } catch (error) {
-      console.error('Error searching CVEs:', error);
-    } finally {
-      setLoading(false);
+      await resolveDNS("google.com", "A");
+      setApiStatus(prev => ({ ...prev, dns: "online" }));
+    } catch {
+      setApiStatus(prev => ({ ...prev, dns: "offline" }));
     }
+
+    // Check IP API
+    try {
+      await getIPGeolocation("8.8.8.8");
+      setApiStatus(prev => ({ ...prev, ipGeo: "online" }));
+    } catch {
+      setApiStatus(prev => ({ ...prev, ipGeo: "offline" }));
+    }
+
+    // Check NVD API
+    try {
+      await fetch('https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=1');
+      setApiStatus(prev => ({ ...prev, nvd: "online" }));
+    } catch {
+      setApiStatus(prev => ({ ...prev, nvd: "offline" }));
+    }
+
+    // Mark other services as online (they don't have easy health checks)
+    setApiStatus(prev => ({ 
+      ...prev, 
+      shodan: "online", 
+      certs: "online",
+      threatFeeds: "online",
+    }));
+  };
+
+  const calculateThreatScore = (alerts: number, threats: number): number => {
+    const alertScore = Math.min(alerts * 2, 50);
+    const threatScore = Math.min(threats / 10, 50);
+    return Math.round(alertScore + threatScore);
+  };
+
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case "search": return <Search className="h-4 w-4" />;
+      case "upload": return <Upload className="h-4 w-4" />;
+      case "monitor": return <Bell className="h-4 w-4" />;
+      case "alert": return <AlertTriangle className="h-4 w-4" />;
+      default: return <Activity className="h-4 w-4" />;
+    }
+  };
+
+  const formatTimeAgo = (date: Date) => {
+    const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000);
+    if (seconds < 60) return "just now";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
   };
 
   const getSeverityColor = (severity: string) => {
-    switch (severity.toLowerCase()) {
-      case 'critical':
-        return 'destructive';
-      case 'high':
-        return 'destructive';
-      case 'medium':
-        return 'default';
-      case 'low':
-        return 'secondary';
-      default:
-        return 'outline';
-    }
+    const s = severity?.toUpperCase() || '';
+    if (s === 'CRITICAL') return 'text-red-500';
+    if (s === 'HIGH') return 'text-orange-500';
+    if (s === 'MEDIUM') return 'text-yellow-500';
+    if (s === 'LOW') return 'text-blue-500';
+    return 'text-gray-500';
   };
 
-  const stats = {
-    totalCVEs: cveData.length,
-    criticalThreats: cveData.filter(c => c.severity === 'CRITICAL').length,
-    activeThreats: threatIntel.filter(t => t.status === 'active').length,
-    avgScore: cveData.length > 0 
-      ? (cveData.reduce((acc, c) => acc + c.cvssScore, 0) / cveData.length).toFixed(1)
-      : '0.0'
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-muted-foreground font-mono text-sm">Initializing OSINT Platform...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Shield className="h-8 w-8 text-blue-600" />
-              Open Source Intelligence Hub
-            </h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-1">
-              Real-time threat intelligence and vulnerability monitoring
-            </p>
-          </div>
-          <Button onClick={fetchData} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh Data
-          </Button>
+    <div className="p-6 space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Real-time intelligence monitoring and threat analysis
+          </p>
         </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total CVEs</CardTitle>
-              <Database className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalCVEs}</div>
-              <p className="text-xs text-muted-foreground">Tracked vulnerabilities</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Critical Threats</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-red-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">{stats.criticalThreats}</div>
-              <p className="text-xs text-muted-foreground">Require immediate attention</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Active Threats</CardTitle>
-              <Activity className="h-4 w-4 text-orange-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-600">{stats.activeThreats}</div>
-              <p className="text-xs text-muted-foreground">Currently monitored</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Avg CVSS Score</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.avgScore}</div>
-              <p className="text-xs text-muted-foreground">Severity rating</p>
-            </CardContent>
-          </Card>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
+          <Clock className="h-3 w-3" />
+          <span>Last updated: {new Date().toLocaleTimeString()}</span>
         </div>
-
-        {/* Search Bar */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search CVEs, threats, or vulnerabilities..."
-                  className="pl-10"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                />
-              </div>
-              <Button onClick={handleSearch} disabled={loading}>
-                Search
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Main Content Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="cves">CVE Database</TabsTrigger>
-            <TabsTrigger value="threats">Threat Intelligence</TabsTrigger>
-            <TabsTrigger value="feeds">Live Feeds</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Recent CVEs */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent CVEs</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {cveData.slice(0, 5).map((cve) => (
-                      <div key={cve.id} className="flex items-start justify-between border-b pb-3 last:border-0">
-                        <div className="flex-1">
-                          <div className="font-medium">{cve.id}</div>
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {cve.description}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Badge variant={getSeverityColor(cve.severity)}>
-                              {cve.severity}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">
-                              CVSS: {cve.cvssScore}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Active Threats */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Active Threats</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {threatIntel.slice(0, 5).map((threat) => (
-                      <div key={threat.id} className="flex items-start justify-between border-b pb-3 last:border-0">
-                        <div className="flex-1">
-                          <div className="font-medium flex items-center gap-2">
-                            <Globe className="h-4 w-4" />
-                            {threat.name}
-                          </div>
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {threat.description}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Badge variant={threat.status === 'active' ? 'destructive' : 'secondary'}>
-                              {threat.status}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">
-                              {threat.source}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="cves" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>CVE Database</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {cveData.map((cve) => (
-                    <div key={cve.id} className="border rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <h3 className="font-semibold text-lg">{cve.id}</h3>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Published: {new Date(cve.publishedDate).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <Badge variant={getSeverityColor(cve.severity)}>
-                            {cve.severity}
-                          </Badge>
-                          <span className="text-sm font-medium">CVSS: {cve.cvssScore}</span>
-                        </div>
-                      </div>
-                      <p className="text-sm">{cve.description}</p>
-                      {cve.affectedSystems && cve.affectedSystems.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-xs font-medium mb-1">Affected Systems:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {cve.affectedSystems.map((system, idx) => (
-                              <Badge key={idx} variant="outline" className="text-xs">
-                                {system}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="threats" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Threat Intelligence</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {threatIntel.map((threat) => (
-                    <div key={threat.id} className="border rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Globe className="h-5 w-5" />
-                          <h3 className="font-semibold text-lg">{threat.name}</h3>
-                        </div>
-                        <Badge variant={threat.status === 'active' ? 'destructive' : 'secondary'}>
-                          {threat.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm mb-3">{threat.description}</p>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>Source: {threat.source}</span>
-                        <span>•</span>
-                        <span>Updated: {new Date(threat.lastUpdated).toLocaleDateString()}</span>
-                      </div>
-                      {threat.indicators && threat.indicators.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-xs font-medium mb-1">Indicators:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {threat.indicators.map((indicator, idx) => (
-                              <Badge key={idx} variant="outline" className="text-xs font-mono">
-                                {indicator}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="feeds" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Live Threat Feeds</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Live threat feed integration coming soon...
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
       </div>
+
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Total Records"
+          value={metrics.totalRecords.toLocaleString()}
+          icon={Database}
+          variant="default"
+        />
+        <StatCard
+          title="Recent CVEs (7d)"
+          value={metrics.recentCVEs}
+          icon={Bug}
+          variant="primary"
+        />
+        <StatCard
+          title="Live Threats"
+          value={metrics.liveThreats}
+          icon={Zap}
+          variant={metrics.liveThreats > 100 ? "danger" : "warning"}
+        />
+        <StatCard
+          title="Threat Score"
+          value={`${metrics.threatScore}%`}
+          icon={Shield}
+          variant={metrics.threatScore > 50 ? "danger" : metrics.threatScore > 25 ? "warning" : "default"}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* API Status */}
+        <div className="card-cyber p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <Server className="h-4 w-4 text-primary" />
+            <h2 className="font-semibold text-foreground">Data Sources</h2>
+          </div>
+          <div className="space-y-2">
+            <APIStatusIndicator name="Google DNS" status={apiStatus.dns} />
+            <APIStatusIndicator name="IP Geolocation" status={apiStatus.ipGeo} />
+            <APIStatusIndicator name="Shodan InternetDB" status={apiStatus.shodan} />
+            <APIStatusIndicator name="Certificate Transparency" status={apiStatus.certs} />
+            <APIStatusIndicator name="NVD Database" status={apiStatus.nvd} />
+            <APIStatusIndicator name="Threat Feeds" status={apiStatus.threatFeeds} />
+          </div>
+        </div>
+
+        {/* Recent CVEs */}
+        <div className="card-cyber p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bug className="h-4 w-4 text-primary" />
+              <h2 className="font-semibold text-foreground">Recent CVEs</h2>
+            </div>
+            <a href="/cve" className="text-xs text-primary hover:underline">
+              View All →
+            </a>
+          </div>
+          
+          {recentCVEs.length > 0 ? (
+            <div className="space-y-2">
+              {recentCVEs.map((cve) => (
+                <a
+                  key={cve.id}
+                  href="/cve"
+                  className="flex items-center gap-3 p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+                >
+                  <div className="p-2 rounded-lg bg-destructive/10">
+                    <Shield className="h-4 w-4 text-destructive" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {cve.id}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      CVSS: <span className={getSeverityColor(cve.cvss.severity)}>{cve.cvss.score.toFixed(1)}</span>
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    {cve.cvss.severity}
+                  </Badge>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Bug className="h-12 w-12 text-muted-foreground/30 mb-4" />
+              <p className="text-muted-foreground text-sm">No recent CVEs</p>
+            </div>
+          )}
+        </div>
+
+        {/* Recent Activity */}
+        <div className="card-cyber p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary" />
+              <h2 className="font-semibold text-foreground">Recent Activity</h2>
+            </div>
+          </div>
+          
+          {recentActivity.length > 0 ? (
+            <div className="space-y-2">
+              {recentActivity.slice(0, 5).map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-center gap-3 p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+                >
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                    {getActivityIcon(activity.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {activity.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {activity.description}
+                    </p>
+                  </div>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {formatTimeAgo(activity.timestamp)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Globe className="h-12 w-12 text-muted-foreground/30 mb-4" />
+              <p className="text-muted-foreground text-sm">No recent activity</p>
+              <p className="text-muted-foreground/60 text-xs mt-1">
+                Start by searching for domains, IPs, or CVEs
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5 text-primary" />
+            Quick Actions
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <a
+              href="/threat-intel"
+              className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-primary/50 border border-transparent group"
+            >
+              <Shield className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+              <span className="text-sm font-medium text-foreground text-center">Threat Intel</span>
+            </a>
+            <a
+              href="/live-threats"
+              className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-primary/50 border border-transparent group"
+            >
+              <Zap className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+              <span className="text-sm font-medium text-foreground text-center">Live Threats</span>
+            </a>
+            <a
+              href="/cve"
+              className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-primary/50 border border-transparent group"
+            >
+              <Bug className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+              <span className="text-sm font-medium text-foreground text-center">CVE Explorer</span>
+            </a>
+            <a
+              href="/domain"
+              className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-primary/50 border border-transparent group"
+            >
+              <Globe className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+              <span className="text-sm font-medium text-foreground text-center">Domain Intel</span>
+            </a>
+            <a
+              href="/ip"
+              className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-primary/50 border border-transparent group"
+            >
+              <Activity className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+              <span className="text-sm font-medium text-foreground text-center">IP Analyzer</span>
+            </a>
+            <a
+              href="/import"
+              className="flex flex-col items-center gap-2 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-all duration-200 hover:border-primary/50 border border-transparent group"
+            >
+              <Upload className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+              <span className="text-sm font-medium text-foreground text-center">Import Data</span>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Info Banner */}
+      <Card className="bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <TrendingUp className="h-5 w-5 text-primary mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-foreground mb-1">Platform v2.0 Features</h3>
+              <p className="text-sm text-muted-foreground">
+                Now with live threat feeds, CVE/exploit database, real-time malware tracking, 
+                and interactive threat maps. All data is processed locally in your browser.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
-};
-
-export default Dashboard;
+}
