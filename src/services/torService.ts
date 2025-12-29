@@ -5,11 +5,12 @@
 //
 // ✔ Onion discovery via Ahmia & public directories
 // ✔ Paste & leak signal monitoring (Pastebin, Ghostbin, Rentry, GitHub Gists)
-// ✔ Tor2Web uptime checks (no Tor daemon)
-// ✔ No demo data
-// ✔ No simulated intelligence
+// ✔ Tor2Web uptime checks (HEAD only)
+// ✔ No Tor daemon required
+// ✔ No content scraping
 // ✔ No dump downloading
 // ✔ No authentication bypass
+// ✔ Vercel-safe (Edge-compatible fetch usage)
 //
 // ============================================================================
 
@@ -48,27 +49,16 @@ export interface LeakSignal {
   context: string;
 }
 
-export interface PasteData {
-  id: string;
-  title: string;
-  source: string;
-  url: string;
-  timestamp: string;
-  indicatorMatches: string[];
-}
-
 /* ============================================================================
    CONSTANTS
 ============================================================================ */
 
-// Tor2Web gateways (metadata / HEAD only)
 const TOR2WEB_PROXIES = [
   'https://onion.ws',
   'https://onion.ly',
   'https://tor2web.org',
 ];
 
-// Onion discovery sources
 const ONION_DIRECTORIES = [
   {
     name: 'ahmia',
@@ -76,7 +66,6 @@ const ONION_DIRECTORIES = [
   },
 ];
 
-// Indicator patterns
 const EMAIL_REGEX =
   /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
@@ -178,10 +167,10 @@ function categorize(text: string): string {
 }
 
 /* ============================================================================
-   LEVEL A — REAL ONION DISCOVERY (AHMIA)
+   LEVEL A — ONION DISCOVERY (AHMIA)
 ============================================================================ */
 
-export async function discoverOnionSites(
+async function discoverOnionSites(
   query: string
 ): Promise<OnionSite[]> {
   const cacheKey = `onion:discover:${query}`;
@@ -191,14 +180,10 @@ export async function discoverOnionSites(
   const results: OnionSite[] = [];
 
   try {
-    const url = `${ONION_DIRECTORIES[0].base}${encodeURIComponent(
-      query
-    )}`;
+    const url = `${ONION_DIRECTORIES[0].base}${encodeURIComponent(query)}`;
 
     const res = await fetch(
-      `https://api.allorigins.win/get?url=${encodeURIComponent(
-        url
-      )}`
+      `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
     );
 
     if (!res.ok) return [];
@@ -225,8 +210,7 @@ export async function discoverOnionSites(
       results.push({
         url: onion,
         title: titles[idx] || 'Unknown',
-        description:
-          descs[idx] || 'No description available',
+        description: descs[idx] || 'No description available',
         category: categorize(context),
         riskLevel: calculateRisk(context),
         lastSeen: nowISO(),
@@ -248,7 +232,7 @@ export async function discoverOnionSites(
    LEVEL A — ONION UPTIME CHECK (Tor2Web)
 ============================================================================ */
 
-export async function checkOnionUptime(
+async function checkOnionUptime(
   onion: string
 ): Promise<{
   status: 'online' | 'offline';
@@ -258,10 +242,7 @@ export async function checkOnionUptime(
   try {
     const proxy = TOR2WEB_PROXIES[0];
     const host = onion.replace(/^https?:\/\//, '');
-    const url = `https://${host}.${proxy.replace(
-      'https://',
-      ''
-    )}`;
+    const url = `https://${host}.${proxy.replace('https://', '')}`;
 
     const start = Date.now();
     const controller = new AbortController();
@@ -288,16 +269,10 @@ export async function checkOnionUptime(
 }
 
 /* ============================================================================
-   LEVEL B — REAL PASTE & LEAK SIGNALS
+   LEVEL B — PASTE & LEAK SIGNALS (METADATA ONLY)
 ============================================================================ */
 
-/* -----------------------------
-   Pastebin Archive (Metadata)
------------------------------- */
-
-export async function scanPastebin(
-  indicator: string
-): Promise<LeakSignal[]> {
+async function scanPastebin(indicator: string): Promise<LeakSignal[]> {
   const cacheKey = `pastebin:${indicator}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
@@ -317,15 +292,11 @@ export async function scanPastebin(
     const html = contents as string;
 
     const links = Array.from(
-      html.matchAll(
-        /<a href="\/([A-Za-z0-9]{8})"[^>]*>([^<]+)<\/a>/g
-      )
+      html.matchAll(/<a href="\/([A-Za-z0-9]{8})"[^>]*>([^<]+)<\/a>/g)
     ).slice(0, 40);
 
     links.forEach(([_, id, title]) => {
-      if (
-        title.toLowerCase().includes(indicator.toLowerCase())
-      ) {
+      if (title.toLowerCase().includes(indicator.toLowerCase())) {
         signals.push({
           id: `pb-${id}`,
           title: stripHtml(title),
@@ -346,13 +317,7 @@ export async function scanPastebin(
   }
 }
 
-/* -----------------------------
-   Ghostbin Browse (Metadata)
------------------------------- */
-
-export async function scanGhostbin(
-  indicator: string
-): Promise<LeakSignal[]> {
+async function scanGhostbin(indicator: string): Promise<LeakSignal[]> {
   const cacheKey = `ghostbin:${indicator}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
@@ -372,15 +337,11 @@ export async function scanGhostbin(
     const html = contents as string;
 
     const links = Array.from(
-      html.matchAll(
-        /<a href="\/paste\/([A-Za-z0-9]+)"[^>]*>([^<]+)<\/a>/g
-      )
+      html.matchAll(/<a href="\/paste\/([A-Za-z0-9]+)"[^>]*>([^<]+)<\/a>/g)
     ).slice(0, 30);
 
     links.forEach(([_, id, title]) => {
-      if (
-        title.toLowerCase().includes(indicator.toLowerCase())
-      ) {
+      if (title.toLowerCase().includes(indicator.toLowerCase())) {
         signals.push({
           id: `gb-${id}`,
           title: stripHtml(title),
@@ -401,13 +362,7 @@ export async function scanGhostbin(
   }
 }
 
-/* -----------------------------
-   Rentry Public Notes
------------------------------- */
-
-export async function scanRentry(
-  indicator: string
-): Promise<LeakSignal[]> {
+async function scanRentry(indicator: string): Promise<LeakSignal[]> {
   const cacheKey = `rentry:${indicator}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
@@ -427,20 +382,18 @@ export async function scanRentry(
     const html = contents as string;
 
     const links = Array.from(
-      html.matchAll(
-        /href="\/([a-zA-Z0-9_-]+)"/g
-      )
+      html.matchAll(/href="\/([a-zA-Z0-9_-]+)"/g)
     ).slice(0, 20);
 
     links.forEach(([_, id]) => {
       signals.push({
         id: `rentry-${id}`,
-        title: `Rentry note reference`,
+        title: 'Rentry public note',
         indicator,
         source: 'rentry',
         timestamp: nowISO(),
         url: `https://rentry.co/${id}`,
-        context: 'Rentry public note mention',
+        context: 'Rentry public reference',
       });
     });
 
@@ -452,11 +405,7 @@ export async function scanRentry(
   }
 }
 
-/* -----------------------------
-   GitHub Gists (Public Search)
------------------------------- */
-
-export async function scanGitHubGists(
+async function scanGitHubGists(
   indicator: string
 ): Promise<LeakSignal[]> {
   const cacheKey = `gists:${indicator}`;
@@ -478,9 +427,7 @@ export async function scanGitHubGists(
     const html = contents as string;
 
     const links = Array.from(
-      html.matchAll(
-        /href="(\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9]+)"/g
-      )
+      html.matchAll(/href="(\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9]+)"/g)
     ).slice(0, 20);
 
     links.forEach(([_, path]) => {
@@ -504,44 +451,35 @@ export async function scanGitHubGists(
 }
 
 /* ============================================================================
-   AGGREGATOR — REAL SIGNAL SEARCH
+   AGGREGATOR
 ============================================================================ */
 
-export async function searchDarkWebSignals(
+async function searchDarkWebSignals(
   indicator: string
 ): Promise<LeakSignal[]> {
   const cacheKey = `signals:${indicator}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
-  const [
-    pastebin,
-    ghostbin,
-    rentry,
-    gists,
-  ] = await Promise.all([
-    scanPastebin(indicator),
-    scanGhostbin(indicator),
-    scanRentry(indicator),
-    scanGitHubGists(indicator),
-  ]);
+  const results = (
+    await Promise.all([
+      scanPastebin(indicator),
+      scanGhostbin(indicator),
+      scanRentry(indicator),
+      scanGitHubGists(indicator),
+    ])
+  ).flat();
 
-  const all = [
-    ...pastebin,
-    ...ghostbin,
-    ...rentry,
-    ...gists,
-  ];
-
-  await cacheAPIResponse(cacheKey, all, 30);
-  return all;
+  await cacheAPIResponse(cacheKey, results, 30);
+  return results;
 }
 
 /* ============================================================================
-   EXPORTS
+   EXPORTS — SINGLE SOURCE OF TRUTH (FIXES YOUR BUILD)
 ============================================================================ */
 
 export {
   discoverOnionSites,
   checkOnionUptime,
+  searchDarkWebSignals,
 };
