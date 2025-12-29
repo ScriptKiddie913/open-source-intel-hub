@@ -25,6 +25,7 @@ import {
   Network,
   Eye,
   Newspaper,
+  FileWarning, 
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -39,9 +40,10 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, description: "Overview & Statistics" },
   { name: "Threat Intel", href: "/threat-intel", icon:  Radar, description: "VirusTotal & Threat Analysis" },
-  { name: "Live Threats", href: "/live-threats", icon:  Zap, description: "Real-time Threat Feeds" },
-  { name: "CVE Explorer", href: "/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
-  { name: "News Intel", href: "/news", icon: Newspaper, description: "Real-time News & OSINT" },
+  { name: "Live Threats", href: "/live-threats", icon: Zap, description: "Real-time Threat Feeds" },
+  { name:  "CVE Explorer", href: "/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
+  { name:  "News Intel", href: "/news", icon: Newspaper, description:  "Real-time News & OSINT" },
+  { name: "Malware Intel", href: "/malware", icon: FileWarning, description: "Malware Analysis & Tracking" }, // ADD THIS LINE
 ];
 
 const toolsNavItems: NavItem[] = [
