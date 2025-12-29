@@ -117,7 +117,7 @@ export function NewsIntelligence() {
   };
 
   const handleSaveSearch = async () => {
-    if (!query. trim()) return;
+    if (!query.trim()) return;
 
     try {
       await saveSaveSearch({
@@ -137,7 +137,6 @@ export function NewsIntelligence() {
     setFilters(search.params);
     setActiveTab('search');
     
-    // Auto-run the search
     setLoading(true);
     try {
       const results = await searchNews(search.params);
@@ -165,7 +164,7 @@ export function NewsIntelligence() {
     ].join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
+    const url = URL. createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `news-intel-${Date.now()}.csv`;
@@ -354,7 +353,7 @@ export function NewsIntelligence() {
             </div>
           )}
 
-          {!loading && articles.length === 0 && (
+          {! loading && articles.length === 0 && (
             <Card className="border-dashed">
               <CardContent className="pt-12 pb-12 text-center">
                 <Newspaper className="h-16 w-16 mx-auto text-muted-foreground opacity-50 mb-4" />
@@ -421,10 +420,10 @@ export function NewsIntelligence() {
    NEWS ARTICLE CARD COMPONENT
 ============================================================================ */
 
-function NewsArticleCard({ article }: { article: NewsArticle }) {
+function NewsArticleCard({ article }:  { article: NewsArticle }) {
   const getSentimentColor = (sentiment?:  string) => {
     switch (sentiment) {
-      case 'positive': return 'text-green-500';
+      case 'positive':  return 'text-green-500';
       case 'negative':  return 'text-red-500';
       default: return 'text-muted-foreground';
     }
@@ -485,7 +484,7 @@ function NewsArticleCard({ article }: { article: NewsArticle }) {
             <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Globe className="h-3 w-3" />
-                {article.source.name}
+                {article. source.name}
               </div>
               <div className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
@@ -501,7 +500,7 @@ function NewsArticleCard({ article }: { article: NewsArticle }) {
 
             {article.keywords. length > 0 && (
               <div className="flex flex-wrap gap-2 mt-3">
-                {article.keywords.map((keyword) => (
+                {article.keywords. map((keyword) => (
                   <Badge key={keyword} variant="secondary" className="text-xs">
                     {keyword}
                   </Badge>
