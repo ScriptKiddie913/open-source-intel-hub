@@ -19,6 +19,7 @@ import { UsernameEnumeration } from "@/components/osint/UsernameEnumeration";
 import { DarkWebScanner } from "@/components/osint/DarkWebScanner";
 import { GraphVisualization } from "@/components/osint/GraphVisualization";
 import { NewsIntelligence } from "@/components/osint/NewsIntelligence";
+import { TelegramIntelligence } from "@/components/osint/TelegramIntelligence";
 
 import { initDatabase } from "@/lib/database";
 import { cn } from "@/lib/utils";
@@ -289,7 +290,7 @@ const Index = () => {
           <Route path="/darkweb" element={<DarkWebScanner />} />
           <Route path="/graph" element={<GraphVisualization />} />
           <Route path="/news" element={<NewsIntelligence />} />
-          
+          <Route path="/telegram" element={<TelegramIntelligence />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
