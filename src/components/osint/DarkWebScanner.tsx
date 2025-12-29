@@ -1,5 +1,11 @@
 'use client';
 
+/* ============================================================================
+   DarkWebScanner.tsx
+   Full-scale Dark Web Intelligence UI
+   CLIENT ONLY — Server logic via API routes
+============================================================================ */
+
 import {
   useCallback,
   useEffect,
@@ -7,6 +13,10 @@ import {
   useRef,
   useState,
 } from 'react';
+
+/* ============================================================================
+   Icons
+============================================================================ */
 
 import {
   Radar,
@@ -18,14 +28,20 @@ import {
   Eye,
   Clock,
   RefreshCcw,
-  Layers,
   Shield,
   Activity,
   ExternalLink,
-  Filter,
   Hash,
   Info,
+  Filter,
+  Layers,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
+
+/* ============================================================================
+   UI Components
+============================================================================ */
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,112 +58,188 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-
 import {
-  discoverOnionSites,
-  checkOnionUptime,
-  searchDarkWebSignals,
-  type OnionSite,
-  type LeakSignal,
-} from '@/services/torService';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-type ViewMode = 'cards' | 'compact';
-type TabMode = 'onions' | 'signals';
+/* ============================================================================
+   TYPES (CLIENT MIRROR OF SERVER TYPES)
+============================================================================ */
 
-const RISK_COLORS:  Record<
-  'critical' | 'high' | 'medium' | 'low',
-  string
-> = {
-  critical:  'border-red-500/40 bg-red-500/10 text-red-400',
+export type RiskLevel = 'critical' | 'high' | 'medium' | 'low';
+
+export interface OnionSite {
+  url: string;
+  title: string;
+  description: string;
+  category: string;
+  riskLevel: RiskLevel;
+  lastSeen: string;
+  status: 'online' | 'offline' | 'unknown';
+  tags: string[];
+  language?: string;
+}
+
+export interface LeakSignal {
+  id: string;
+  title: string;
+  indicator: string;
+  source: string;
+  timestamp: string;
+  url: string;
+  context: string;
+  metadata?: {
+    channelName?: string;
+    subscribers?: number;
+    views?: number;
+    emails?: string[];
+    bitcoins?: string[];
+  };
+}
+
+/* ============================================================================
+   UI CONSTANTS
+============================================================================ */
+
+const RISK_COLORS: Record<RiskLevel, string> = {
+  critical: 'border-red-500/40 bg-red-500/10 text-red-400',
   high: 'border-orange-500/40 bg-orange-500/10 text-orange-400',
   medium: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400',
   low: 'border-blue-500/40 bg-blue-500/10 text-blue-400',
 };
 
-export function DarkWebScanner() {
+const SOURCE_BADGES: Record<string, string> = {
+  telegram: 'bg-blue-500/20 text-blue-400',
+  pastebin: 'bg-orange-500/20 text-orange-400',
+  psbdmp: 'bg-purple-500/20 text-purple-400',
+  rentry: 'bg-green-500/20 text-green-400',
+  ghostbin: 'bg-gray-500/20 text-gray-400',
+  github_gist: 'bg-black/30 text-gray-300',
+};
+
+/* ============================================================================
+   MAIN COMPONENT
+============================================================================ */
+
+export default function DarkWebScanner() {
+  /* ------------------------------------------------------------------------
+     STATE
+  ------------------------------------------------------------------------ */
+
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [onionSites, setOnionSites] = useState<OnionSite[]>([]);
   const [signals, setSignals] = useState<LeakSignal[]>([]);
 
-  const [tab, setTab] = useState<TabMode>('onions');
-  const [viewMode, setViewMode] = useState<ViewMode>('cards');
+  const [tab, setTab] = useState<'onions' | 'signals'>('onions');
+  const [riskFilter, setRiskFilter] = useState<RiskLevel | 'all'>('all');
+  const [sourceFilter, setSourceFilter] = useState<string | 'all'>('all');
 
-  const [uptimeLoading, setUptimeLoading] = useState<Record<string, boolean>>({});
+  const [uptimeLoading, setUptimeLoading] = useState<Record<string, boolean>>(
+    {}
+  );
 
   const refreshTimer = useRef<number | null>(null);
 
+  /* ------------------------------------------------------------------------
+     SEARCH HANDLER (SERVER PROXY)
+  ------------------------------------------------------------------------ */
+
   const runSearch = useCallback(async () => {
-    if (! query.trim()) {
-      toast.error('Enter a search keyword (domain, email, company, etc.)');
+    if (!query.trim()) {
+      toast.error('Enter a keyword to search');
       return;
     }
 
     setLoading(true);
+    setError(null);
     setOnionSites([]);
     setSignals([]);
 
     try {
-      const [onions, sigs] = await Promise.all([
-        discoverOnionSites(query),
-        searchDarkWebSignals(query),
-      ]);
+      const res = await fetch('/api/darkweb', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
 
-      setOnionSites(onions);
-      setSignals(sigs);
+      if (!res.ok) {
+        throw new Error(`API error: ${res.status}`);
+      }
 
-      if (onions.length === 0 && sigs.length === 0) {
-        toast.info('No results found. Try a different search term.');
+      const data = await res.json();
+
+      setOnionSites(data.onions || []);
+      setSignals(data.signals || []);
+
+      if ((data.onions?.length || 0) === 0 && (data.signals?.length || 0) === 0) {
+        toast.info('No results found. Try another keyword.');
       } else {
         toast.success(
-          `Found ${onions.length} onion sites and ${sigs.length} exposure signals`
+          `Found ${data.onions.length} onion sites and ${data.signals.length} signals`
         );
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error('Dark web discovery failed. Check console for details.');
+      setError('Dark web scan failed');
+      toast.error('Dark web scan failed');
     } finally {
       setLoading(false);
     }
   }, [query]);
 
+  /* ------------------------------------------------------------------------
+     AUTO REFRESH (5 MIN)
+  ------------------------------------------------------------------------ */
+
   useEffect(() => {
-    if (refreshTimer.current !== null) {
-      window.clearInterval(refreshTimer.current);
+    if (refreshTimer.current) {
+      clearInterval(refreshTimer.current);
     }
 
     refreshTimer.current = window.setInterval(() => {
       if (query.trim()) {
         runSearch();
       }
-    }, 300000); // 5 minutes
+    }, 300000);
 
     return () => {
-      if (refreshTimer.current !== null) {
-        window.clearInterval(refreshTimer. current);
+      if (refreshTimer.current) {
+        clearInterval(refreshTimer.current);
       }
     };
   }, [query, runSearch]);
 
+  /* ------------------------------------------------------------------------
+     ONION UPTIME CHECK (SERVER PROXY)
+  ------------------------------------------------------------------------ */
+
   const checkUptime = async (site: OnionSite) => {
-    setUptimeLoading(prev => ({
-      ...prev,
-      [site.url]: true,
-    }));
+    setUptimeLoading(prev => ({ ...prev, [site.url]: true }));
 
     try {
-      const result = await checkOnionUptime(site.url);
+      const res = await fetch('/api/onion-uptime', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ onion: site.url }),
+      });
+
+      const result = await res.json();
 
       setOnionSites(prev =>
         prev.map(o =>
-          o.url === site. url
+          o.url === site.url
             ? {
                 ...o,
-                status: result. status,
+                status: result.status,
                 lastSeen: result.checkedAt,
               }
             : o
@@ -155,15 +247,32 @@ export function DarkWebScanner() {
       );
 
       toast.success(`${site.url} is ${result.status}`);
-    } catch (error) {
+    } catch {
       toast.error('Uptime check failed');
     } finally {
-      setUptimeLoading(prev => ({
-        ...prev,
-        [site.url]: false,
-      }));
+      setUptimeLoading(prev => ({ ...prev, [site.url]: false }));
     }
   };
+
+  /* ------------------------------------------------------------------------
+     FILTERED DATA
+  ------------------------------------------------------------------------ */
+
+  const filteredOnions = useMemo(() => {
+    return onionSites.filter(o =>
+      riskFilter === 'all' ? true : o.riskLevel === riskFilter
+    );
+  }, [onionSites, riskFilter]);
+
+  const filteredSignals = useMemo(() => {
+    return signals.filter(s =>
+      sourceFilter === 'all' ? true : s.source === sourceFilter
+    );
+  }, [signals, sourceFilter]);
+
+  /* ------------------------------------------------------------------------
+     STATS
+  ------------------------------------------------------------------------ */
 
   const stats = useMemo(() => {
     return {
@@ -172,21 +281,25 @@ export function DarkWebScanner() {
       online: onionSites.filter(o => o.status === 'online').length,
       offline: onionSites.filter(o => o.status === 'offline').length,
       critical: onionSites.filter(o => o.riskLevel === 'critical').length,
-      high: onionSites. filter(o => o.riskLevel === 'high').length,
+      high: onionSites.filter(o => o.riskLevel === 'high').length,
     };
   }, [onionSites, signals]);
+
+  /* ------------------------------------------------------------------------
+     RENDER
+  ------------------------------------------------------------------------ */
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* HEADER */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3">
             <Radar className="h-8 w-8 text-primary" />
             Dark Web Intelligence Monitor
           </h1>
           <p className="text-muted-foreground mt-2">
-            Real-time monitoring of onion services, pastes, leaks, and dark web exposure
+            Metadata-only OSINT from onion indexes, paste sites, and public channels
           </p>
         </div>
 
@@ -196,7 +309,9 @@ export function DarkWebScanner() {
           onClick={runSearch}
           disabled={loading}
         >
-          <RefreshCcw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
+          <RefreshCcw
+            className={cn('h-4 w-4 mr-2', loading && 'animate-spin')}
+          />
           Refresh
         </Button>
       </div>
@@ -204,22 +319,21 @@ export function DarkWebScanner() {
       {/* LEGAL NOTICE */}
       <Card className="border-yellow-500/40 bg-yellow-500/10">
         <CardContent className="p-4 flex gap-3">
-          <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-1" />
+          <AlertTriangle className="h-5 w-5 text-yellow-500 mt-1" />
           <div>
             <h3 className="font-semibold text-yellow-600 dark:text-yellow-500">
-              Metadata-Only Intelligence (Legal & Safe)
+              Legal & Safe Intelligence
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              This tool queries public indexes, search engines, and metadata sources. 
-              <strong> No Tor daemon required.  No illegal scraping.  No content downloading.</strong>
-              {' '}All data comes from legitimate OSINT sources like Ahmia. fi, Pastebin archives, and public APIs.
+              No Tor daemon. No illegal scraping. No content downloads.
+              This tool queries public indexes and metadata sources only.
             </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* SEARCH BAR */}
-      <Card className="border-primary/30">
+      {/* SEARCH */}
+      <Card>
         <CardContent className="pt-6">
           <div className="flex gap-3">
             <div className="relative flex-1">
@@ -228,7 +342,7 @@ export function DarkWebScanner() {
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && runSearch()}
-                placeholder="Search:  domain, email, company, breach, keyword..."
+                placeholder="Search: leak, ransomware, database, gmail, company..."
                 className="pl-10"
               />
             </div>
@@ -244,162 +358,111 @@ export function DarkWebScanner() {
               )}
             </Button>
           </div>
-
-          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-            <Info className="h-3 w-3" />
-            <span>
-              Try: "facebook", "amazon", "ransomware", "database", or any company/email
-            </span>
-          </div>
         </CardContent>
       </Card>
 
       {/* STATS */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <Globe className="h-5 w-5 mx-auto text-primary mb-2" />
-              <div className="text-2xl font-bold">{stats.onions}</div>
-              <div className="text-xs text-muted-foreground">Onion Sites</div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard icon={Globe} label="Onions" value={stats.onions} />
+        <StatCard icon={Database} label="Signals" value={stats.signals} />
+        <StatCard icon={Activity} label="Online" value={stats.online} />
+        <StatCard icon={Shield} label="Offline" value={stats.offline} />
+        <StatCard
+          icon={AlertTriangle}
+          label="Critical"
+          value={stats.critical}
+          color="text-red-500"
+        />
+        <StatCard
+          icon={AlertTriangle}
+          label="High"
+          value={stats.high}
+          color="text-orange-500"
+        />
+      </div>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <Database className="h-5 w-5 mx-auto text-cyan-500 mb-2" />
-              <div className="text-2xl font-bold">{stats.signals}</div>
-              <div className="text-xs text-muted-foreground">Leak Signals</div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* FILTERS */}
+      <div className="flex gap-3 flex-wrap">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Filter className="h-4 w-4 mr-2" />
+              Risk: {riskFilter}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {['all', 'critical', 'high', 'medium', 'low'].map(r => (
+              <DropdownMenuItem
+                key={r}
+                onClick={() => setRiskFilter(r as any)}
+              >
+                {r}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <Activity className="h-5 w-5 mx-auto text-green-500 mb-2" />
-              <div className="text-2xl font-bold">{stats.online}</div>
-              <div className="text-xs text-muted-foreground">Online</div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <Shield className="h-5 w-5 mx-auto text-gray-500 mb-2" />
-              <div className="text-2xl font-bold">{stats.offline}</div>
-              <div className="text-xs text-muted-foreground">Offline</div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <AlertTriangle className="h-5 w-5 mx-auto text-red-500 mb-2" />
-              <div className="text-2xl font-bold text-red-500">{stats.critical}</div>
-              <div className="text-xs text-muted-foreground">Critical</div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <AlertTriangle className="h-5 w-5 mx-auto text-orange-500 mb-2" />
-              <div className="text-2xl font-bold text-orange-500">{stats. high}</div>
-              <div className="text-xs text-muted-foreground">High Risk</div>
-            </div>
-          </CardContent>
-        </Card>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Layers className="h-4 w-4 mr-2" />
+              Source: {sourceFilter}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onClick={() => setSourceFilter('all')}>
+              all
+            </DropdownMenuItem>
+            {Object.keys(SOURCE_BADGES).map(src => (
+              <DropdownMenuItem
+                key={src}
+                onClick={() => setSourceFilter(src)}
+              >
+                {src}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* TABS */}
-      <Tabs value={tab} onValueChange={v => setTab(v as TabMode)}>
+      <Tabs value={tab} onValueChange={v => setTab(v as any)}>
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="onions">
             <Globe className="h-4 w-4 mr-2" />
-            Onion Discovery ({onionSites.length})
+            Onion Discovery
           </TabsTrigger>
           <TabsTrigger value="signals">
             <Database className="h-4 w-4 mr-2" />
-            Exposure Signals ({signals.length})
+            Exposure Signals
           </TabsTrigger>
         </TabsList>
 
         {/* ONIONS */}
         <TabsContent value="onions" className="mt-6 space-y-4">
-          {loading && (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          )}
-
-          {!loading && onionSites.length === 0 && (
-            <Card className="border-dashed">
-              <CardContent className="pt-12 pb-12 text-center">
-                <Globe className="h-16 w-16 mx-auto text-muted-foreground opacity-50 mb-4" />
-                <p className="text-muted-foreground">
-                  No onion sites discovered. Try searching for a different term.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {!loading && onionSites.map(site => (
-            <OnionCard
-              key={site.url}
-              site={site}
-              loading={uptimeLoading[site. url]}
-              onCheck={() => checkUptime(site)}
-            />
-          ))}
+          {loading && <CenteredLoader />}
+          {!loading && filteredOnions.length === 0 && <EmptyState text="No onion sites found" />}
+          {!loading &&
+            filteredOnions.map(site => (
+              <OnionCard
+                key={site.url}
+                site={site}
+                loading={uptimeLoading[site.url]}
+                onCheck={() => checkUptime(site)}
+              />
+            ))}
         </TabsContent>
 
         {/* SIGNALS */}
-        <TabsContent value="signals" className="mt-6 space-y-3">
-          {loading && (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          )}
-
-          {!loading && signals.length === 0 && (
-            <Card className="border-dashed">
-              <CardContent className="pt-12 pb-12 text-center">
-                <Database className="h-16 w-16 mx-auto text-muted-foreground opacity-50 mb-4" />
-                <p className="text-muted-foreground">
-                  No exposure signals found. Try searching for emails, domains, or companies.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {!loading && signals. map(sig => (
-            <SignalCard key={sig.id} signal={sig} />
-          ))}
+        <TabsContent value="signals" className="mt-6 space-y-4">
+          {loading && <CenteredLoader />}
+          {!loading && filteredSignals.length === 0 && <EmptyState text="No signals found" />}
+          {!loading &&
+            filteredSignals.map(sig => (
+              <SignalCard key={sig.id} signal={sig} />
+            ))}
         </TabsContent>
       </Tabs>
-
-      {/* SOURCES */}
-      <Card className="border-primary/40 bg-primary/5">
-        <CardContent className="p-4 flex gap-3">
-          <Database className="h-5 w-5 text-primary shrink-0" />
-          <div>
-            <h3 className="font-semibold">Real Data Sources</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              <strong>Onion Discovery:</strong> Ahmia.fi, Dark.fail
-              {' • '}
-              <strong>Leak Monitoring:</strong> Pastebin, Psbdmp, GitHub Gists, Rentry, Ghostbin
-              {' • '}
-              <strong>Uptime: </strong> Tor2Web Gateways
-            </p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -408,77 +471,88 @@ export function DarkWebScanner() {
    SUB COMPONENTS
 ============================================================================ */
 
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  color,
+}: {
+  icon: any;
+  label: string;
+  value: number;
+  color?: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-6 text-center">
+        <Icon className={cn('h-5 w-5 mx-auto mb-2', color)} />
+        <div className={cn('text-2xl font-bold', color)}>{value}</div>
+        <div className="text-xs text-muted-foreground">{label}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CenteredLoader() {
+  return (
+    <div className="flex justify-center py-12">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <Card className="border-dashed">
+      <CardContent className="py-12 text-center text-muted-foreground">
+        {text}
+      </CardContent>
+    </Card>
+  );
+}
+
 function OnionCard({
   site,
   loading,
   onCheck,
 }: {
   site: OnionSite;
-  loading: boolean;
+  loading?: boolean;
   onCheck: () => void;
 }) {
   return (
     <Card className={cn('border-2', RISK_COLORS[site.riskLevel])}>
-      <CardContent className="pt-6">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="font-mono text-sm break-all">{site.url}</h3>
-              <Badge variant="outline" className={RISK_COLORS[site.riskLevel]}>
-                {site.riskLevel. toUpperCase()}
-              </Badge>
-            </div>
-            <h4 className="font-semibold">{site.title}</h4>
-            <p className="text-sm text-muted-foreground mt-1">
-              {site.description}
-            </p>
+      <CardContent className="pt-6 space-y-4">
+        <div className="flex justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-mono text-xs break-all">{site.url}</p>
+            <h3 className="font-semibold">{site.title}</h3>
+            <p className="text-sm text-muted-foreground">{site.description}</p>
           </div>
 
-          <Badge variant="secondary">{site.category}</Badge>
+          <Button size="sm" variant="outline" onClick={onCheck} disabled={loading}>
+            {loading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Check'}
+          </Button>
         </div>
 
-        {site.tags.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4">
-            {site.tags. map(tag => (
-              <Badge key={tag} variant="outline" className="text-xs">
-                <Hash className="h-3 w-3 mr-1" />
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {site.tags.map(tag => (
+            <Badge key={tag} variant="outline">
+              <Hash className="h-3 w-3 mr-1" />
+              {tag}
+            </Badge>
+          ))}
+        </div>
 
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {new Date(site.lastSeen).toLocaleString()}
-            </span>
-            <span className="flex items-center gap-1">
-              <Activity className={cn(
-                'h-3 w-3',
-                site.status === 'online' && 'text-green-500',
-                site.status === 'offline' && 'text-red-500'
-              )} />
-              {site.status. toUpperCase()}
-            </span>
-          </div>
-
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onCheck}
-            disabled={loading}
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                <Activity className="h-4 w-4 mr-2" />
-                Check Status
-              </>
-            )}
-          </Button>
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            {new Date(site.lastSeen).toLocaleString()}
+          </span>
+          <span className="flex items-center gap-1">
+            <Activity className="h-3 w-3" />
+            {site.status}
+          </span>
         </div>
       </CardContent>
     </Card>
@@ -487,43 +561,35 @@ function OnionCard({
 
 function SignalCard({ signal }: { signal: LeakSignal }) {
   return (
-    <Card className="hover:border-primary/50 transition-colors">
-      <CardContent className="pt-6">
-        <div className="flex items-start justify-between gap-4 mb-3">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="font-semibold">{signal.title}</h3>
-              <Badge variant="secondary">{signal.source. toUpperCase()}</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              <strong>Indicator:</strong>{' '}
-              <span className="font-mono text-xs bg-secondary px-2 py-1 rounded">
-                {signal.indicator}
-              </span>
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {signal.context}
-            </p>
+    <Card>
+      <CardContent className="pt-6 space-y-3">
+        <div className="flex justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">{signal.title}</h3>
+            <p className="text-xs text-muted-foreground">{signal.context}</p>
           </div>
+          <Badge className={SOURCE_BADGES[signal.source] || ''}>
+            {signal.source}
+          </Badge>
         </div>
 
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-muted-foreground flex items-center gap-1">
+        <div className="flex justify-between items-center text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
             <Clock className="h-3 w-3" />
             {new Date(signal.timestamp).toLocaleString()}
           </span>
-          <Button size="sm" variant="outline" asChild>
-            <a
-              href={signal.url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink className="h-3 w-3 mr-2" />
-              View Source
-            </a>
-          </Button>
+          <a
+            href={signal.url}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1 text-primary"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Source
+          </a>
         </div>
       </CardContent>
     </Card>
   );
 }
+
