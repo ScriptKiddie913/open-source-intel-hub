@@ -13,6 +13,7 @@ import { SettingsPage } from "@/components/osint/SettingsPage";
 import { ThreatIntelSearch } from "@/components/osint/ThreatIntelSearch";
 import { CVEExplorer } from "@/components/osint/CVEExplorer";
 import { LiveThreatFeed } from "@/components/osint/LiveThreatFeed";
+import { NewsIntelligence } from "@/components/osint/NewsIntelligence";
 
 // NEW IMPORTS
 import { UsernameEnumeration } from "@/components/osint/UsernameEnumeration";
@@ -287,7 +288,7 @@ const Index = () => {
           <Route path="/username" element={<UsernameEnumeration />} />
           <Route path="/darkweb" element={<DarkWebScanner />} />
           <Route path="/graph" element={<GraphVisualization />} />
-          
+          <Route path="/news" element={<NewsIntelligence />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
