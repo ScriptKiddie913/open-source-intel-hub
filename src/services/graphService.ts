@@ -3,6 +3,13 @@
 // Real data fetching for entities with relationship mapping
 
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
+import { searchDarkWebSignals } from '@/services/torService';
+import { searchTelegramLeaks } from '@/services/telegramService';
+
+/* ============================================================================
+   CORS PROXY - Required for APIs that don't support browser CORS
+============================================================================ */
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
 /* ============================================================================
    TYPES - MALTEGO-STYLE ENTITIES
@@ -40,7 +47,9 @@ export type TransformType =
   | 'port_scan'
   | 'related_domains'
   | 'email_enum'
-  | 'paste_search';
+  | 'paste_search'
+  | 'darkweb_scan'
+  | 'telegram_scan';
 
 export interface GraphNode {
   id: string;
@@ -191,6 +200,20 @@ export const AVAILABLE_TRANSFORMS:  Transform[] = [
     supportedTypes: ['email', 'person'],
     icon: '👥',
   },
+  {
+    id: 'darkweb_scan',
+    name: 'Dark Web Scan',
+    description: 'Search dark web sources for leaks',
+    supportedTypes: ['email', 'domain', 'person'],
+    icon: '🕸️',
+  },
+  {
+    id: 'telegram_scan',
+    name: 'Telegram Intel',
+    description: 'Search Telegram leak channels',
+    supportedTypes: ['email', 'domain', 'person', 'phone'],
+    icon: '📱',
+  },
 ];
 
 /* ============================================================================
@@ -198,20 +221,29 @@ export const AVAILABLE_TRANSFORMS:  Transform[] = [
 ============================================================================ */
 
 async function transformDnsResolve(node: GraphNode): Promise<GraphNode[]> {
-  const cacheKey = `transform: dns: ${node.value}`;
+  const cacheKey = `transform:dns:${node.value}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
   const newNodes: GraphNode[] = [];
 
   try {
-    const response = await fetch(`https://dns.google/resolve?name=${node.value}&type=A`);
-    if (!response.ok) throw new Error('DNS lookup failed');
+    // Google DNS-over-HTTPS (supports CORS)
+    const response = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(node.value)}&type=A`, {
+      headers: { 'Accept': 'application/dns-json' }
+    });
+    
+    if (!response.ok) {
+      console.warn(`DNS lookup failed with status ${response.status}`);
+      throw new Error('DNS lookup failed');
+    }
 
     const data = await response.json();
+    console.log('[DNS] Response:', data);
 
-    if (data.Answer) {
+    if (data.Answer && data.Answer.length > 0) {
       data.Answer.forEach((record: any, idx: number) => {
+        // Type 1 = A record (IPv4)
         if (record.type === 1) {
           newNodes.push({
             id: `ip-${record.data}-${Date.now()}-${idx}`,
@@ -227,13 +259,45 @@ async function transformDnsResolve(node: GraphNode): Promise<GraphNode[]> {
               x: node.position.x + 250,
               y: node.position.y + (idx * 80) - 40,
             },
-            color: ENTITY_CONFIG. ip.color,
+            color: ENTITY_CONFIG.ip.color,
             icon: ENTITY_CONFIG.ip.icon,
             size: 50,
           });
         }
       });
     }
+    
+    // Also try to get AAAA (IPv6) records
+    try {
+      const ipv6Response = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(node.value)}&type=AAAA`);
+      if (ipv6Response.ok) {
+        const ipv6Data = await ipv6Response.json();
+        if (ipv6Data.Answer) {
+          ipv6Data.Answer.slice(0, 3).forEach((record: any, idx: number) => {
+            if (record.type === 28) { // AAAA record
+              newNodes.push({
+                id: `ip-${record.data}-${Date.now()}-${idx}`,
+                type: 'ip',
+                label: `IPv6: ${record.data.substring(0, 20)}...`,
+                value: record.data,
+                properties: {
+                  ttl: record.TTL,
+                  recordType: 'AAAA',
+                  domain: node.value,
+                },
+                position: {
+                  x: node.position.x + 250,
+                  y: node.position.y + ((newNodes.length + idx) * 80) - 40,
+                },
+                color: ENTITY_CONFIG.ip.color,
+                icon: ENTITY_CONFIG.ip.icon,
+                size: 45,
+              });
+            }
+          });
+        }
+      }
+    } catch { /* IPv6 is optional */ }
 
     await cacheAPIResponse(cacheKey, newNodes, 60);
     return newNodes;
@@ -255,30 +319,92 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    // Using RDAP for structured data
-    const apiUrl = node.type === 'ip' 
-      ? `https://rdap.arin.net/registry/ip/${node.value}`
-      : `https://rdap.verisign.com/com/v1/domain/${node.value}`;
+    let data: any = null;
+    
+    if (node.type === 'ip') {
+      // IP WHOIS via RDAP (ARIN supports CORS)
+      const apiUrl = `https://rdap.arin.net/registry/ip/${node.value}`;
+      console.log('[WHOIS] Fetching IP info from ARIN RDAP');
+      
+      const response = await fetch(apiUrl, {
+        headers: { 'Accept': 'application/rdap+json' }
+      });
+      
+      if (response.ok) {
+        data = await response.json();
+      }
+    } else {
+      // Domain WHOIS - try multiple RDAP servers with CORS proxy
+      const domain = node.value.toLowerCase();
+      const tld = domain.split('.').pop();
+      
+      // Different RDAP servers for different TLDs
+      const rdapServers: Record<string, string> = {
+        'com': 'https://rdap.verisign.com/com/v1/domain/',
+        'net': 'https://rdap.verisign.com/net/v1/domain/',
+        'org': 'https://rdap.publicinterestregistry.org/rdap/domain/',
+        'io': 'https://rdap.nic.io/domain/',
+        'dev': 'https://rdap.nic.google/domain/',
+        'app': 'https://rdap.nic.google/domain/',
+      };
+      
+      const rdapUrl = rdapServers[tld || 'com'] || rdapServers['com'];
+      const apiUrl = `${rdapUrl}${domain}`;
+      
+      console.log(`[WHOIS] Fetching domain info via CORS proxy: ${apiUrl}`);
+      
+      // RDAP needs CORS proxy for browser requests
+      try {
+        const response = await fetch(`${CORS_PROXY}${encodeURIComponent(apiUrl)}`);
+        if (response.ok) {
+          const text = await response.text();
+          data = JSON.parse(text);
+        }
+      } catch (e) {
+        console.warn('[WHOIS] CORS proxy failed, trying direct');
+        // Fallback to direct (works in some browsers/extensions)
+        const directRes = await fetch(apiUrl);
+        if (directRes.ok) {
+          data = await directRes.json();
+        }
+      }
+    }
 
-    const response = await fetch(apiUrl);
-    if (!response.ok) throw new Error('WHOIS lookup failed');
+    if (!data) {
+      console.warn('[WHOIS] No data returned');
+      return [];
+    }
 
-    const data = await response.json();
+    console.log('[WHOIS] Response received:', Object.keys(data));
 
-    // Extract organization
-    if (data.entities) {
-      data.entities.slice(0, 2).forEach((entity: any, idx: number) => {
-        const orgName = entity.vcardArray?.[1]?.find((v: any) => v[0] === 'fn')?.[3] || 'Unknown Organization';
+    // Extract registrant/organization info
+    if (data.entities && data.entities.length > 0) {
+      data.entities.slice(0, 3).forEach((entity: any, idx: number) => {
+        let orgName = 'Unknown Organization';
+        
+        // Try to extract from vCard
+        if (entity.vcardArray && entity.vcardArray[1]) {
+          const fn = entity.vcardArray[1].find((v: any) => v[0] === 'fn');
+          if (fn) orgName = fn[3] || orgName;
+          
+          const org = entity.vcardArray[1].find((v: any) => v[0] === 'org');
+          if (org) orgName = org[3]?.toString() || orgName;
+        }
+        
+        // Fallback to handle or name
+        if (orgName === 'Unknown Organization') {
+          orgName = entity.handle || entity.name || `Entity ${idx + 1}`;
+        }
         
         newNodes.push({
-          id: `org-${orgName}-${Date.now()}-${idx}`,
+          id: `org-${orgName.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}-${idx}`,
           type: 'organization',
-          label: orgName,
+          label: orgName.substring(0, 50),
           value: orgName,
           properties: {
             handle: entity.handle,
             roles: entity.roles,
-            source: 'whois',
+            source: 'rdap_whois',
           },
           position: {
             x: node.position.x + 250,
@@ -289,6 +415,57 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
           size: 50,
         });
       });
+    }
+    
+    // Extract nameservers for domains
+    if (data.nameservers && data.nameservers.length > 0) {
+      data.nameservers.slice(0, 3).forEach((ns: any, idx: number) => {
+        const nsName = ns.ldhName || ns.objectClassName || ns;
+        newNodes.push({
+          id: `ns-${nsName}-${Date.now()}-${idx}`,
+          type: 'domain',
+          label: `NS: ${nsName}`,
+          value: nsName,
+          properties: {
+            type: 'nameserver',
+            parent: node.value,
+          },
+          position: {
+            x: node.position.x + 250,
+            y: node.position.y + 100 + (idx * 60),
+          },
+          color: '#06b6d4',
+          icon: '🌐',
+          size: 40,
+        });
+      });
+    }
+    
+    // Extract registration dates
+    if (data.events && data.events.length > 0) {
+      const regEvent = data.events.find((e: any) => e.eventAction === 'registration');
+      const expEvent = data.events.find((e: any) => e.eventAction === 'expiration');
+      
+      if (regEvent || expEvent) {
+        newNodes.push({
+          id: `whois-dates-${node.value}-${Date.now()}`,
+          type: 'certificate',
+          label: `Registration Info`,
+          value: node.value,
+          properties: {
+            registered: regEvent?.eventDate,
+            expires: expEvent?.eventDate,
+            status: data.status,
+          },
+          position: {
+            x: node.position.x - 200,
+            y: node.position.y,
+          },
+          color: ENTITY_CONFIG.certificate.color,
+          icon: '📋',
+          size: 45,
+        });
+      }
     }
 
     await cacheAPIResponse(cacheKey, newNodes, 300);
@@ -311,24 +488,75 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    const response = await fetch(`https://crt.sh/?q=%25.${node.value}&output=json`);
-    if (!response.ok) throw new Error('Subdomain enum failed');
+    // crt.sh requires CORS proxy for browser requests
+    const crtshUrl = `https://crt.sh/?q=%25.${encodeURIComponent(node.value)}&output=json`;
+    console.log(`[Subdomains] Fetching from crt.sh via CORS proxy`);
+    
+    let data: any[] = [];
+    
+    // Try via CORS proxy first
+    try {
+      const response = await fetch(`${CORS_PROXY}${encodeURIComponent(crtshUrl)}`);
+      if (response.ok) {
+        const text = await response.text();
+        // crt.sh sometimes returns HTML error pages
+        if (text.startsWith('[') || text.startsWith('{')) {
+          data = JSON.parse(text);
+        } else {
+          console.warn('[Subdomains] crt.sh returned non-JSON, trying alternate source');
+        }
+      }
+    } catch (e) {
+      console.warn('[Subdomains] CORS proxy failed:', e);
+    }
+    
+    // Fallback: Try HackerTarget subdomain finder
+    if (data.length === 0) {
+      console.log('[Subdomains] Trying HackerTarget API');
+      try {
+        const htResponse = await fetch(`https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(node.value)}`);
+        if (htResponse.ok) {
+          const text = await htResponse.text();
+          if (!text.includes('error') && !text.includes('API count exceeded')) {
+            const lines = text.split('\n').filter(l => l.trim());
+            lines.forEach(line => {
+              const [subdomain] = line.split(',');
+              if (subdomain && subdomain.endsWith(node.value) && subdomain !== node.value) {
+                data.push({ name_value: subdomain });
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[Subdomains] HackerTarget failed:', e);
+      }
+    }
+    
+    if (data.length === 0) {
+      console.warn('[Subdomains] No data from any source');
+      return [];
+    }
 
-    const data = await response.json();
     const subdomains = new Set<string>();
 
     data.forEach((cert: any) => {
-      const names = cert.name_value.split('\n');
+      const nameValue = cert.name_value || cert.common_name || '';
+      const names = nameValue.split('\n');
       names.forEach((name: string) => {
-        if (name.endsWith(node.value) && name !== node.value && !name.includes('*')) {
-          subdomains.add(name);
+        const cleanName = name.trim().toLowerCase();
+        if (cleanName.endsWith(node.value.toLowerCase()) && 
+            cleanName !== node.value.toLowerCase() && 
+            !cleanName.includes('*')) {
+          subdomains.add(cleanName);
         }
       });
     });
 
-    Array.from(subdomains).slice(0, 15).forEach((subdomain, idx) => {
+    console.log(`[Subdomains] ✅ Found ${subdomains.size} unique subdomains`);
+
+    Array.from(subdomains).slice(0, 20).forEach((subdomain, idx) => {
       newNodes.push({
-        id: `domain-${subdomain}-${Date.now()}`,
+        id: `domain-${subdomain}-${Date.now()}-${idx}`,
         type: 'domain',
         label: subdomain,
         value: subdomain,
@@ -338,7 +566,7 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
         },
         position: {
           x: node.position.x + 300,
-          y: node.position.y - 350 + (idx * 50),
+          y: node.position.y - 400 + (idx * 45),
         },
         color: ENTITY_CONFIG.domain.color,
         icon: ENTITY_CONFIG.domain.icon,
@@ -500,19 +728,33 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    const response = await fetch(`https://crt.sh/?q=${node.value}&output=json`);
-    if (!response.ok) throw new Error('SSL cert fetch failed');
-
-    const certs = await response.json();
+    // crt.sh requires CORS proxy
+    const crtshUrl = `https://crt.sh/?q=${encodeURIComponent(node.value)}&output=json`;
+    console.log(`[SSL Cert] Fetching certificate info via CORS proxy`);
+    
+    let certs: any[] = [];
+    
+    try {
+      const response = await fetch(`${CORS_PROXY}${encodeURIComponent(crtshUrl)}`);
+      if (response.ok) {
+        const text = await response.text();
+        if (text.startsWith('[') || text.startsWith('{')) {
+          certs = JSON.parse(text);
+        }
+      }
+    } catch (e) {
+      console.warn('[SSL Cert] CORS proxy failed:', e);
+    }
 
     if (certs.length > 0) {
       const cert = certs[0];
+      console.log(`[SSL Cert] ✅ Found certificate for ${node.value}`);
 
       newNodes.push({
         id: `cert-${cert.id}-${Date.now()}`,
         type: 'certificate',
         label: `SSL Certificate`,
-        value: cert.id. toString(),
+        value: cert.id?.toString() || 'cert',
         properties: {
           issuer: cert.issuer_name,
           commonName: cert.common_name,
@@ -524,7 +766,7 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
           x: node.position.x + 250,
           y: node.position.y - 100,
         },
-        color:  ENTITY_CONFIG.certificate.color,
+        color: ENTITY_CONFIG.certificate.color,
         icon: ENTITY_CONFIG.certificate.icon,
         size: 50,
       });
@@ -532,15 +774,15 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
       // Issuer organization
       if (cert.issuer_name) {
         newNodes.push({
-          id: `org-${cert.issuer_name}-${Date.now()}`,
+          id: `org-${cert.issuer_name.substring(0, 20)}-${Date.now()}`,
           type: 'organization',
-          label: cert.issuer_name. split(',')[0].replace('CN=', '').replace('O=', ''),
+          label: cert.issuer_name.split(',')[0].replace('CN=', '').replace('O=', ''),
           value: cert.issuer_name,
           properties: {
             type: 'Certificate Authority',
           },
           position: {
-            x: node. position.x + 500,
+            x: node.position.x + 500,
             y: node.position.y - 100,
           },
           color: ENTITY_CONFIG.organization.color,
@@ -548,6 +790,8 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
           size: 50,
         });
       }
+    } else {
+      console.warn('[SSL Cert] No certificates found');
     }
 
     await cacheAPIResponse(cacheKey, newNodes, 3600);
@@ -619,9 +863,25 @@ async function transformBreachCheck(node: GraphNode): Promise<GraphNode[]> {
     // If no results, try Psbdmp for paste leaks
     if (newNodes.length === 0) {
       try {
-        const psbdmpRes = await fetch(`https://psbdmp.ws/api/v3/search/${encodeURIComponent(node.value)}`);
-        if (psbdmpRes.ok) {
-          const pastes = await psbdmpRes.json();
+        // Try direct first, then CORS proxy
+        let pastes: any = null;
+        try {
+          const psbdmpRes = await fetch(`https://psbdmp.ws/api/v3/search/${encodeURIComponent(node.value)}`);
+          if (psbdmpRes.ok) {
+            pastes = await psbdmpRes.json();
+          }
+        } catch {
+          // Try CORS proxy
+          const proxyRes = await fetch(`${CORS_PROXY}${encodeURIComponent(`https://psbdmp.ws/api/v3/search/${encodeURIComponent(node.value)}`)}`);
+          if (proxyRes.ok) {
+            const text = await proxyRes.text();
+            if (text.startsWith('[') || text.startsWith('{')) {
+              pastes = JSON.parse(text);
+            }
+          }
+        }
+        
+        if (pastes) {
           const items = Array.isArray(pastes) ? pastes : pastes.data || [];
           
           items.slice(0, 5).forEach((paste: any, idx: number) => {
@@ -665,8 +925,6 @@ async function transformBreachCheck(node: GraphNode): Promise<GraphNode[]> {
 /* ============================================================================
    TRANSFORM EXECUTION - REVERSE IP (FOR IPs) - FIXED
 ============================================================================ */
-
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
 async function transformReverseIp(node: GraphNode): Promise<GraphNode[]> {
   const cacheKey = `transform:reverse_ip:${node.value}`;
@@ -831,30 +1089,99 @@ async function transformPasteSearch(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    const response = await fetch(`https://psbdmp.ws/api/v3/search/${encodeURIComponent(node.value)}`);
+    const psbdmpUrl = `https://psbdmp.ws/api/v3/search/${encodeURIComponent(node.value)}`;
+    console.log(`[Paste Search] Searching for: ${node.value}`);
     
-    if (response.ok) {
-      const data = await response.json();
-      const pastes = Array.isArray(data) ? data : data.data || [];
+    let data: any = null;
+    
+    // Try direct first (works sometimes)
+    try {
+      const response = await fetch(psbdmpUrl, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (response.ok) {
+        data = await response.json();
+      }
+    } catch {
+      console.log('[Paste Search] Direct request failed, trying CORS proxy');
+    }
+    
+    // Fallback to CORS proxy
+    if (!data) {
+      try {
+        const proxyResponse = await fetch(`${CORS_PROXY}${encodeURIComponent(psbdmpUrl)}`);
+        if (proxyResponse.ok) {
+          const text = await proxyResponse.text();
+          if (text.startsWith('[') || text.startsWith('{')) {
+            data = JSON.parse(text);
+          }
+        }
+      } catch (e) {
+        console.warn('[Paste Search] CORS proxy also failed:', e);
+      }
+    }
+    
+    if (!data) {
+      // Try Archive.org as alternative paste source
+      console.log('[Paste Search] Trying Archive.org');
+      try {
+        const archiveUrl = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(node.value)}&fl[]=identifier&fl[]=title&fl[]=description&output=json&rows=15`;
+        const archiveRes = await fetch(archiveUrl);
+        if (archiveRes.ok) {
+          const archiveData = await archiveRes.json();
+          const docs = archiveData.response?.docs || [];
+          
+          docs.slice(0, 8).forEach((doc: any, idx: number) => {
+            newNodes.push({
+              id: `archive-${doc.identifier}-${Date.now()}`,
+              type: 'paste',
+              label: doc.title || `Archive: ${doc.identifier}`,
+              value: doc.identifier,
+              properties: {
+                source: 'Archive.org',
+                description: doc.description?.substring(0, 150),
+                url: `https://archive.org/details/${doc.identifier}`,
+              },
+              position: {
+                x: node.position.x + 300,
+                y: node.position.y - 150 + (idx * 50),
+              },
+              color: ENTITY_CONFIG.paste.color,
+              icon: '📚',
+              size: 40,
+            });
+          });
+        }
+      } catch (e) {
+        console.warn('[Paste Search] Archive.org failed:', e);
+      }
+    } else {
+      const pastes = Array.isArray(data) ? data : (data.data || data.results || []);
+      console.log(`[Paste Search] ✅ Found ${pastes.length} results from Psbdmp`);
       
-      pastes.slice(0, 10).forEach((paste: any, idx: number) => {
+      pastes.slice(0, 12).forEach((paste: any, idx: number) => {
         newNodes.push({
           id: `paste-${paste.id || paste.key || idx}-${Date.now()}`,
           type: 'paste',
-          label: paste.title || `Paste #${idx + 1}`,
+          label: paste.title || paste.tags || `Paste #${idx + 1}`,
           value: paste.id || paste.key,
           properties: {
             source: 'Psbdmp',
-            date: paste.time || paste.date,
+            date: paste.time || paste.date || paste.created,
             content: paste.text?.substring(0, 200),
+            url: paste.id ? `https://pastebin.com/${paste.id}` : `https://psbdmp.ws/${paste.key || paste.id}`,
           },
           position: {
             x: node.position.x + 300,
-            y: node.position.y - 200 + (idx * 50),
+            y: node.position.y - 250 + (idx * 45),
           },
           color: ENTITY_CONFIG.paste.color,
           icon: ENTITY_CONFIG.paste.icon,
           size: 40,
+          metadata: {
+            riskLevel: 'medium',
+            threatScore: 50,
+          },
         });
       });
     }
@@ -934,6 +1261,214 @@ async function transformSocialSearch(node: GraphNode): Promise<GraphNode[]> {
 }
 
 /* ============================================================================
+   TRANSFORM EXECUTION - DARK WEB SCAN (FOR EMAILS, DOMAINS, USERNAMES)
+============================================================================ */
+
+async function transformDarkwebScan(node: GraphNode): Promise<GraphNode[]> {
+  const cacheKey = `transform:darkweb:${node.value}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const newNodes: GraphNode[] = [];
+
+  try {
+    console.log(`[Dark Web] Scanning for: ${node.value}`);
+    
+    // Use torService's searchDarkWebSignals function
+    const leakResults = await searchDarkWebSignals(node.value);
+    
+    if (leakResults && leakResults.length > 0) {
+      console.log(`[Dark Web] ✅ Found ${leakResults.length} results`);
+      
+      leakResults.slice(0, 15).forEach((leak: any, idx: number) => {
+        const nodeType = leak.source === 'psbdmp' || leak.source === 'ghostbin' ? 'paste' : 'breach';
+        
+        newNodes.push({
+          id: `darkweb-${leak.id || idx}-${Date.now()}`,
+          type: nodeType,
+          label: leak.title || `${leak.source}: ${node.value}`,
+          value: leak.url || leak.id,
+          properties: {
+            source: leak.source,
+            indicator: leak.indicator,
+            context: leak.context,
+            timestamp: leak.timestamp,
+            url: leak.url,
+          },
+          position: {
+            x: node.position.x + 350,
+            y: node.position.y - 300 + (idx * 45),
+          },
+          color: nodeType === 'breach' ? ENTITY_CONFIG.breach.color : ENTITY_CONFIG.paste.color,
+          icon: '🕸️',
+          size: 45,
+          metadata: {
+            riskLevel: leak.source === 'libraryofleaks' ? 'critical' : 'high',
+            threatScore: leak.source === 'libraryofleaks' ? 90 : 75,
+            source: 'darkweb_scan',
+          },
+        });
+      });
+    } else {
+      // Fallback: Direct Ahmia search for onion mentions
+      console.log('[Dark Web] No leaks found, trying Ahmia search');
+      try {
+        const ahmiaRes = await fetch(`https://ahmia.fi/search/?q=${encodeURIComponent(node.value)}`);
+        if (ahmiaRes.ok) {
+          const html = await ahmiaRes.text();
+          const onionMatches = html.match(/([a-z2-7]{16,56}\.onion)/gi) || [];
+          const uniqueOnions = [...new Set(onionMatches)].slice(0, 8);
+          
+          uniqueOnions.forEach((onion, idx) => {
+            newNodes.push({
+              id: `onion-${onion.substring(0, 10)}-${Date.now()}`,
+              type: 'url',
+              label: `Onion: ${onion.substring(0, 20)}...`,
+              value: onion,
+              properties: {
+                type: 'onion_site',
+                query: node.value,
+                source: 'ahmia',
+              },
+              position: {
+                x: node.position.x + 350,
+                y: node.position.y - 150 + (idx * 50),
+              },
+              color: '#7c3aed',
+              icon: '🧅',
+              size: 40,
+              metadata: {
+                riskLevel: 'high',
+                threatScore: 70,
+              },
+            });
+          });
+        }
+      } catch (e) {
+        console.warn('[Dark Web] Ahmia search failed:', e);
+      }
+    }
+
+    await cacheAPIResponse(cacheKey, newNodes, 900);
+    return newNodes;
+  } catch (error) {
+    console.error('Dark web scan error:', error);
+    return [];
+  }
+}
+
+/* ============================================================================
+   TRANSFORM EXECUTION - TELEGRAM SCAN (FOR EMAILS, USERNAMES, PHONES)
+============================================================================ */
+
+async function transformTelegramScan(node: GraphNode): Promise<GraphNode[]> {
+  const cacheKey = `transform:telegram:${node.value}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const newNodes: GraphNode[] = [];
+
+  try {
+    console.log(`[Telegram] Scanning for: ${node.value}`);
+    
+    // Determine scan type based on node type
+    let scanType: 'email' | 'username' | 'phone' | 'keyword' = 'keyword';
+    if (node.type === 'email') scanType = 'email';
+    else if (node.type === 'phone') scanType = 'phone';
+    else if (node.type === 'person') scanType = 'username';
+    
+    // Use telegramService's searchTelegramLeaks function
+    const telegramResults = await searchTelegramLeaks(node.value, scanType);
+    
+    if (telegramResults && telegramResults.length > 0) {
+      console.log(`[Telegram] ✅ Found ${telegramResults.length} results`);
+      
+      telegramResults.slice(0, 12).forEach((result: any, idx: number) => {
+        newNodes.push({
+          id: `telegram-${result.id || idx}-${Date.now()}`,
+          type: 'breach',
+          label: result.title || `Telegram: ${result.channel || 'Leak'}`,
+          value: result.url || result.id,
+          properties: {
+            channel: result.channel,
+            channelId: result.channelId,
+            severity: result.severity,
+            context: result.context,
+            exposedData: result.exposedData,
+            timestamp: result.timestamp,
+            source: result.source,
+            url: result.url,
+          },
+          position: {
+            x: node.position.x + 350,
+            y: node.position.y - 200 + (idx * 45),
+          },
+          color: result.severity === 'critical' ? '#dc2626' : 
+                 result.severity === 'high' ? '#ef4444' : '#f97316',
+          icon: '📱',
+          size: 45,
+          metadata: {
+            riskLevel: result.severity || 'medium',
+            threatScore: result.severity === 'critical' ? 95 : 
+                        result.severity === 'high' ? 80 : 60,
+            source: 'telegram_scan',
+          },
+        });
+      });
+    } else {
+      // Fallback: Check via Reddit for Telegram leak mentions
+      console.log('[Telegram] No direct results, checking Reddit for Telegram mentions');
+      try {
+        const redditRes = await fetch(
+          `https://www.reddit.com/search.json?q=${encodeURIComponent(node.value + ' telegram leak')}&limit=10&sort=new`,
+          { headers: { 'User-Agent': 'OSINT-Hub/1.0' } }
+        );
+        
+        if (redditRes.ok) {
+          const redditData = await redditRes.json();
+          const posts = redditData.data?.children || [];
+          
+          posts.slice(0, 6).forEach((post: any, idx: number) => {
+            const p = post.data;
+            if (p.title?.toLowerCase().includes('telegram') || 
+                p.selftext?.toLowerCase().includes('telegram')) {
+              newNodes.push({
+                id: `reddit-tg-${p.id}-${Date.now()}`,
+                type: 'paste',
+                label: `Reddit: ${p.title?.substring(0, 40)}...`,
+                value: `https://reddit.com${p.permalink}`,
+                properties: {
+                  source: 'Reddit',
+                  subreddit: p.subreddit,
+                  author: p.author,
+                  score: p.score,
+                  created: new Date(p.created_utc * 1000).toISOString(),
+                },
+                position: {
+                  x: node.position.x + 350,
+                  y: node.position.y - 100 + (idx * 50),
+                },
+                color: '#ff4500',
+                icon: '📱',
+                size: 40,
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[Telegram] Reddit fallback failed:', e);
+      }
+    }
+
+    await cacheAPIResponse(cacheKey, newNodes, 900);
+    return newNodes;
+  } catch (error) {
+    console.error('Telegram scan error:', error);
+    return [];
+  }
+}
+
+/* ============================================================================
    MAIN TRANSFORM EXECUTOR
 ============================================================================ */
 
@@ -977,6 +1512,12 @@ export async function executeTransform(
         break;
       case 'social_search':
         newNodes = await transformSocialSearch(node);
+        break;
+      case 'darkweb_scan':
+        newNodes = await transformDarkwebScan(node);
+        break;
+      case 'telegram_scan':
+        newNodes = await transformTelegramScan(node);
         break;
       default: 
         throw new Error(`Transform ${transformId} not implemented`);
