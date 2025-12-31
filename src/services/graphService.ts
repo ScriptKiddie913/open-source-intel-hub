@@ -5,11 +5,9 @@
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
 import { searchDarkWebSignals } from '@/services/torService';
 import { searchTelegramLeaks } from '@/services/telegramService';
-
-/* ============================================================================
-   CORS PROXY - Required for APIs that don't support browser CORS
-============================================================================ */
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+import { getSubdomainsFromCerts, searchCertificates } from '@/services/certService';
+import { getSubdomains } from '@/services/dnsService';
+import { API_ENDPOINTS, getProxyUrl } from '@/data/publicApiEndpoints';
 
 /* ============================================================================
    TYPES - MALTEGO-STYLE ENTITIES
@@ -355,7 +353,7 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
       
       // RDAP needs CORS proxy for browser requests
       try {
-        const response = await fetch(`${CORS_PROXY}${encodeURIComponent(apiUrl)}`);
+        const response = await fetch(getProxyUrl(apiUrl));
         if (response.ok) {
           const text = await response.text();
           data = JSON.parse(text);
@@ -478,6 +476,7 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
 
 /* ============================================================================
    TRANSFORM EXECUTION - SUBDOMAIN ENUMERATION (FOR DOMAINS)
+   Uses the same technique as DomainIntelligence - certService & dnsService
 ============================================================================ */
 
 async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
@@ -486,45 +485,57 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
   if (cached) return cached;
 
   const newNodes: GraphNode[] = [];
+  const domain = node.value.toLowerCase();
 
   try {
-    // crt.sh requires CORS proxy for browser requests
-    const crtshUrl = `https://crt.sh/?q=%25.${encodeURIComponent(node.value)}&output=json`;
-    console.log(`[Subdomains] Fetching from crt.sh via CORS proxy`);
+    console.log(`[Subdomains] Fetching subdomains for: ${domain}`);
     
-    let data: any[] = [];
+    let subdomains: string[] = [];
     
-    // Try via CORS proxy first
+    // Method 1: Use getSubdomainsFromCerts from certService (same as DomainIntelligence)
     try {
-      const response = await fetch(`${CORS_PROXY}${encodeURIComponent(crtshUrl)}`);
-      if (response.ok) {
-        const text = await response.text();
-        // crt.sh sometimes returns HTML error pages
-        if (text.startsWith('[') || text.startsWith('{')) {
-          data = JSON.parse(text);
-        } else {
-          console.warn('[Subdomains] crt.sh returned non-JSON, trying alternate source');
-        }
+      console.log('[Subdomains] Trying certService.getSubdomainsFromCerts...');
+      const certSubdomains = await getSubdomainsFromCerts(domain);
+      if (certSubdomains.length > 0) {
+        console.log(`[Subdomains] ✅ certService found ${certSubdomains.length} subdomains`);
+        subdomains = [...new Set([...subdomains, ...certSubdomains])];
       }
     } catch (e) {
-      console.warn('[Subdomains] CORS proxy failed:', e);
+      console.warn('[Subdomains] certService failed:', e);
     }
     
-    // Fallback: Try HackerTarget subdomain finder
-    if (data.length === 0) {
-      console.log('[Subdomains] Trying HackerTarget API');
+    // Method 2: Use getSubdomains from dnsService as additional source
+    if (subdomains.length < 10) {
       try {
-        const htResponse = await fetch(`https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(node.value)}`);
+        console.log('[Subdomains] Trying dnsService.getSubdomains...');
+        const dnsSubdomains = await getSubdomains(domain);
+        if (dnsSubdomains.length > 0) {
+          console.log(`[Subdomains] ✅ dnsService found ${dnsSubdomains.length} subdomains`);
+          subdomains = [...new Set([...subdomains, ...dnsSubdomains])];
+        }
+      } catch (e) {
+        console.warn('[Subdomains] dnsService failed:', e);
+      }
+    }
+    
+    // Method 3: Try HackerTarget API as fallback (has CORS support)
+    if (subdomains.length === 0) {
+      console.log('[Subdomains] Trying HackerTarget API...');
+      try {
+        const htResponse = await fetch(`https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(domain)}`);
         if (htResponse.ok) {
           const text = await htResponse.text();
           if (!text.includes('error') && !text.includes('API count exceeded')) {
             const lines = text.split('\n').filter(l => l.trim());
             lines.forEach(line => {
               const [subdomain] = line.split(',');
-              if (subdomain && subdomain.endsWith(node.value) && subdomain !== node.value) {
-                data.push({ name_value: subdomain });
+              if (subdomain && subdomain.endsWith(domain) && subdomain !== domain) {
+                subdomains.push(subdomain.toLowerCase());
               }
             });
+            if (subdomains.length > 0) {
+              console.log(`[Subdomains] ✅ HackerTarget found ${subdomains.length} subdomains`);
+            }
           }
         }
       } catch (e) {
@@ -532,45 +543,63 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
       }
     }
     
-    if (data.length === 0) {
-      console.warn('[Subdomains] No data from any source');
+    // Method 4: Direct crt.sh with CORS proxy as last resort
+    if (subdomains.length === 0) {
+      console.log('[Subdomains] Trying crt.sh via CORS proxy...');
+      try {
+        const crtshUrl = `${API_ENDPOINTS.certs.base}/?q=%25.${encodeURIComponent(domain)}&output=json`;
+        const response = await fetch(getProxyUrl(crtshUrl));
+        if (response.ok) {
+          const text = await response.text();
+          if (text.startsWith('[') || text.startsWith('{')) {
+            const data = JSON.parse(text);
+            data.forEach((cert: any) => {
+              const nameValue = cert.name_value || cert.common_name || '';
+              const names = nameValue.split('\n');
+              names.forEach((name: string) => {
+                const cleanName = name.trim().toLowerCase().replace(/^\*\./, '');
+                if (cleanName.endsWith(domain) && cleanName !== domain && !cleanName.includes('*')) {
+                  subdomains.push(cleanName);
+                }
+              });
+            });
+            if (subdomains.length > 0) {
+              console.log(`[Subdomains] ✅ crt.sh via proxy found ${subdomains.length} subdomains`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[Subdomains] crt.sh proxy failed:', e);
+      }
+    }
+    
+    // Deduplicate and limit
+    const uniqueSubdomains = [...new Set(subdomains)];
+    console.log(`[Subdomains] Total unique subdomains: ${uniqueSubdomains.length}`);
+    
+    if (uniqueSubdomains.length === 0) {
+      console.warn('[Subdomains] No subdomains found from any source');
       return [];
     }
 
-    const subdomains = new Set<string>();
-
-    data.forEach((cert: any) => {
-      const nameValue = cert.name_value || cert.common_name || '';
-      const names = nameValue.split('\n');
-      names.forEach((name: string) => {
-        const cleanName = name.trim().toLowerCase();
-        if (cleanName.endsWith(node.value.toLowerCase()) && 
-            cleanName !== node.value.toLowerCase() && 
-            !cleanName.includes('*')) {
-          subdomains.add(cleanName);
-        }
-      });
-    });
-
-    console.log(`[Subdomains] ✅ Found ${subdomains.size} unique subdomains`);
-
-    Array.from(subdomains).slice(0, 20).forEach((subdomain, idx) => {
+    // Create nodes for each subdomain (limit to 25)
+    uniqueSubdomains.slice(0, 25).forEach((subdomain, idx) => {
       newNodes.push({
         id: `domain-${subdomain}-${Date.now()}-${idx}`,
         type: 'domain',
         label: subdomain,
         value: subdomain,
         properties: {
-          parent: node.value,
-          source: 'crt.sh',
+          parent: domain,
+          source: 'certificate_transparency',
         },
         position: {
           x: node.position.x + 300,
-          y: node.position.y - 400 + (idx * 45),
+          y: node.position.y - 400 + (idx * 35),
         },
         color: ENTITY_CONFIG.domain.color,
         icon: ENTITY_CONFIG.domain.icon,
-        size: 45,
+        size: 40,
       });
     });
 
@@ -718,6 +747,7 @@ function getServiceName(port: number): string {
 
 /* ============================================================================
    TRANSFORM EXECUTION - SSL CERTIFICATE (FOR DOMAINS)
+   Uses certService like DomainIntelligence for consistency
 ============================================================================ */
 
 async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
@@ -728,22 +758,33 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    // crt.sh requires CORS proxy
-    const crtshUrl = `https://crt.sh/?q=${encodeURIComponent(node.value)}&output=json`;
-    console.log(`[SSL Cert] Fetching certificate info via CORS proxy`);
+    console.log(`[SSL Cert] Fetching certificate info for: ${node.value}`);
     
+    // Use certService.searchCertificates (same as DomainIntelligence)
     let certs: any[] = [];
     
     try {
-      const response = await fetch(`${CORS_PROXY}${encodeURIComponent(crtshUrl)}`);
-      if (response.ok) {
-        const text = await response.text();
-        if (text.startsWith('[') || text.startsWith('{')) {
-          certs = JSON.parse(text);
-        }
+      const certResults = await searchCertificates(node.value);
+      if (certResults.length > 0) {
+        console.log(`[SSL Cert] ✅ certService found ${certResults.length} certificates`);
+        certs = certResults;
       }
     } catch (e) {
-      console.warn('[SSL Cert] CORS proxy failed:', e);
+      console.warn('[SSL Cert] certService failed, trying direct crt.sh:', e);
+      
+      // Fallback to direct crt.sh with CORS proxy
+      const crtshUrl = `${API_ENDPOINTS.certs.base}/?q=${encodeURIComponent(node.value)}&output=json`;
+      try {
+        const response = await fetch(getProxyUrl(crtshUrl));
+        if (response.ok) {
+          const text = await response.text();
+          if (text.startsWith('[') || text.startsWith('{')) {
+            certs = JSON.parse(text);
+          }
+        }
+      } catch (proxyErr) {
+        console.warn('[SSL Cert] CORS proxy also failed:', proxyErr);
+      }
     }
 
     if (certs.length > 0) {
@@ -751,16 +792,16 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
       console.log(`[SSL Cert] ✅ Found certificate for ${node.value}`);
 
       newNodes.push({
-        id: `cert-${cert.id}-${Date.now()}`,
+        id: `cert-${cert.id || cert.serialNumber || Date.now()}`,
         type: 'certificate',
         label: `SSL Certificate`,
-        value: cert.id?.toString() || 'cert',
+        value: cert.id?.toString() || cert.serialNumber || 'cert',
         properties: {
-          issuer: cert.issuer_name,
-          commonName: cert.common_name,
-          notBefore: cert.not_before,
-          notAfter: cert.not_after,
-          serialNumber: cert.serial_number,
+          issuer: cert.issuer_name || cert.issuerName,
+          commonName: cert.common_name || cert.commonName,
+          notBefore: cert.not_before || cert.notBefore,
+          notAfter: cert.not_after || cert.notAfter,
+          serialNumber: cert.serial_number || cert.serialNumber,
         },
         position: {
           x: node.position.x + 250,
@@ -772,12 +813,13 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
       });
 
       // Issuer organization
-      if (cert.issuer_name) {
+      const issuerName = cert.issuer_name || cert.issuerName;
+      if (issuerName) {
         newNodes.push({
-          id: `org-${cert.issuer_name.substring(0, 20)}-${Date.now()}`,
+          id: `org-${issuerName.substring(0, 20)}-${Date.now()}`,
           type: 'organization',
-          label: cert.issuer_name.split(',')[0].replace('CN=', '').replace('O=', ''),
-          value: cert.issuer_name,
+          label: issuerName.split(',')[0].replace('CN=', '').replace('O=', ''),
+          value: issuerName,
           properties: {
             type: 'Certificate Authority',
           },
@@ -872,7 +914,7 @@ async function transformBreachCheck(node: GraphNode): Promise<GraphNode[]> {
           }
         } catch {
           // Try CORS proxy
-          const proxyRes = await fetch(`${CORS_PROXY}${encodeURIComponent(`https://psbdmp.ws/api/v3/search/${encodeURIComponent(node.value)}`)}`);
+          const proxyRes = await fetch(getProxyUrl(`https://psbdmp.ws/api/v3/search/${encodeURIComponent(node.value)}`));
           if (proxyRes.ok) {
             const text = await proxyRes.text();
             if (text.startsWith('[') || text.startsWith('{')) {
@@ -1109,7 +1151,7 @@ async function transformPasteSearch(node: GraphNode): Promise<GraphNode[]> {
     // Fallback to CORS proxy
     if (!data) {
       try {
-        const proxyResponse = await fetch(`${CORS_PROXY}${encodeURIComponent(psbdmpUrl)}`);
+        const proxyResponse = await fetch(getProxyUrl(psbdmpUrl));
         if (proxyResponse.ok) {
           const text = await proxyResponse.text();
           if (text.startsWith('[') || text.startsWith('{')) {
