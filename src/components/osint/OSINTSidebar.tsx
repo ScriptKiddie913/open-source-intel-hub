@@ -29,6 +29,7 @@ import {
   Skull,
   Workflow,
   Target,
+  Map,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -44,6 +45,7 @@ const mainNavItems: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, description: "Overview & Statistics" },
   { name: "Threat Pipeline", href: "/malware-pipeline", icon: Workflow, description: "Full Threat Pipeline" },
   { name: "StealthMole", href: "/stealthmole", icon: Skull, description: "Deep Threat Intel" },
+  { name: "Threat Map", href: "/threat-map", icon: Map, description: "Live Attack Visualization" },
   { name: "Threat Intel", href: "/threat-intel", icon: Radar, description: "VirusTotal & Threat Analysis" },
   { name: "Live Threats", href: "/live-threats", icon: Zap, description: "Real-time Threat Feeds" },
   { name: "CVE Explorer", href: "/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
