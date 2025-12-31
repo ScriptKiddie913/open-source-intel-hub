@@ -1,6 +1,6 @@
 // src/pages/Index.tsx
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 
 import { OSINTSidebar } from "@/components/osint/OSINTSidebar";
 import { Dashboard } from "@/components/osint/Dashboard";
@@ -31,6 +31,23 @@ import {
   X,
   Maximize2,
   Minimize2,
+  Sparkles,
+  Shield,
+  Zap,
+  Terminal,
+  Radio,
+  Trash2,
+  Copy,
+  Check,
+  Brain,
+  Search,
+  Globe,
+  AlertTriangle,
+  FileSearch,
+  Skull,
+  Bug,
+  Network,
+  MessageCircle,
 } from "lucide-react";
 
 const PERPLEXITY_API_KEY = "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";
@@ -38,37 +55,97 @@ const PERPLEXITY_API_KEY = "pplx-xiNp9Mg3j4iMZ6Q7EGacCAO6v0J0meLTMwAEVAtlyD13Xkh
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
+  timestamp?: Date;
 };
 
+// Quick prompts for common OSINT queries
+const QUICK_PROMPTS = [
+  { icon: AlertTriangle, label: "Threat Intel", prompt: "What are the latest critical CVEs this week?" },
+  { icon: Bug, label: "Malware", prompt: "Tell me about recent ransomware campaigns" },
+  { icon: Globe, label: "APT Groups", prompt: "Which APT groups are most active currently?" },
+  { icon: Skull, label: "Dark Web", prompt: "What are common dark web threat indicators?" },
+  { icon: Network, label: "IOCs", prompt: "How do I analyze suspicious IP addresses?" },
+  { icon: FileSearch, label: "OSINT Tips", prompt: "What are best practices for OSINT investigation?" },
+];
+
 function renderMessage(text: string) {
-  const parts = text.split(/(https?:\/\/[^\s]+)/g);
-  return parts.map((part, i) =>
-    part.match(/^https?:\/\//) ? (
-      <a
-        key={i}
-        href={part}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-primary underline break-all"
-      >
-        {part}
-      </a>
-    ) : (
-      <span key={i}>{part}</span>
-    )
-  );
+  // Enhanced message rendering with code blocks, links, and formatting
+  const parts = text.split(/(\`\`\`[\s\S]*?\`\`\`|\`[^`]+\`|https?:\/\/[^\s]+|\*\*[^*]+\*\*|\n)/g);
+  
+  return parts.map((part, i) => {
+    // Code blocks
+    if (part.startsWith('```') && part.endsWith('```')) {
+      const code = part.slice(3, -3).replace(/^\w+\n/, '');
+      return (
+        <pre key={i} className="bg-black/40 border border-primary/20 rounded-lg p-3 my-2 overflow-x-auto text-xs font-mono text-green-400">
+          {code}
+        </pre>
+      );
+    }
+    // Inline code
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return (
+        <code key={i} className="bg-primary/20 text-primary px-1.5 py-0.5 rounded text-xs font-mono">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    // Links
+    if (part.match(/^https?:\/\//)) {
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2 break-all transition-colors"
+        >
+          {part}
+        </a>
+      );
+    }
+    // Bold text
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="text-primary font-semibold">{part.slice(2, -2)}</strong>;
+    }
+    // Newlines
+    if (part === '\n') {
+      return <br key={i} />;
+    }
+    return <span key={i}>{part}</span>;
+  });
 }
 
 function FloatingPerplexityChat() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [position, setPosition] = useState({ x: 24, y: 24 });
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [showQuickPrompts, setShowQuickPrompts] = useState(true);
 
   const dragging = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-scroll to bottom
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  // Focus input when opening
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [open]);
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (expanded) return;
@@ -81,12 +158,10 @@ function FloatingPerplexityChat() {
 
   const onMouseMove = (e: MouseEvent) => {
     if (!dragging.current || expanded) return;
-
     const nextX = e.clientX - offset.current.x;
     const nextY = e.clientY - offset.current.y;
-
     setPosition({
-      x: Math.max(8, Math.min(nextX, window.innerWidth - 360)),
+      x: Math.max(8, Math.min(nextX, window.innerWidth - 400)),
       y: Math.max(8, Math.min(nextY, window.innerHeight - 120)),
     });
   };
@@ -104,17 +179,31 @@ function FloatingPerplexityChat() {
     };
   }, []);
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  const copyToClipboard = async (text: string, index: number) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  const clearChat = () => {
+    setMessages([]);
+    setShowQuickPrompts(true);
+  };
+
+  const sendMessage = async (customPrompt?: string) => {
+    const messageText = customPrompt || input.trim();
+    if (!messageText) return;
 
     const userMsg: ChatMessage = {
       role: "user",
-      content: input,
+      content: messageText,
+      timestamp: new Date(),
     };
 
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setLoading(true);
+    setShowQuickPrompts(false);
 
     try {
       const res = await fetch(
@@ -130,30 +219,43 @@ function FloatingPerplexityChat() {
             messages: [
               {
                 role: "system",
-                content:
-                  "You are an OSINT and threat intelligence assistant. Respond with structured paragraphs, preserve links, lists, and indicators. Do not truncate.",
+                content: `You are CIPHER, an elite OSINT and threat intelligence AI assistant. You specialize in:
+- Cyber threat intelligence and APT group analysis
+- CVE vulnerability research and exploitation details
+- Malware analysis and IOC extraction
+- Dark web monitoring and leak detection
+- Network reconnaissance and infrastructure mapping
+- Social engineering and phishing detection
+- Cryptocurrency tracing and fraud investigation
+
+Respond with structured, actionable intelligence. Use technical terminology appropriately.
+Format responses with clear sections, bullet points, and code blocks where relevant.
+Always cite sources when possible and provide confidence levels for assessments.
+Be direct, precise, and thorough. Never truncate important information.`,
               },
-              ...messages,
-              userMsg,
+              ...messages.map(m => ({ role: m.role, content: m.content })),
+              { role: "user", content: messageText },
             ],
-            temperature: 0.2,
+            temperature: 0.3,
+            max_tokens: 4096,
           }),
         }
       );
 
       const data = await res.json();
-      const reply = data?.choices?.[0]?.message?.content || "";
+      const reply = data?.choices?.[0]?.message?.content || "No response received.";
 
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: reply },
+        { role: "assistant", content: reply, timestamp: new Date() },
       ]);
-    } catch {
+    } catch (err) {
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
-          content: "Error contacting intelligence service.",
+          content: "⚠️ Connection to intelligence service failed. Check your network and try again.",
+          timestamp: new Date(),
         },
       ]);
     } finally {
@@ -161,13 +263,30 @@ function FloatingPerplexityChat() {
     }
   };
 
+  // Floating button when closed
   if (!open) {
     return (
       <button
-        className="fixed bottom-4 right-4 z-50 px-4 py-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all"
+        className="fixed bottom-6 right-6 z-50 group"
         onClick={() => setOpen(true)}
+        title="Open CIPHER Intelligence Assistant"
       >
-        <Bot className="h-5 w-5" />
+        <div className="relative">
+          {/* Outer glow ring */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-500 via-primary to-purple-500 opacity-75 blur-lg group-hover:opacity-100 transition-opacity animate-pulse" />
+          
+          {/* Main button */}
+          <div className="relative flex items-center gap-2 px-4 py-3 rounded-full bg-gradient-to-r from-slate-900 to-slate-800 border border-primary/50 shadow-2xl shadow-primary/25 hover:shadow-primary/50 transition-all duration-300 group-hover:scale-105">
+            <div className="relative">
+              <Brain className="h-5 w-5 text-cyan-400" />
+              <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            </div>
+            <span className="text-sm font-semibold bg-gradient-to-r from-cyan-400 to-primary bg-clip-text text-transparent">
+              CIPHER
+            </span>
+            <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+          </div>
+        </div>
       </button>
     );
   }
@@ -175,18 +294,21 @@ function FloatingPerplexityChat() {
   return (
     <div
       className={cn(
-        "fixed z-50",
+        "fixed z-50 transition-all duration-300",
         expanded
-          ? "inset-0 flex items-center justify-center bg-black/40"
+          ? "inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           : ""
       )}
     >
       <div
         className={cn(
-          "card-cyber border border-border shadow-xl flex flex-col",
+          "flex flex-col overflow-hidden transition-all duration-300",
+          "bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950",
+          "border border-primary/30 rounded-2xl",
+          "shadow-2xl shadow-primary/20",
           expanded
-            ? "w-[720px] h-[85vh]"
-            : "w-[340px] max-h-[60vh]"
+            ? "w-[800px] h-[85vh] max-w-[95vw]"
+            : "w-[380px] h-[520px]"
         )}
         style={
           expanded
@@ -194,71 +316,239 @@ function FloatingPerplexityChat() {
             : { left: position.x, bottom: position.y, position: "fixed" }
         }
       >
+        {/* Header */}
         <div
-          className="flex items-center justify-between p-2 border-b border-border cursor-move"
+          className={cn(
+            "flex items-center justify-between px-4 py-3",
+            "bg-gradient-to-r from-primary/10 via-transparent to-cyan-500/10",
+            "border-b border-primary/20 cursor-move select-none"
+          )}
           onMouseDown={onMouseDown}
         >
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Bot className="h-4 w-4 text-primary" />
-            OSINT Assistant
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="absolute inset-0 bg-primary/50 rounded-lg blur-md" />
+              <div className="relative p-2 bg-gradient-to-br from-primary/20 to-cyan-500/20 rounded-lg border border-primary/30">
+                <Brain className="h-5 w-5 text-cyan-400" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold flex items-center gap-2">
+                <span className="bg-gradient-to-r from-cyan-400 via-primary to-purple-400 bg-clip-text text-transparent">
+                  CIPHER
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 font-normal">
+                  ONLINE
+                </span>
+              </h3>
+              <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Radio className="h-3 w-3 animate-pulse text-cyan-500" />
+                Perplexity Sonar Pro • Real-time Intelligence
+              </p>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => setExpanded((e) => !e)} className="hover:text-primary">
-              {expanded ? (
-                <Minimize2 className="h-4 w-4" />
-              ) : (
-                <Maximize2 className="h-4 w-4" />
-              )}
+          
+          <div className="flex items-center gap-1">
+            <button
+              onClick={clearChat}
+              className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+              title="Clear conversation"
+            >
+              <Trash2 className="h-4 w-4" />
             </button>
-            <button onClick={() => setOpen(false)} className="hover:text-destructive">
+            <button 
+              onClick={() => setExpanded((e) => !e)} 
+              className="p-2 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+              title={expanded ? "Minimize" : "Expand"}
+            >
+              {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
+            <button 
+              onClick={() => setOpen(false)} 
+              className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+              title="Close"
+            >
               <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm leading-relaxed">
-          {messages.length === 0 && (
-            <div className="text-center text-muted-foreground py-8">
-              <Bot className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p className="text-xs">Ask me about threats, CVEs, IPs, or any OSINT query</p>
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent">
+          {messages.length === 0 && showQuickPrompts && (
+            <div className="flex flex-col items-center justify-center h-full animate-fade-in">
+              {/* Hero Section */}
+              <div className="relative mb-6">
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-primary to-purple-500 rounded-full blur-2xl opacity-30 animate-pulse" />
+                <div className="relative p-6 bg-gradient-to-br from-primary/10 to-cyan-500/10 rounded-full border border-primary/20">
+                  <Shield className="h-12 w-12 text-cyan-400" />
+                </div>
+              </div>
+              
+              <h2 className="text-lg font-bold bg-gradient-to-r from-cyan-400 via-primary to-purple-400 bg-clip-text text-transparent mb-2">
+                CIPHER Intelligence Assistant
+              </h2>
+              <p className="text-xs text-muted-foreground text-center max-w-[280px] mb-6">
+                Powered by Perplexity Sonar Pro with real-time web search for threat intelligence
+              </p>
+
+              {/* Quick Prompts Grid */}
+              <div className="w-full space-y-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground text-center mb-3">
+                  Quick Intelligence Queries
+                </p>
+                <div className={cn(
+                  "grid gap-2",
+                  expanded ? "grid-cols-3" : "grid-cols-2"
+                )}>
+                  {QUICK_PROMPTS.map((item, i) => (
+                    <button
+                      key={i}
+                      onClick={() => sendMessage(item.prompt)}
+                      className={cn(
+                        "flex items-center gap-2 p-3 rounded-xl text-left",
+                        "bg-gradient-to-br from-slate-800/80 to-slate-900/80",
+                        "border border-slate-700/50 hover:border-primary/50",
+                        "hover:bg-primary/5 transition-all duration-200",
+                        "group"
+                      )}
+                    >
+                      <div className="p-1.5 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                        <item.icon className="h-3.5 w-3.5 text-primary" />
+                      </div>
+                      <span className="text-xs font-medium text-slate-300 group-hover:text-white">
+                        {item.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
+
+          {/* Chat Messages */}
           {messages.map((m, i) => (
             <div
               key={i}
               className={cn(
-                "p-3 rounded whitespace-pre-wrap break-words",
-                m.role === "user"
-                  ? "bg-primary/10 text-right ml-8"
-                  : "bg-secondary/50 mr-8"
+                "animate-fade-in group",
+                m.role === "user" ? "flex justify-end" : "flex justify-start"
               )}
             >
-              {renderMessage(m.content)}
+              <div
+                className={cn(
+                  "relative max-w-[85%] rounded-2xl px-4 py-3",
+                  m.role === "user"
+                    ? "bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 rounded-br-md"
+                    : "bg-gradient-to-br from-slate-800/80 to-slate-900/80 border border-slate-700/50 rounded-bl-md"
+                )}
+              >
+                {/* Message Header */}
+                <div className="flex items-center gap-2 mb-2">
+                  {m.role === "assistant" ? (
+                    <div className="p-1 rounded bg-cyan-500/10">
+                      <Zap className="h-3 w-3 text-cyan-400" />
+                    </div>
+                  ) : (
+                    <div className="p-1 rounded bg-primary/10">
+                      <Terminal className="h-3 w-3 text-primary" />
+                    </div>
+                  )}
+                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                    {m.role === "assistant" ? "CIPHER" : "You"}
+                  </span>
+                  {m.timestamp && (
+                    <span className="text-[10px] text-muted-foreground/50">
+                      {m.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+                
+                {/* Message Content */}
+                <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                  {renderMessage(m.content)}
+                </div>
+
+                {/* Copy Button (for assistant messages) */}
+                {m.role === "assistant" && (
+                  <button
+                    onClick={() => copyToClipboard(m.content, i)}
+                    className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-700/50 opacity-0 group-hover:opacity-100 hover:bg-slate-600/50 transition-all"
+                    title="Copy response"
+                  >
+                    {copiedIndex === i ? (
+                      <Check className="h-3 w-3 text-green-400" />
+                    ) : (
+                      <Copy className="h-3 w-3 text-muted-foreground" />
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
+
+          {/* Loading State */}
           {loading && (
-            <div className="text-xs text-muted-foreground flex items-center gap-2">
-              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-              Thinking…
+            <div className="flex justify-start animate-fade-in">
+              <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border border-slate-700/50 rounded-2xl rounded-bl-md px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  <span className="text-xs text-muted-foreground">Analyzing intelligence...</span>
+                </div>
+              </div>
             </div>
           )}
+          
+          <div ref={messagesEndRef} />
         </div>
 
-        <div className="p-2 border-t border-border flex gap-2">
-          <input
-            className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            placeholder="Ask about threats, CVEs, domains..."
-          />
-          <button 
-            onClick={sendMessage} 
-            disabled={loading || !input.trim()}
-            className="text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Send className="h-4 w-4" />
-          </button>
+        {/* Input Area */}
+        <div className="p-4 border-t border-primary/20 bg-gradient-to-r from-slate-900/50 to-transparent">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                ref={inputRef}
+                className={cn(
+                  "w-full pl-10 pr-4 py-3 rounded-xl",
+                  "bg-slate-800/50 border border-slate-700/50",
+                  "focus:border-primary/50 focus:ring-1 focus:ring-primary/20",
+                  "text-sm placeholder:text-muted-foreground",
+                  "outline-none transition-all"
+                )}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                placeholder="Ask about threats, CVEs, IOCs, APT groups..."
+                disabled={loading}
+              />
+            </div>
+            <button
+              onClick={() => sendMessage()}
+              disabled={loading || !input.trim()}
+              className={cn(
+                "p-3 rounded-xl transition-all duration-200",
+                "bg-gradient-to-r from-primary to-cyan-500",
+                "hover:from-primary/90 hover:to-cyan-500/90",
+                "disabled:opacity-50 disabled:cursor-not-allowed",
+                "shadow-lg shadow-primary/25 hover:shadow-primary/40",
+                "group"
+              )}
+              title="Send message"
+            >
+              <Send className="h-4 w-4 text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            </button>
+          </div>
+          
+          {/* Footer */}
+          <div className="flex items-center justify-center gap-2 mt-3 text-[10px] text-muted-foreground/50">
+            <MessageCircle className="h-3 w-3" />
+            <span>Press Enter to send • Powered by Perplexity AI</span>
+          </div>
         </div>
       </div>
     </div>
