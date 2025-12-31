@@ -99,6 +99,24 @@ function makeId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+// STRICT RELEVANCE CHECK - Must contain FULL query, not just partial matches
+function isRelevantResult(text: string, query: string): boolean {
+  if (!text || !query) return false;
+  const textLower = text.toLowerCase();
+  const queryLower = query.toLowerCase().trim();
+  
+  // Must contain the FULL query, not just parts
+  if (textLower.includes(queryLower)) return true;
+  
+  // For email: check if both local part and domain are present
+  if (query.includes('@')) {
+    const [localPart, domain] = queryLower.split('@');
+    return textLower.includes(localPart) && textLower.includes(domain);
+  }
+  
+  return false;
+}
+
 function determineSeverity(text: string): SeverityLevel {
   const t = text.toLowerCase();
   if (/(password|credential|api.?key|secret|token|private.?key)/.test(t)) return 'critical';
@@ -129,8 +147,9 @@ async function searchPsbdmp(query: string, type: ScanTargetType): Promise<Telegr
   const leaks: TelegramLeak[] = [];
   
   try {
+    // Search for EXACT query
     const url = `https://psbdmp.ws/api/v3/search/${encodeURIComponent(query)}`;
-    console.log(`[Psbdmp Telegram] Searching...`);
+    console.log(`[Psbdmp Telegram] Searching for exact: "${query}"`);
     
     let data: any;
     try {
@@ -145,28 +164,28 @@ async function searchPsbdmp(query: string, type: ScanTargetType): Promise<Telegr
     
     const items = Array.isArray(data) ? data : (data.data || data.results || []);
     
-    items.slice(0, 25).forEach((paste: any, i: number) => {
+    items.slice(0, 30).forEach((paste: any, i: number) => {
       const text = paste.text || paste.content || '';
+      const title = paste.title || paste.tags || '';
+      const fullText = `${text} ${title}`;
       
-      // Only include if it contains telegram-related content or the query
-      if (text.toLowerCase().includes('telegram') || 
-          text.toLowerCase().includes(query.toLowerCase()) ||
-          text.toLowerCase().includes('t.me')) {
-        leaks.push({
-          id: makeId('psbdmp'),
-          title: paste.title || `Paste Leak #${i + 1}`,
-          identifier: query,
-          type,
-          severity: determineSeverity(text),
-          channel: 'Psbdmp Paste Index',
-          channelId: 'psbdmp',
-          context: text.slice(0, 300),
-          exposedData: extractExposedData(text),
-          timestamp: paste.time || paste.date || nowISO(),
-          source: 'paste_sites',
-          url: paste.id ? `https://pastebin.com/${paste.id}` : `https://psbdmp.ws/${paste.key}`,
-        });
-      }
+      // STRICT: Only include if it actually contains the FULL query
+      if (!isRelevantResult(fullText, query)) return;
+      
+      leaks.push({
+        id: makeId('psbdmp'),
+        title: title || `Paste Leak #${i + 1}`,
+        identifier: query,
+        type,
+        severity: determineSeverity(text),
+        channel: 'Psbdmp Paste Index',
+        channelId: 'psbdmp',
+        context: text.slice(0, 300),
+        exposedData: extractExposedData(text),
+        timestamp: paste.time || paste.date || nowISO(),
+        source: 'paste_sites',
+        url: paste.id ? `https://pastebin.com/${paste.id}` : `https://psbdmp.ws/${paste.key}`,
+      });
     });
     
     console.log(`[Psbdmp Telegram] ✅ Found ${leaks.length} relevant results`);
@@ -185,11 +204,10 @@ async function searchRedditTelegramLeaks(query: string, type: ScanTargetType): P
   const leaks: TelegramLeak[] = [];
   
   try {
-    // Search Reddit for Telegram leak mentions
-    const searchQuery = `${query} telegram leak OR breach OR dump OR database`;
-    const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(searchQuery)}&sort=new&limit=25`;
+    // Search for EXACT query without adding extra keywords
+    const url = `https://www.reddit.com/search.json?q="${encodeURIComponent(query)}"&sort=relevance&limit=25`;
     
-    console.log(`[Reddit Telegram] Searching...`);
+    console.log(`[Reddit Telegram] Searching for exact: "${query}"`);
     
     const res = await fetch(url, { headers: { 'User-Agent': 'OSINT-Hub/1.0' } });
     if (!res.ok) return [];
@@ -201,23 +219,23 @@ async function searchRedditTelegramLeaks(query: string, type: ScanTargetType): P
       const p = post.data;
       const text = `${p.title} ${p.selftext || ''}`;
       
-      // Only include if it mentions telegram
-      if (text.toLowerCase().includes('telegram') || text.toLowerCase().includes('t.me')) {
-        leaks.push({
-          id: makeId('reddit'),
-          title: p.title?.substring(0, 100) || 'Reddit Leak Report',
-          identifier: query,
-          type,
-          severity: determineSeverity(text),
-          channel: `r/${p.subreddit}`,
-          channelId: p.subreddit,
-          context: `${p.selftext?.substring(0, 250) || p.title} • ⬆️ ${p.score} upvotes`,
-          exposedData: extractExposedData(text),
-          timestamp: new Date(p.created_utc * 1000).toISOString(),
-          source: 'reddit',
-          url: `https://reddit.com${p.permalink}`,
-        });
-      }
+      // STRICT: Only include if it actually contains the FULL query
+      if (!isRelevantResult(text, query)) return;
+      
+      leaks.push({
+        id: makeId('reddit'),
+        title: p.title?.substring(0, 100) || 'Reddit Leak Report',
+        identifier: query,
+        type,
+        severity: determineSeverity(text),
+        channel: `r/${p.subreddit}`,
+        channelId: p.subreddit,
+        context: `${p.selftext?.substring(0, 250) || p.title} • ⬆️ ${p.score} upvotes`,
+        exposedData: extractExposedData(text),
+        timestamp: new Date(p.created_utc * 1000).toISOString(),
+        source: 'reddit',
+        url: `https://reddit.com${p.permalink}`,
+      });
     });
     
     console.log(`[Reddit Telegram] ✅ Found ${leaks.length} relevant results`);
@@ -385,8 +403,9 @@ async function searchGitHubTelegramLeaks(query: string, type: ScanTargetType): P
   const leaks: TelegramLeak[] = [];
   
   try {
-    const url = `https://api.github.com/search/code?q=${encodeURIComponent(query + ' telegram')}&per_page=15`;
-    console.log(`[GitHub Telegram] Searching...`);
+    // Search for EXACT query in code - use quotes
+    const url = `https://api.github.com/search/code?q="${encodeURIComponent(query)}"&per_page=20`;
+    console.log(`[GitHub Telegram] Searching for exact: "${query}"`);
     
     const res = await fetch(url, {
       headers: {
@@ -436,10 +455,10 @@ async function searchHackerNewsTelegram(query: string, type: ScanTargetType): Pr
   const leaks: TelegramLeak[] = [];
   
   try {
-    const searchQuery = `${query} telegram`;
-    const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchQuery)}&tags=story&hitsPerPage=15`;
+    // Search for EXACT query - HN Algolia supports quoted strings
+    const url = `https://hn.algolia.com/api/v1/search?query="${encodeURIComponent(query)}"&tags=story&hitsPerPage=20`;
     
-    console.log(`[HackerNews Telegram] Searching...`);
+    console.log(`[HackerNews Telegram] Searching for exact: "${query}"`);
     
     const res = await fetch(url);
     if (!res.ok) return [];
@@ -449,6 +468,9 @@ async function searchHackerNewsTelegram(query: string, type: ScanTargetType): Pr
     
     hits.forEach((hit: any) => {
       const text = `${hit.title || ''} ${hit.story_text || ''}`;
+      
+      // STRICT: Only include if it actually contains the FULL query
+      if (!isRelevantResult(text, query)) return;
       
       leaks.push({
         id: makeId('hn'),
@@ -466,7 +488,7 @@ async function searchHackerNewsTelegram(query: string, type: ScanTargetType): Pr
       });
     });
     
-    console.log(`[HackerNews Telegram] ✅ Found ${leaks.length} results`);
+    console.log(`[HackerNews Telegram] ✅ Found ${leaks.length} relevant results`);
     return leaks;
   } catch (err) {
     console.error('[HackerNews Telegram] ❌ Error:', err);
@@ -482,10 +504,10 @@ async function searchArchiveOrgTelegram(query: string, type: ScanTargetType): Pr
   const leaks: TelegramLeak[] = [];
   
   try {
-    const searchQuery = `${query} telegram OR t.me`;
-    const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(searchQuery)}&fl[]=identifier&fl[]=title&fl[]=description&fl[]=date&rows=15&output=json`;
+    // Use exact phrase search with quotes
+    const url = `https://archive.org/advancedsearch.php?q="${encodeURIComponent(query)}"&fl[]=identifier&fl[]=title&fl[]=description&fl[]=date&rows=20&output=json`;
     
-    console.log(`[Archive.org Telegram] Searching...`);
+    console.log(`[Archive.org Telegram] Searching for exact: "${query}"`);
     
     const res = await fetch(url);
     if (!res.ok) return [];
@@ -494,7 +516,10 @@ async function searchArchiveOrgTelegram(query: string, type: ScanTargetType): Pr
     const docs = data.response?.docs || [];
     
     docs.forEach((doc: any) => {
-      const text = `${doc.title || ''} ${doc.description || ''}`;
+      const text = `${doc.title || ''} ${doc.description || ''} ${doc.identifier || ''}`;
+      
+      // STRICT: Only include if it actually contains the FULL query
+      if (!isRelevantResult(text, query)) return;
       
       leaks.push({
         id: makeId('archive'),
@@ -512,7 +537,7 @@ async function searchArchiveOrgTelegram(query: string, type: ScanTargetType): Pr
       });
     });
     
-    console.log(`[Archive.org Telegram] ✅ Found ${leaks.length} results`);
+    console.log(`[Archive.org Telegram] ✅ Found ${leaks.length} relevant results`);
     return leaks;
   } catch (err) {
     console.error('[Archive.org Telegram] ❌ Error:', err);
