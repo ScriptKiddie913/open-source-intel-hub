@@ -1,13 +1,15 @@
 // src/services/graphService.ts
 // Maltego-style Graph Intelligence Service
 // Real data fetching for entities with relationship mapping
+// Enhanced with LLM analysis and deep search capabilities
 
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
-import { searchDarkWebSignals } from '@/services/torService';
+import { searchDarkWebSignals, deepSearchDarkWeb, type DeepSearchResult } from '@/services/torService';
 import { searchTelegramLeaks } from '@/services/telegramService';
 import { getSubdomainsFromCerts, searchCertificates } from '@/services/certService';
 import { getSubdomains } from '@/services/dnsService';
 import { API_ENDPOINTS, getProxyUrl } from '@/data/publicApiEndpoints';
+import { extractEntities, analyzeLeakIntelligence, mapEntityRelationships, type LeakAnalysis, type ExtractedEntity } from '@/services/llmAnalysisService';
 
 /* ============================================================================
    TYPES - MALTEGO-STYLE ENTITIES
@@ -1724,7 +1726,7 @@ async function transformSocialSearch(node: GraphNode): Promise<GraphNode[]> {
 }
 
 /* ============================================================================
-   TRANSFORM EXECUTION - DARK WEB SCAN (FOR EMAILS, DOMAINS, USERNAMES)
+   TRANSFORM EXECUTION - DARK WEB SCAN (STEALTHMOLE-STYLE DEEP SEARCH)
 ============================================================================ */
 
 async function transformDarkwebScan(node: GraphNode): Promise<GraphNode[]> {
@@ -1742,25 +1744,113 @@ async function transformDarkwebScan(node: GraphNode): Promise<GraphNode[]> {
   };
 
   try {
-    console.log(`[Dark Web] Scanning for exact: "${query}"`);
+    console.log(`[Dark Web] StealthMole-style DEEP scan for: "${query}"`);
     
-    // Use torService's searchDarkWebSignals function
-    const leakResults = await searchDarkWebSignals(query);
+    // Use enhanced deep search with all sources
+    const deepResult: DeepSearchResult = await deepSearchDarkWeb({
+      indicator: query,
+      includeBreachDatabases: true,
+      includeDarkWebSearch: true,
+      includeCodeSearch: true,
+      includePasteSites: true,
+      includeLeakArchives: true,
+      includeSocialMedia: true,
+      maxResultsPerSource: 25,
+      enableLLMAnalysis: true,
+    });
+    
+    const { signals: leakResults, analysis, entities } = deepResult;
     
     if (leakResults && leakResults.length > 0) {
-      console.log(`[Dark Web] Processing ${leakResults.length} results`);
+      console.log(`[Dark Web] Processing ${leakResults.length} deep search results`);
       
-      leakResults.forEach((leak: any, idx: number) => {
+      // Add a summary node if LLM analysis is available
+      if (analysis) {
+        newNodes.push({
+          id: `analysis-${Date.now()}`,
+          type: 'breach',
+          label: `🔍 Analysis: ${analysis.threatAssessment.severity.toUpperCase()}`,
+          value: analysis.id,
+          properties: {
+            type: 'threat_analysis',
+            summary: analysis.summary,
+            threatScore: analysis.threatAssessment.score,
+            severity: analysis.threatAssessment.severity,
+            recommendations: analysis.threatAssessment.recommendations,
+            indicators: analysis.threatAssessment.indicators,
+            entityCount: entities.length,
+          },
+          position: {
+            x: node.position.x + 250,
+            y: node.position.y - 80,
+          },
+          color: analysis.threatAssessment.severity === 'critical' ? '#dc2626' : 
+                 analysis.threatAssessment.severity === 'high' ? '#ea580c' : 
+                 analysis.threatAssessment.severity === 'medium' ? '#ca8a04' : '#16a34a',
+          icon: '🧠',
+          size: 60,
+          metadata: {
+            riskLevel: analysis.threatAssessment.severity === 'info' ? 'low' : analysis.threatAssessment.severity,
+            threatScore: analysis.threatAssessment.score,
+            source: 'llm_analysis',
+          },
+        });
+      }
+      
+      // Add extracted entities as nodes
+      entities.slice(0, 10).forEach((entity, idx) => {
+        const entityType: EntityType = 
+          entity.type === 'email' ? 'email' :
+          entity.type === 'ip' ? 'ip' :
+          entity.type === 'domain' ? 'domain' :
+          entity.type === 'hash' ? 'hash' : 'breach';
+        
+        newNodes.push({
+          id: `entity-${entity.type}-${idx}-${Date.now()}`,
+          type: entityType,
+          label: `${entity.type.toUpperCase()}: ${entity.value.substring(0, 30)}`,
+          value: entity.value,
+          properties: {
+            entityType: entity.type,
+            confidence: entity.confidence,
+            context: entity.context,
+          },
+          position: {
+            x: node.position.x + 450,
+            y: node.position.y - 200 + (idx * 50),
+          },
+          color: ENTITY_CONFIG[entityType]?.color || '#6366f1',
+          icon: entity.type === 'email' ? '📧' : entity.type === 'password' ? '🔑' : '🔍',
+          size: 35,
+          metadata: {
+            riskLevel: entity.confidence > 0.8 ? 'high' : 'medium',
+            confidence: entity.confidence,
+            source: 'entity_extraction',
+          },
+        });
+      });
+      
+      // Add leak results as nodes
+      leakResults.slice(0, 30).forEach((leak: any, idx: number) => {
         // STRICT: Double-check relevance (torService should already filter)
         const fullText = `${leak.title || ''} ${leak.context || ''} ${leak.indicator || ''}`;
         if (!isRelevant(fullText)) return;
         
-        const nodeType = leak.source === 'psbdmp' || leak.source === 'ghostbin' ? 'paste' : 'breach';
+        const nodeType: EntityType = 
+          leak.source === 'breach_db' || leak.source === 'leaklookup' ? 'breach' :
+          leak.source === 'psbdmp' || leak.source === 'pastebin' || leak.source === 'rentry' ? 'paste' :
+          leak.source === 'github_gist' || leak.source === 'searchcode' || leak.source === 'grep_app' ? 'url' :
+          'breach';
+        
+        const riskLevel = leak.severity || 
+          (leak.source === 'breach_db' || leak.source === 'ddosecrets' ? 'critical' :
+           leak.source === 'libraryofleaks' || leak.source === 'wikileaks' ? 'critical' :
+           leak.source === 'intelx' ? 'high' : 'medium');
         
         newNodes.push({
           id: `darkweb-${leak.id || idx}-${Date.now()}`,
           type: nodeType,
-          label: leak.title || `${leak.source}: ${query}`,
+          label: leak.title?.substring(0, 50) || `${leak.source}: ${query}`,
           value: leak.url || leak.id,
           properties: {
             source: leak.source,
@@ -1768,23 +1858,29 @@ async function transformDarkwebScan(node: GraphNode): Promise<GraphNode[]> {
             context: leak.context,
             timestamp: leak.timestamp,
             url: leak.url,
+            extractedEntities: leak.extractedData?.length || 0,
           },
           position: {
             x: node.position.x + 350,
-            y: node.position.y - 300 + (newNodes.length * 45),
+            y: node.position.y - 400 + (newNodes.length * 40),
           },
-          color: nodeType === 'breach' ? ENTITY_CONFIG.breach.color : ENTITY_CONFIG.paste.color,
-          icon: '🕸️',
-          size: 45,
+          color: riskLevel === 'critical' ? '#dc2626' : 
+                 riskLevel === 'high' ? '#ea580c' : 
+                 ENTITY_CONFIG[nodeType]?.color || '#6366f1',
+          icon: leak.source === 'breach_db' ? '💀' :
+                leak.source === 'wikileaks' ? '📰' :
+                leak.source === 'ddosecrets' ? '🔓' :
+                leak.source === 'github_gist' ? '💻' : '🕸️',
+          size: riskLevel === 'critical' ? 50 : 45,
           metadata: {
-            riskLevel: leak.source === 'libraryofleaks' ? 'critical' : 'high',
-            threatScore: leak.source === 'libraryofleaks' ? 90 : 75,
-            source: 'darkweb_scan',
+            riskLevel,
+            threatScore: riskLevel === 'critical' ? 95 : riskLevel === 'high' ? 80 : 65,
+            source: 'deep_darkweb_scan',
           },
         });
       });
       
-      console.log(`[Dark Web] ✅ Added ${newNodes.length} relevant nodes`);
+      console.log(`[Dark Web] ✅ Added ${newNodes.length} nodes from deep scan`);
     } else {
       // Fallback: Direct Ahmia search for onion mentions
       console.log('[Dark Web] No leaks found, trying Ahmia search');
