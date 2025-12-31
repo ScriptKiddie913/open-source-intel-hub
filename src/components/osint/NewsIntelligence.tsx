@@ -484,12 +484,23 @@ function NewsArticleCard({ article }:  { article: NewsArticle }) {
             <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Globe className="h-3 w-3" />
-                {article. source.name}
+                {article.source.name}
               </div>
               <div className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
                 {new Date(article.publishedAt).toLocaleDateString()}
               </div>
+              {article.upvotes !== undefined && article.upvotes > 0 && (
+                <div className="flex items-center gap-1 text-orange-500">
+                  <TrendingUp className="h-3 w-3" />
+                  {article.upvotes.toLocaleString()} upvotes
+                </div>
+              )}
+              {article.comments !== undefined && article.comments > 0 && (
+                <div className="flex items-center gap-1">
+                  💬 {article.comments.toLocaleString()} comments
+                </div>
+              )}
               {article.relevanceScore > 0 && (
                 <div className="flex items-center gap-1">
                   <BarChart3 className="h-3 w-3" />
