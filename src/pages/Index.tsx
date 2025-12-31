@@ -20,6 +20,7 @@ import { DarkWebScanner } from "@/components/osint/DarkWebScanner";
 import { GraphVisualization } from "@/components/osint/GraphVisualization";
 import { NewsIntelligence } from "@/components/osint/NewsIntelligence";
 import { TelegramIntelligence } from "@/components/osint/TelegramIntelligence";
+import { StealthMoleScanner } from "@/components/osint/StealthMoleScanner";
 
 import { initDatabase } from "@/lib/database";
 import { cn } from "@/lib/utils";
@@ -291,6 +292,7 @@ const Index = () => {
           <Route path="/graph" element={<GraphVisualization />} />
           <Route path="/news" element={<NewsIntelligence />} />
           <Route path="/telegram" element={<TelegramIntelligence />} />
+          <Route path="/stealthmole" element={<StealthMoleScanner />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
