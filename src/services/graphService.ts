@@ -181,8 +181,15 @@ export const AVAILABLE_TRANSFORMS:  Transform[] = [
     id: 'paste_search',
     name: 'Paste Search',
     description: 'Search in pastes/leaks',
-    supportedTypes:  ['email', 'domain'],
+    supportedTypes: ['email', 'domain'],
     icon: '📄',
+  },
+  {
+    id: 'social_search',
+    name: 'Social Profile Search',
+    description: 'Find social media profiles',
+    supportedTypes: ['email', 'person'],
+    icon: '👥',
   },
 ];
 
@@ -250,7 +257,7 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
   try {
     // Using RDAP for structured data
     const apiUrl = node.type === 'ip' 
-      ? `https://rdap. arin.net/registry/ip/${node.value}`
+      ? `https://rdap.arin.net/registry/ip/${node.value}`
       : `https://rdap.verisign.com/com/v1/domain/${node.value}`;
 
     const response = await fetch(apiUrl);
@@ -266,7 +273,7 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
         newNodes.push({
           id: `org-${orgName}-${Date.now()}-${idx}`,
           type: 'organization',
-          label:  orgName,
+          label: orgName,
           value: orgName,
           properties: {
             handle: entity.handle,
@@ -277,7 +284,7 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
             x: node.position.x + 250,
             y: node.position.y - 100 + (idx * 120),
           },
-          color:  ENTITY_CONFIG.organization.color,
+          color: ENTITY_CONFIG.organization.color,
           icon: ENTITY_CONFIG.organization.icon,
           size: 50,
         });
@@ -304,7 +311,7 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    const response = await fetch(`https://crt.sh/?q=%. ${node.value}&output=json`);
+    const response = await fetch(`https://crt.sh/?q=%25.${node.value}&output=json`);
     if (!response.ok) throw new Error('Subdomain enum failed');
 
     const data = await response.json();
@@ -314,14 +321,14 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
       const names = cert.name_value.split('\n');
       names.forEach((name: string) => {
         if (name.endsWith(node.value) && name !== node.value && !name.includes('*')) {
-          subdomains. add(name);
+          subdomains.add(name);
         }
       });
     });
 
     Array.from(subdomains).slice(0, 15).forEach((subdomain, idx) => {
       newNodes.push({
-        id: `domain-${subdomain}-${Date. now()}`,
+        id: `domain-${subdomain}-${Date.now()}`,
         type: 'domain',
         label: subdomain,
         value: subdomain,
@@ -333,7 +340,7 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
           x: node.position.x + 300,
           y: node.position.y - 350 + (idx * 50),
         },
-        color:  ENTITY_CONFIG.domain.color,
+        color: ENTITY_CONFIG.domain.color,
         icon: ENTITY_CONFIG.domain.icon,
         size: 45,
       });
@@ -348,7 +355,7 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
 }
 
 /* ============================================================================
-   TRANSFORM EXECUTION - GEOLOCATION (FOR IPs)
+   TRANSFORM EXECUTION - GEOLOCATION (FOR IPs) - FIXED HTTPS
 ============================================================================ */
 
 async function transformGeolocation(node: GraphNode): Promise<GraphNode[]> {
@@ -359,48 +366,50 @@ async function transformGeolocation(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    const response = await fetch(`http://ip-api.com/json/${node.value}?fields=status,country,city,lat,lon,isp,as,org`);
+    // Use ip-api.com with HTTPS via CORS proxy or ipapi.co which has HTTPS
+    const response = await fetch(`https://ipapi.co/${node.value}/json/`);
     if (!response.ok) throw new Error('Geolocation failed');
 
     const data = await response.json();
 
-    if (data.status === 'success') {
+    if (!data.error) {
       // Location node
       newNodes.push({
         id: `geo-${node.value}-${Date.now()}`,
         type: 'geolocation',
-        label: `${data.city}, ${data.country}`,
-        value: `${data.lat},${data.lon}`,
+        label: `${data.city || 'Unknown'}, ${data.country_name || data.country}`,
+        value: `${data.latitude},${data.longitude}`,
         properties: {
-          country: data.country,
+          country: data.country_name || data.country,
           city: data.city,
-          latitude: data.lat,
-          longitude: data.lon,
-          isp: data.isp,
-          asn: data.as,
+          region: data.region,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          isp: data.org,
+          asn: data.asn,
         },
         position: {
           x: node.position.x + 250,
           y: node.position.y - 80,
         },
-        color:  ENTITY_CONFIG.geolocation.color,
-        icon: ENTITY_CONFIG.geolocation. icon,
+        color: ENTITY_CONFIG.geolocation.color,
+        icon: ENTITY_CONFIG.geolocation.icon,
         size: 50,
       });
 
       // Organization/ISP node
-      if (data.org || data.isp) {
+      if (data.org) {
         newNodes.push({
-          id: `org-${data.org || data.isp}-${Date. now()}`,
+          id: `org-${data.org}-${Date.now()}`,
           type: 'organization',
-          label: data.org || data.isp,
-          value: data.org || data.isp,
+          label: data.org,
+          value: data.org,
           properties: {
-            asn: data.as,
+            asn: data.asn,
             type: 'ISP',
           },
           position: {
-            x: node. position.x + 250,
+            x: node.position.x + 250,
             y: node.position.y + 80,
           },
           color: ENTITY_CONFIG.organization.color,
@@ -550,10 +559,10 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
 }
 
 /* ============================================================================
-   TRANSFORM EXECUTION - BREACH CHECK (FOR EMAILS)
+   TRANSFORM EXECUTION - BREACH CHECK (FOR EMAILS) - USING ALTERNATIVE APIS
 ============================================================================ */
 
-async function transformBreachCheck(node:  GraphNode): Promise<GraphNode[]> {
+async function transformBreachCheck(node: GraphNode): Promise<GraphNode[]> {
   const cacheKey = `transform:breach:${node.value}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
@@ -561,39 +570,88 @@ async function transformBreachCheck(node:  GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    const response = await fetch(
-      `https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(node.value)}? truncateResponse=false`,
-      { headers: { 'User-Agent': 'OSINT-Platform' } }
-    );
-
-    if (response.ok) {
-      const breaches = await response.json();
-
-      breaches.slice(0, 8).forEach((breach: any, idx: number) => {
-        newNodes.push({
-          id: `breach-${breach.Name}-${Date.now()}`,
-          type: 'breach',
-          label: breach.Title,
-          value: breach.Name,
-          properties: {
-            domain: breach.Domain,
-            breachDate: breach.BreachDate,
-            pwnCount: breach.PwnCount,
-            dataClasses: breach.DataClasses,
-          },
-          position:  {
-            x: node.position.x + 300,
-            y: node.position.y - 200 + (idx * 60),
-          },
-          color: ENTITY_CONFIG.breach.color,
-          icon: ENTITY_CONFIG.breach. icon,
-          size: 45,
-          metadata: {
-            riskLevel: 'high',
-            threatScore: 80,
-          },
-        });
-      });
+    // Use LeakCheck.io public API (limited but free)
+    // Also try XposedOrNot as fallback
+    const sources = [
+      `https://api.xposedornot.com/v1/check-email/${encodeURIComponent(node.value)}`,
+    ];
+    
+    for (const apiUrl of sources) {
+      try {
+        const response = await fetch(apiUrl);
+        if (response.ok) {
+          const data = await response.json();
+          
+          // XposedOrNot response handling
+          if (data.breaches && Array.isArray(data.breaches)) {
+            data.breaches.slice(0, 8).forEach((breach: string, idx: number) => {
+              newNodes.push({
+                id: `breach-${breach}-${Date.now()}-${idx}`,
+                type: 'breach',
+                label: breach,
+                value: breach,
+                properties: {
+                  email: node.value,
+                  source: 'XposedOrNot',
+                },
+                position: {
+                  x: node.position.x + 300,
+                  y: node.position.y - 200 + (idx * 60),
+                },
+                color: ENTITY_CONFIG.breach.color,
+                icon: ENTITY_CONFIG.breach.icon,
+                size: 45,
+                metadata: {
+                  riskLevel: 'high',
+                  threatScore: 80,
+                },
+              });
+            });
+          }
+          
+          if (newNodes.length > 0) break;
+        }
+      } catch {
+        continue;
+      }
+    }
+    
+    // If no results, try Psbdmp for paste leaks
+    if (newNodes.length === 0) {
+      try {
+        const psbdmpRes = await fetch(`https://psbdmp.ws/api/v3/search/${encodeURIComponent(node.value)}`);
+        if (psbdmpRes.ok) {
+          const pastes = await psbdmpRes.json();
+          const items = Array.isArray(pastes) ? pastes : pastes.data || [];
+          
+          items.slice(0, 5).forEach((paste: any, idx: number) => {
+            newNodes.push({
+              id: `paste-${paste.id || idx}-${Date.now()}`,
+              type: 'paste',
+              label: paste.title || `Paste Leak #${idx + 1}`,
+              value: paste.id || `paste-${idx}`,
+              properties: {
+                email: node.value,
+                source: 'Psbdmp',
+                date: paste.time,
+              },
+              position: {
+                x: node.position.x + 300,
+                y: node.position.y - 100 + (idx * 60),
+              },
+              color: ENTITY_CONFIG.paste.color,
+              icon: ENTITY_CONFIG.paste.icon,
+              size: 45,
+              metadata: {
+                riskLevel: 'medium',
+                threatScore: 60,
+              },
+            });
+          });
+        }
+      } catch {
+        // Psbdmp also failed
+      }
     }
 
     await cacheAPIResponse(cacheKey, newNodes, 3600);
@@ -605,8 +663,10 @@ async function transformBreachCheck(node:  GraphNode): Promise<GraphNode[]> {
 }
 
 /* ============================================================================
-   TRANSFORM EXECUTION - REVERSE IP (FOR IPs)
+   TRANSFORM EXECUTION - REVERSE IP (FOR IPs) - FIXED
 ============================================================================ */
+
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
 async function transformReverseIp(node: GraphNode): Promise<GraphNode[]> {
   const cacheKey = `transform:reverse_ip:${node.value}`;
@@ -616,25 +676,26 @@ async function transformReverseIp(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    // Using ViewDNS reverse IP API
-    const response = await fetch(`https://viewdns.info/reverseip/? host=${node.value}&t=1`);
+    // Use HackerTarget's free API for reverse IP
+    const response = await fetch(`https://api.hackertarget.com/reverseiplookup/?q=${node.value}`);
     if (!response.ok) throw new Error('Reverse IP failed');
 
-    const html = await response.text();
+    const text = await response.text();
     
-    // Parse HTML for domains (simple regex extraction)
-    const domainMatches = html.matchAll(/<td>([a-z0-9.-]+\.[a-z]{2,})<\/td>/gi);
-    const domains = new Set<string>();
-    
-    for (const match of domainMatches) {
-      if (match[1] && ! match[1].includes('viewdns')) {
-        domains.add(match[1]);
-      }
+    // Check for errors in response
+    if (text.includes('error') || text.includes('API count exceeded')) {
+      console.warn('Reverse IP API limit or error');
+      return [];
     }
+    
+    // Parse newline-separated domain list
+    const domains = text.split('\n')
+      .map(d => d.trim())
+      .filter(d => d && d.includes('.') && !d.includes('error'));
 
-    Array.from(domains).slice(0, 10).forEach((domain, idx) => {
+    domains.slice(0, 10).forEach((domain, idx) => {
       newNodes.push({
-        id: `domain-${domain}-${Date.now()}`,
+        id: `domain-${domain}-${Date.now()}-${idx}`,
         type: 'domain',
         label: domain,
         value: domain,
@@ -646,7 +707,7 @@ async function transformReverseIp(node: GraphNode): Promise<GraphNode[]> {
           x: node.position.x + 300,
           y: node.position.y - 200 + (idx * 50),
         },
-        color:  ENTITY_CONFIG.domain.color,
+        color: ENTITY_CONFIG.domain.color,
         icon: ENTITY_CONFIG.domain.icon,
         size: 45,
       });
@@ -658,6 +719,218 @@ async function transformReverseIp(node: GraphNode): Promise<GraphNode[]> {
     console.error('Reverse IP error:', error);
     return [];
   }
+}
+
+/* ============================================================================
+   TRANSFORM EXECUTION - THREAT INTEL (FOR DOMAINS, IPs, HASHES)
+============================================================================ */
+
+async function transformThreatIntel(node: GraphNode): Promise<GraphNode[]> {
+  const cacheKey = `transform:threat:${node.value}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const newNodes: GraphNode[] = [];
+
+  try {
+    // Use URLhaus for threat intel
+    const response = await fetch('https://urlhaus-api.abuse.ch/v1/host/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `host=${encodeURIComponent(node.value)}`,
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      
+      if (data.query_status === 'ok' && data.urls) {
+        data.urls.slice(0, 8).forEach((url: any, idx: number) => {
+          newNodes.push({
+            id: `malware-${url.id}-${Date.now()}`,
+            type: 'malware',
+            label: url.threat || 'Malware',
+            value: url.url,
+            properties: {
+              threat: url.threat,
+              tags: url.tags,
+              dateAdded: url.date_added,
+              status: url.url_status,
+            },
+            position: {
+              x: node.position.x + 300,
+              y: node.position.y - 150 + (idx * 50),
+            },
+            color: ENTITY_CONFIG.malware.color,
+            icon: ENTITY_CONFIG.malware.icon,
+            size: 45,
+            metadata: {
+              riskLevel: 'critical',
+              threatScore: 95,
+            },
+          });
+        });
+      }
+    }
+
+    // Also check ThreatFox
+    if (newNodes.length === 0) {
+      const tfResponse = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'search_ioc', search_term: node.value }),
+      });
+
+      if (tfResponse.ok) {
+        const tfData = await tfResponse.json();
+        if (tfData.data && Array.isArray(tfData.data)) {
+          tfData.data.slice(0, 5).forEach((ioc: any, idx: number) => {
+            newNodes.push({
+              id: `threat-${ioc.id}-${Date.now()}`,
+              type: 'malware',
+              label: ioc.threat_type || 'Threat',
+              value: ioc.ioc,
+              properties: {
+                malware: ioc.malware,
+                threatType: ioc.threat_type,
+                confidence: ioc.confidence_level,
+              },
+              position: {
+                x: node.position.x + 300,
+                y: node.position.y - 100 + (idx * 50),
+              },
+              color: ENTITY_CONFIG.malware.color,
+              icon: ENTITY_CONFIG.malware.icon,
+              size: 45,
+              metadata: {
+                riskLevel: 'high',
+                threatScore: ioc.confidence_level || 70,
+              },
+            });
+          });
+        }
+      }
+    }
+
+    await cacheAPIResponse(cacheKey, newNodes, 1800);
+    return newNodes;
+  } catch (error) {
+    console.error('Threat intel error:', error);
+    return [];
+  }
+}
+
+/* ============================================================================
+   TRANSFORM EXECUTION - PASTE SEARCH (FOR EMAILS, DOMAINS)
+============================================================================ */
+
+async function transformPasteSearch(node: GraphNode): Promise<GraphNode[]> {
+  const cacheKey = `transform:paste:${node.value}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const newNodes: GraphNode[] = [];
+
+  try {
+    const response = await fetch(`https://psbdmp.ws/api/v3/search/${encodeURIComponent(node.value)}`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      const pastes = Array.isArray(data) ? data : data.data || [];
+      
+      pastes.slice(0, 10).forEach((paste: any, idx: number) => {
+        newNodes.push({
+          id: `paste-${paste.id || paste.key || idx}-${Date.now()}`,
+          type: 'paste',
+          label: paste.title || `Paste #${idx + 1}`,
+          value: paste.id || paste.key,
+          properties: {
+            source: 'Psbdmp',
+            date: paste.time || paste.date,
+            content: paste.text?.substring(0, 200),
+          },
+          position: {
+            x: node.position.x + 300,
+            y: node.position.y - 200 + (idx * 50),
+          },
+          color: ENTITY_CONFIG.paste.color,
+          icon: ENTITY_CONFIG.paste.icon,
+          size: 40,
+        });
+      });
+    }
+
+    await cacheAPIResponse(cacheKey, newNodes, 1800);
+    return newNodes;
+  } catch (error) {
+    console.error('Paste search error:', error);
+    return [];
+  }
+}
+
+/* ============================================================================
+   TRANSFORM EXECUTION - SOCIAL SEARCH (FOR USERNAMES/EMAILS)
+============================================================================ */
+
+async function transformSocialSearch(node: GraphNode): Promise<GraphNode[]> {
+  const cacheKey = `transform:social:${node.value}`;
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const newNodes: GraphNode[] = [];
+  const username = node.value.includes('@') ? node.value.split('@')[0] : node.value;
+
+  // Check common platforms with public APIs
+  const platforms = [
+    { name: 'GitHub', url: `https://api.github.com/users/${username}` },
+    { name: 'Reddit', url: `https://www.reddit.com/user/${username}/about.json` },
+    { name: 'GitLab', url: `https://gitlab.com/api/v4/users?username=${username}` },
+  ];
+
+  for (const platform of platforms) {
+    try {
+      const response = await fetch(platform.url, {
+        headers: { 'User-Agent': 'OSINT-Hub/1.0' },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Handle different API response formats
+        let profileData = data;
+        if (Array.isArray(data) && data.length > 0) profileData = data[0];
+        if (data.data) profileData = data.data;
+        
+        if (profileData && !profileData.error) {
+          newNodes.push({
+            id: `social-${platform.name}-${username}-${Date.now()}`,
+            type: 'social_profile',
+            label: `${platform.name}: ${profileData.login || profileData.name || username}`,
+            value: profileData.html_url || profileData.web_url || `https://${platform.name.toLowerCase()}.com/${username}`,
+            properties: {
+              platform: platform.name,
+              username: profileData.login || profileData.username || username,
+              displayName: profileData.name,
+              bio: profileData.bio,
+              followers: profileData.followers,
+              avatar: profileData.avatar_url,
+            },
+            position: {
+              x: node.position.x + 300,
+              y: node.position.y - 80 + (newNodes.length * 80),
+            },
+            color: ENTITY_CONFIG.social_profile.color,
+            icon: ENTITY_CONFIG.social_profile.icon,
+            size: 50,
+          });
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  await cacheAPIResponse(cacheKey, newNodes, 3600);
+  return newNodes;
 }
 
 /* ============================================================================
@@ -695,6 +968,15 @@ export async function executeTransform(
         break;
       case 'reverse_ip': 
         newNodes = await transformReverseIp(node);
+        break;
+      case 'threat_intel':
+        newNodes = await transformThreatIntel(node);
+        break;
+      case 'paste_search':
+        newNodes = await transformPasteSearch(node);
+        break;
+      case 'social_search':
+        newNodes = await transformSocialSearch(node);
         break;
       default: 
         throw new Error(`Transform ${transformId} not implemented`);
