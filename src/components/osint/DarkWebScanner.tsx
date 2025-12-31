@@ -389,13 +389,11 @@ export function DarkWebScanner() {
         <CardContent className="p-4 flex gap-3">
           <Database className="h-5 w-5 text-primary shrink-0" />
           <div>
-            <h3 className="font-semibold">Real Data Sources (8 APIs)</h3>
+            <h3 className="font-semibold">Real Data Sources (6 APIs)</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              <strong>✅ Working APIs:</strong> Archive.org, GitHub Code Search, GitHub Repos, Psbdmp.ws, Rentry.co, Library of Leaks
+              <strong>✅ Verified Working:</strong> Archive.org, GitHub Code/Repos, Psbdmp.ws, Reddit, Library of Leaks (Aleph API)
               {' • '}
-              <strong>⚠️ HTML Scraping:</strong> Pastebin Archive, Ghostbin
-              {' • '}
-              <strong>Onion Discovery:</strong> Ahmia.fi
+              <strong>🧅 Onion Discovery:</strong> Ahmia.fi
             </p>
           </div>
         </CardContent>
