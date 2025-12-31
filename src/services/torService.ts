@@ -48,6 +48,11 @@ export interface LeakSignal {
   timestamp: string;
   url: string;
   context: string;
+  downloadUrl?: string;
+  fileSize?: string;
+  category?: string;
+  description?: string;
+  riskLevel?: RiskLevel;
 }
 
 /* ============================================================================
@@ -64,6 +69,18 @@ const ONION_REGEX = /([a-z2-7]{16,56}\.onion)/gi;
 const nowISO = () => new Date().toISOString();
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').trim();
 const unique = <T>(a: T[]) => Array.from(new Set(a));
+
+const BYTES_PER_MB = 1024 * 1024;
+const KB_PER_MB = 1024;
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= BYTES_PER_MB) {
+    return `${(bytes / BYTES_PER_MB).toFixed(2)} MB`;
+  } else if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(2)} KB`;
+  }
+  return `${bytes} B`;
+}
 
 /* ============================================================================
    RISK ENGINE
@@ -232,7 +249,7 @@ async function scanGitHubGists(indicator: string): Promise<LeakSignal[]> {
 }
 
 /* ============================================================================
-   LIBRARY OF LEAKS — FIXED (REAL SOURCES)
+   LIBRARY OF LEAKS — REAL SCRAPING & PARSING
 ============================================================================ */
 
 async function scanLibraryOfLeaks(indicator: string): Promise<LeakSignal[]> {
@@ -241,50 +258,152 @@ async function scanLibraryOfLeaks(indicator: string): Promise<LeakSignal[]> {
   if (cached) return cached;
 
   const signals: LeakSignal[] = [];
+  const timeout = 10000; // 10 second timeout
+
+  /* ------------------ LIBRARY OF LEAKS DIRECT ------------------ */
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    const res = await fetch(
+      `https://search.libraryofleaks.org/?q=${encodeURIComponent(indicator)}`,
+      {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      }
+    );
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const html = await res.text();
+      
+      // Parse search results - typical leak database search result pattern
+      const resultPattern = /<div[^>]*class="[^"]*result[^"]*"[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/div>/gi;
+      const matches = [...html.matchAll(resultPattern)];
+      
+      matches.slice(0, 20).forEach((match, i) => {
+        const href = match[1];
+        const titleHtml = match[2];
+        const title = stripHtml(titleHtml) || 'Leak Database Entry';
+        
+        // Extract download link (convert relative to absolute)
+        const downloadUrl = href.startsWith('http') 
+          ? href 
+          : `https://search.libraryofleaks.org${href.startsWith('/') ? href : `/${href}`}`;
+        
+        // Extract metadata from surrounding context
+        const contextMatch = html.substring(match.index || 0, (match.index || 0) + 500)
+          .match(/<p[^>]*class="[^"]*meta[^"]*"[^>]*>([\s\S]*?)<\/p>/i);
+        const context = contextMatch ? stripHtml(contextMatch[1]) : 'Library of Leaks entry';
+        
+        // Extract file size if available
+        const sizeMatch = context.match(/(\d+(?:\.\d+)?)\s*(KB|MB|GB)/i);
+        const fileSize = sizeMatch ? sizeMatch[0] : undefined;
+        
+        // Extract date if available
+        const dateMatch = context.match(/\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}/);
+        const timestamp = dateMatch ? dateMatch[0] : nowISO();
+        
+        signals.push({
+          id: `lol-${crypto.randomUUID()}`,
+          title,
+          indicator,
+          source: 'libraryofleaks',
+          timestamp,
+          url: downloadUrl,
+          downloadUrl,
+          context,
+          fileSize,
+          category: 'Data Leak',
+          riskLevel: calculateRisk(title + ' ' + context),
+        });
+      });
+    }
+  } catch (err) {
+    console.warn('Library of Leaks direct scraping failed:', err);
+  }
 
   /* ------------------ ARCHIVE.ORG DATASETS ------------------ */
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
     const res = await fetch(
       `https://archive.org/advancedsearch.php?q=${encodeURIComponent(
         indicator
-      )}+leak&fl[]=identifier&fl[]=title&fl[]=publicdate&output=json`
+      )}+leak&fl[]=identifier&fl[]=title&fl[]=publicdate&fl[]=item_size&output=json&rows=20`,
+      { signal: controller.signal }
     );
-    const data = await res.json();
-    (data.response?.docs || []).forEach((d: any) => {
-      signals.push({
-        id: `ia-${d.identifier}`,
-        title: d.title || 'Archived Leak Dataset',
-        indicator,
-        source: 'archive',
-        timestamp: d.publicdate || nowISO(),
-        url: `https://archive.org/details/${d.identifier}`,
-        context: 'Archive.org dataset (downloadable)',
-      });
-    });
-  } catch {}
+    clearTimeout(timeoutId);
 
-  /* ------------------ GITHUB MIRRORS ------------------ */
+    if (res.ok) {
+      const data = await res.json();
+      (data.response?.docs || []).forEach((d: any) => {
+        const downloadUrl = `https://archive.org/download/${d.identifier}`;
+        signals.push({
+          id: `ia-${d.identifier}`,
+          title: d.title || 'Archived Leak Dataset',
+          indicator,
+          source: 'archive',
+          timestamp: d.publicdate || nowISO(),
+          url: `https://archive.org/details/${d.identifier}`,
+          downloadUrl,
+          context: 'Archive.org leak dataset',
+          fileSize: d.item_size ? formatFileSize(d.item_size) : undefined,
+          category: 'Archive',
+          riskLevel: calculateRisk(d.title || ''),
+        });
+      });
+    }
+  } catch (err) {
+    console.warn('Archive.org scraping failed:', err);
+  }
+
+  /* ------------------ GITHUB LEAK MIRRORS ------------------ */
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
     const res = await fetch(
       `https://api.github.com/search/repositories?q=${encodeURIComponent(
         indicator
-      )}+leak+dump`
+      )}+leak+dump&sort=updated&per_page=10`,
+      { signal: controller.signal }
     );
-    const data = await res.json();
-    (data.items || []).slice(0, 10).forEach((r: any) => {
-      signals.push({
-        id: `lol-gh-${r.id}`,
-        title: r.full_name,
-        indicator,
-        source: 'libraryofleaks',
-        timestamp: r.updated_at,
-        url: r.html_url,
-        context: 'GitHub leak mirror',
-      });
-    });
-  } catch {}
+    clearTimeout(timeoutId);
 
-  await cacheAPIResponse(cacheKey, signals, 120);
+    if (res.ok) {
+      const data = await res.json();
+      (data.items || []).slice(0, 10).forEach((r: any) => {
+        // GitHub repos can have releases or direct archive downloads
+        const downloadUrl = `${r.html_url}/archive/refs/heads/${r.default_branch || 'main'}.zip`;
+        
+        // GitHub API returns size in KB, convert to bytes first
+        const sizeInBytes = r.size ? r.size * 1024 : undefined;
+        
+        signals.push({
+          id: `lol-gh-${r.id}`,
+          title: r.full_name,
+          indicator,
+          source: 'libraryofleaks',
+          timestamp: r.updated_at,
+          url: r.html_url,
+          downloadUrl,
+          context: `GitHub leak mirror - ${r.description || 'No description'}`,
+          fileSize: sizeInBytes ? formatFileSize(sizeInBytes) : undefined,
+          category: 'GitHub Mirror',
+          riskLevel: calculateRisk(r.full_name + ' ' + (r.description || '')),
+        });
+      });
+    }
+  } catch (err) {
+    console.warn('GitHub scraping failed:', err);
+  }
+
+  // Cache results for 90 minutes (middle of 60-120 range)
+  await cacheAPIResponse(cacheKey, signals, 90);
   return signals;
 }
 
