@@ -1,3 +1,4 @@
+// @ts-ignore - @vercel/node types are available at Vercel runtime
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Library of Leaks API Proxy
