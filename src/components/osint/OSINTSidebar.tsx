@@ -26,6 +26,7 @@ import {
   Eye,
   Newspaper,
   Send,
+  Skull,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -39,6 +40,7 @@ interface NavItem {
 
 const mainNavItems: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, description: "Overview & Statistics" },
+  { name: "StealthMole", href: "/stealthmole", icon: Skull, description: "Hardcore Threat Intel" },
   { name: "Threat Intel", href: "/threat-intel", icon:  Radar, description: "VirusTotal & Threat Analysis" },
   { name: "Live Threats", href: "/live-threats", icon:  Zap, description: "Real-time Threat Feeds" },
   { name: "CVE Explorer", href: "/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
