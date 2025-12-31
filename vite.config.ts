@@ -31,6 +31,27 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "::",          // Allow IPv4 + IPv6
       port: 8080,          // Fixed dev port
+      proxy: {
+        // Proxy Library of Leaks API requests during development
+        '/api/library-of-leaks': {
+          target: 'https://search.libraryofleaks.org',
+          changeOrigin: true,
+          rewrite: (path) => {
+            // Extract query params and convert to the Aleph API format
+            const url = new URL(path, 'http://localhost');
+            const q = url.searchParams.get('q') || '';
+            const limit = url.searchParams.get('limit') || '30';
+            const schema = url.searchParams.get('schema') || 'Thing';
+            return `/api/2/entities?filter:schemata=${schema}&highlight=true&limit=${limit}&q=${encodeURIComponent(q)}`;
+          },
+          headers: {
+            'Accept': 'application/json',
+            'Accept-Language': 'en',
+            'Origin': 'https://search.libraryofleaks.org',
+            'Referer': 'https://search.libraryofleaks.org/',
+          },
+        },
+      },
     },
 
     /*
