@@ -25,6 +25,9 @@ import {
   Filter,
   Hash,
   Info,
+  Brain,
+  Zap,
+  TrendingUp,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -34,6 +37,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -42,26 +46,33 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 import {
   discoverOnionSites,
   checkOnionUptime,
   searchDarkWebSignals,
+  deepSearchDarkWeb,
   type OnionSite,
   type LeakSignal,
+  type DeepSearchResult,
 } from '@/services/torService';
+
+import { type LeakAnalysis, type ExtractedEntity } from '@/services/llmAnalysisService';
 
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 type ViewMode = 'cards' | 'compact';
-type TabMode = 'onions' | 'signals';
+type TabMode = 'onions' | 'signals' | 'analysis';
 
-const RISK_COLORS:  Record<
+const RISK_COLORS: Record<
   'critical' | 'high' | 'medium' | 'low',
   string
 > = {
-  critical:  'border-red-500/40 bg-red-500/10 text-red-400',
+  critical: 'border-red-500/40 bg-red-500/10 text-red-400',
   high: 'border-orange-500/40 bg-orange-500/10 text-orange-400',
   medium: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400',
   low: 'border-blue-500/40 bg-blue-500/10 text-blue-400',
@@ -73,16 +84,22 @@ export function DarkWebScanner() {
 
   const [onionSites, setOnionSites] = useState<OnionSite[]>([]);
   const [signals, setSignals] = useState<LeakSignal[]>([]);
+  const [analysis, setAnalysis] = useState<LeakAnalysis | null>(null);
+  const [entities, setEntities] = useState<ExtractedEntity[]>([]);
+  const [sourceStats, setSourceStats] = useState<Record<string, number>>({});
+  const [searchTime, setSearchTime] = useState<number>(0);
 
-  const [tab, setTab] = useState<TabMode>('onions');
+  const [tab, setTab] = useState<TabMode>('signals');
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
+  const [deepSearchEnabled, setDeepSearchEnabled] = useState(true);
+  const [llmAnalysisEnabled, setLlmAnalysisEnabled] = useState(true);
 
   const [uptimeLoading, setUptimeLoading] = useState<Record<string, boolean>>({});
 
   const refreshTimer = useRef<number | null>(null);
 
   const runSearch = useCallback(async () => {
-    if (! query.trim()) {
+    if (!query.trim()) {
       toast.error('Enter a search keyword (domain, email, company, etc.)');
       return;
     }
@@ -90,21 +107,50 @@ export function DarkWebScanner() {
     setLoading(true);
     setOnionSites([]);
     setSignals([]);
+    setAnalysis(null);
+    setEntities([]);
+    setSourceStats({});
 
     try {
-      const [onions, sigs] = await Promise.all([
-        discoverOnionSites(query),
-        searchDarkWebSignals(query),
-      ]);
+      // Run onion discovery in parallel with deep search
+      const onionPromise = discoverOnionSites(query);
+      
+      let deepResult: DeepSearchResult | null = null;
+      
+      if (deepSearchEnabled) {
+        // Use enhanced deep search with LLM analysis
+        deepResult = await deepSearchDarkWeb({
+          indicator: query,
+          includeBreachDatabases: true,
+          includeDarkWebSearch: true,
+          includeCodeSearch: true,
+          includePasteSites: true,
+          includeLeakArchives: true,
+          includeSocialMedia: true,
+          maxResultsPerSource: 30,
+          enableLLMAnalysis: llmAnalysisEnabled,
+        });
+        
+        setSignals(deepResult.signals);
+        setAnalysis(deepResult.analysis || null);
+        setEntities(deepResult.entities);
+        setSourceStats(deepResult.sourceStats);
+        setSearchTime(deepResult.totalTime);
+      } else {
+        // Use regular search
+        const sigs = await searchDarkWebSignals(query);
+        setSignals(sigs);
+      }
 
+      const onions = await onionPromise;
       setOnionSites(onions);
-      setSignals(sigs);
 
-      if (onions.length === 0 && sigs.length === 0) {
+      if (onions.length === 0 && signals.length === 0) {
         toast.info('No results found. Try a different search term.');
       } else {
+        const totalResults = onions.length + (deepResult?.signals.length || signals.length);
         toast.success(
-          `Found ${onions.length} onion sites and ${sigs.length} exposure signals`
+          `Found ${totalResults} results across ${Object.keys(deepResult?.sourceStats || {}).length || 6} sources`
         );
       }
     } catch (err) {
@@ -113,7 +159,7 @@ export function DarkWebScanner() {
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, [query, deepSearchEnabled, llmAnalysisEnabled]);
 
   useEffect(() => {
     if (refreshTimer.current !== null) {
@@ -169,12 +215,15 @@ export function DarkWebScanner() {
     return {
       onions: onionSites.length,
       signals: signals.length,
+      entities: entities.length,
       online: onionSites.filter(o => o.status === 'online').length,
       offline: onionSites.filter(o => o.status === 'offline').length,
-      critical: onionSites.filter(o => o.riskLevel === 'critical').length,
-      high: onionSites. filter(o => o.riskLevel === 'high').length,
+      critical: signals.filter(s => s.severity === 'critical').length,
+      high: signals.filter(s => s.severity === 'high').length,
+      sources: Object.keys(sourceStats).length,
+      threatScore: analysis?.threatAssessment?.score || 0,
     };
-  }, [onionSites, signals]);
+  }, [onionSites, signals, entities, sourceStats, analysis]);
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -184,21 +233,43 @@ export function DarkWebScanner() {
           <h1 className="text-3xl font-bold flex items-center gap-3">
             <Radar className="h-8 w-8 text-primary" />
             Dark Web Intelligence Monitor
+            <Badge variant="outline" className="ml-2 text-xs">
+              <Brain className="h-3 w-3 mr-1" />
+              StealthMole-style
+            </Badge>
           </h1>
           <p className="text-muted-foreground mt-2">
-            Real-time monitoring of onion services, pastes, leaks, and dark web exposure
+            Deep intelligence gathering across 15+ sources with LLM-powered analysis
           </p>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={runSearch}
-          disabled={loading}
-        >
-          <RefreshCcw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Switch 
+              id="deep-search" 
+              checked={deepSearchEnabled} 
+              onCheckedChange={setDeepSearchEnabled}
+            />
+            <Label htmlFor="deep-search" className="text-sm">Deep Search</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch 
+              id="llm-analysis" 
+              checked={llmAnalysisEnabled} 
+              onCheckedChange={setLlmAnalysisEnabled}
+            />
+            <Label htmlFor="llm-analysis" className="text-sm">AI Analysis</Label>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runSearch}
+            disabled={loading}
+          >
+            <RefreshCcw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* LEGAL NOTICE */}
@@ -255,7 +326,7 @@ export function DarkWebScanner() {
       </Card>
 
       {/* STATS */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
@@ -279,9 +350,9 @@ export function DarkWebScanner() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <Activity className="h-5 w-5 mx-auto text-green-500 mb-2" />
-              <div className="text-2xl font-bold">{stats.online}</div>
-              <div className="text-xs text-muted-foreground">Online</div>
+              <Hash className="h-5 w-5 mx-auto text-purple-500 mb-2" />
+              <div className="text-2xl font-bold">{stats.entities}</div>
+              <div className="text-xs text-muted-foreground">Entities</div>
             </div>
           </CardContent>
         </Card>
@@ -289,9 +360,9 @@ export function DarkWebScanner() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <Shield className="h-5 w-5 mx-auto text-gray-500 mb-2" />
-              <div className="text-2xl font-bold">{stats.offline}</div>
-              <div className="text-xs text-muted-foreground">Offline</div>
+              <Layers className="h-5 w-5 mx-auto text-blue-500 mb-2" />
+              <div className="text-2xl font-bold">{stats.sources}</div>
+              <div className="text-xs text-muted-foreground">Sources</div>
             </div>
           </CardContent>
         </Card>
@@ -310,8 +381,28 @@ export function DarkWebScanner() {
           <CardContent className="pt-6">
             <div className="text-center">
               <AlertTriangle className="h-5 w-5 mx-auto text-orange-500 mb-2" />
-              <div className="text-2xl font-bold text-orange-500">{stats. high}</div>
+              <div className="text-2xl font-bold text-orange-500">{stats.high}</div>
               <div className="text-xs text-muted-foreground">High Risk</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Brain className="h-5 w-5 mx-auto text-violet-500 mb-2" />
+              <div className="text-2xl font-bold">{stats.threatScore}</div>
+              <div className="text-xs text-muted-foreground">Threat Score</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Zap className="h-5 w-5 mx-auto text-yellow-500 mb-2" />
+              <div className="text-2xl font-bold">{searchTime ? `${(searchTime/1000).toFixed(1)}s` : '-'}</div>
+              <div className="text-xs text-muted-foreground">Search Time</div>
             </div>
           </CardContent>
         </Card>
@@ -319,14 +410,18 @@ export function DarkWebScanner() {
 
       {/* TABS */}
       <Tabs value={tab} onValueChange={v => setTab(v as TabMode)}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="onions">
-            <Globe className="h-4 w-4 mr-2" />
-            Onion Discovery ({onionSites.length})
-          </TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="signals">
             <Database className="h-4 w-4 mr-2" />
-            Exposure Signals ({signals.length})
+            Leak Signals ({signals.length})
+          </TabsTrigger>
+          <TabsTrigger value="analysis">
+            <Brain className="h-4 w-4 mr-2" />
+            AI Analysis
+          </TabsTrigger>
+          <TabsTrigger value="onions">
+            <Globe className="h-4 w-4 mr-2" />
+            Onion Sites ({onionSites.length})
           </TabsTrigger>
         </TabsList>
 
@@ -367,6 +462,28 @@ export function DarkWebScanner() {
             </div>
           )}
 
+          {/* Source Stats Bar */}
+          {!loading && Object.keys(sourceStats).length > 0 && (
+            <Card className="mb-4">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Sources Scanned</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(sourceStats).map(([source, count]) => (
+                    <Badge 
+                      key={source} 
+                      variant={count > 0 ? 'default' : 'outline'}
+                      className={cn(count > 0 ? 'bg-green-500/20 text-green-400 border-green-500/40' : '')}
+                    >
+                      {source}: {count}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {!loading && signals.length === 0 && (
             <Card className="border-dashed">
               <CardContent className="pt-12 pb-12 text-center">
@@ -378,9 +495,180 @@ export function DarkWebScanner() {
             </Card>
           )}
 
-          {!loading && signals. map(sig => (
+          {!loading && signals.map(sig => (
             <SignalCard key={sig.id} signal={sig} />
           ))}
+        </TabsContent>
+
+        {/* AI ANALYSIS */}
+        <TabsContent value="analysis" className="mt-6 space-y-4">
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="ml-3 text-muted-foreground">Running LLM analysis...</span>
+            </div>
+          )}
+
+          {!loading && !analysis && entities.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="pt-12 pb-12 text-center">
+                <Brain className="h-16 w-16 mx-auto text-muted-foreground opacity-50 mb-4" />
+                <p className="text-muted-foreground">
+                  Run a search with AI Analysis enabled to see threat intelligence insights.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Threat Assessment Card */}
+          {!loading && analysis && (
+            <Card className={cn(
+              'border-2',
+              analysis.threatAssessment.severity === 'critical' ? 'border-red-500/50 bg-red-500/5' :
+              analysis.threatAssessment.severity === 'high' ? 'border-orange-500/50 bg-orange-500/5' :
+              analysis.threatAssessment.severity === 'medium' ? 'border-yellow-500/50 bg-yellow-500/5' :
+              'border-green-500/50 bg-green-500/5'
+            )}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    Threat Assessment
+                  </CardTitle>
+                  <Badge className={cn(
+                    'text-lg px-4 py-1',
+                    analysis.threatAssessment.severity === 'critical' ? 'bg-red-500' :
+                    analysis.threatAssessment.severity === 'high' ? 'bg-orange-500' :
+                    analysis.threatAssessment.severity === 'medium' ? 'bg-yellow-500' :
+                    'bg-green-500'
+                  )}>
+                    {analysis.threatAssessment.score}/100
+                  </Badge>
+                </div>
+                <CardDescription>{analysis.threatAssessment.category}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Score Progress */}
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Threat Level</span>
+                    <span className="uppercase font-bold">{analysis.threatAssessment.severity}</span>
+                  </div>
+                  <Progress 
+                    value={analysis.threatAssessment.score} 
+                    className={cn(
+                      analysis.threatAssessment.severity === 'critical' ? '[&>div]:bg-red-500' :
+                      analysis.threatAssessment.severity === 'high' ? '[&>div]:bg-orange-500' :
+                      analysis.threatAssessment.severity === 'medium' ? '[&>div]:bg-yellow-500' :
+                      '[&>div]:bg-green-500'
+                    )}
+                  />
+                </div>
+
+                {/* Summary */}
+                <div>
+                  <h4 className="font-semibold mb-2">Summary</h4>
+                  <p className="text-sm text-muted-foreground">{analysis.summary}</p>
+                </div>
+
+                {/* Indicators */}
+                {analysis.threatAssessment.indicators.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Indicators</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {analysis.threatAssessment.indicators.map((ind, i) => (
+                        <Badge key={i} variant="outline">{ind}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {analysis.threatAssessment.recommendations.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Recommended Actions</h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                      {analysis.threatAssessment.recommendations.map((rec, i) => (
+                        <li key={i}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Extracted Entities */}
+          {!loading && entities.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Hash className="h-5 w-5" />
+                  Extracted Entities ({entities.length})
+                </CardTitle>
+                <CardDescription>Automatically detected sensitive data</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {entities.slice(0, 20).map((entity, i) => (
+                    <div 
+                      key={i}
+                      className={cn(
+                        'p-3 rounded-lg border',
+                        entity.type === 'password' ? 'border-red-500/40 bg-red-500/5' :
+                        entity.type === 'email' ? 'border-blue-500/40 bg-blue-500/5' :
+                        entity.type === 'ip' ? 'border-green-500/40 bg-green-500/5' :
+                        entity.type === 'domain' ? 'border-purple-500/40 bg-purple-500/5' :
+                        'border-gray-500/40 bg-gray-500/5'
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <Badge variant="outline" className="text-xs uppercase">
+                          {entity.type}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {Math.round(entity.confidence * 100)}% confidence
+                        </span>
+                      </div>
+                      <p className="font-mono text-sm break-all">{entity.value}</p>
+                      {entity.context && (
+                        <p className="text-xs text-muted-foreground mt-1 truncate">
+                          {entity.context}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Exposure Timeline */}
+          {!loading && analysis?.exposureTimeline && analysis.exposureTimeline.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Exposure Timeline
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {analysis.exposureTimeline.map((event, i) => (
+                    <div key={i} className="flex gap-3 items-start">
+                      <div className="w-2 h-2 rounded-full bg-primary mt-2" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(event.date).toLocaleDateString()}
+                        </p>
+                        <p className="text-sm">{event.event}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -389,11 +677,17 @@ export function DarkWebScanner() {
         <CardContent className="p-4 flex gap-3">
           <Database className="h-5 w-5 text-primary shrink-0" />
           <div>
-            <h3 className="font-semibold">Real Data Sources (6 APIs)</h3>
+            <h3 className="font-semibold">Real Data Sources (15+ APIs)</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              <strong>✅ Verified Working:</strong> Archive.org, GitHub Code/Repos, Psbdmp.ws, Reddit, Library of Leaks (Aleph API)
+              <strong>✅ Core:</strong> Archive.org, GitHub, Psbdmp, Reddit, Library of Leaks
               {' • '}
-              <strong>🧅 Onion Discovery:</strong> Ahmia.fi
+              <strong>🔍 Enhanced:</strong> HackerNews, SearchCode, Grep.app, WikiLeaks, DDoSecrets
+              {' • '}
+              <strong>💀 Breach DBs:</strong> IntelX, BreachDirectory, LeakCheck
+              {' • '}
+              <strong>📝 Pastes:</strong> Rentry, PasteArchives
+              {' • '}
+              <strong>🧅 Onion:</strong> Ahmia.fi
             </p>
           </div>
         </CardContent>
