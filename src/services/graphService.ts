@@ -1238,7 +1238,283 @@ async function transformPasteSearch(node: GraphNode): Promise<GraphNode[]> {
 
 /* ============================================================================
    TRANSFORM EXECUTION - SOCIAL SEARCH (FOR USERNAMES/EMAILS)
+   Comprehensive username enumeration across 25+ platforms
 ============================================================================ */
+
+// Platform configuration for comprehensive username enumeration
+const SOCIAL_PLATFORMS = [
+  // Developer platforms
+  { 
+    name: 'GitHub', 
+    url: 'https://api.github.com/users/{username}', 
+    type: 'dev',
+    checkType: 'json_api',
+    profileUrl: 'https://github.com/{username}',
+    icon: '💻'
+  },
+  {
+    name: 'GitLab',
+    url: 'https://gitlab.com/api/v4/users?username={username}',
+    type: 'dev',
+    checkType: 'json_array',
+    profileUrl: 'https://gitlab.com/{username}',
+    icon: '🦊'
+  },
+  {
+    name: 'HackerNews',
+    url: 'https://hacker-news.firebaseio.com/v0/user/{username}.json',
+    type: 'dev',
+    checkType: 'json_api',
+    profileUrl: 'https://news.ycombinator.com/user?id={username}',
+    icon: '📰'
+  },
+  {
+    name: 'Dev.to',
+    url: 'https://dev.to/api/users/by_username?url={username}',
+    type: 'dev',
+    checkType: 'json_api',
+    profileUrl: 'https://dev.to/{username}',
+    icon: '✍️'
+  },
+  {
+    name: 'DockerHub',
+    url: 'https://hub.docker.com/v2/users/{username}',
+    type: 'dev',
+    checkType: 'json_api',
+    profileUrl: 'https://hub.docker.com/u/{username}',
+    icon: '🐳'
+  },
+  {
+    name: 'npm',
+    url: 'https://registry.npmjs.org/-/user/org.couchdb.user:{username}',
+    type: 'dev',
+    checkType: 'json_api',
+    profileUrl: 'https://www.npmjs.com/~{username}',
+    icon: '📦'
+  },
+  {
+    name: 'PyPI',
+    url: 'https://pypi.org/pypi/{username}/json',
+    type: 'dev',
+    checkType: 'json_api',
+    profileUrl: 'https://pypi.org/user/{username}',
+    icon: '🐍'
+  },
+  // Social platforms
+  { 
+    name: 'Reddit', 
+    url: 'https://www.reddit.com/user/{username}/about.json', 
+    type: 'social',
+    checkType: 'json_api',
+    profileUrl: 'https://reddit.com/user/{username}',
+    icon: '🤖'
+  },
+  {
+    name: 'Gravatar',
+    url: 'https://en.gravatar.com/{username}.json',
+    type: 'social',
+    checkType: 'json_api',
+    profileUrl: 'https://gravatar.com/{username}',
+    icon: '👤'
+  },
+  {
+    name: 'Mastodon',
+    url: 'https://mastodon.social/api/v1/accounts/lookup?acct={username}',
+    type: 'social',
+    checkType: 'json_api',
+    profileUrl: 'https://mastodon.social/@{username}',
+    icon: '🐘'
+  },
+  {
+    name: 'Pinterest',
+    url: 'https://pinterest.com/{username}',
+    type: 'social',
+    checkType: 'html_pattern',
+    existsPattern: 'og:title',
+    notExistsPattern: 'This page isn',
+    profileUrl: 'https://pinterest.com/{username}',
+    icon: '📌'
+  },
+  {
+    name: 'Medium',
+    url: 'https://medium.com/@{username}',
+    type: 'blogging',
+    checkType: 'html_pattern',
+    existsPattern: 'og:title',
+    notExistsPattern: '404',
+    profileUrl: 'https://medium.com/@{username}',
+    icon: '📝'
+  },
+  {
+    name: 'About.me',
+    url: 'https://about.me/{username}',
+    type: 'professional',
+    checkType: 'html_pattern',
+    existsPattern: 'og:title',
+    notExistsPattern: '404',
+    profileUrl: 'https://about.me/{username}',
+    icon: '👔'
+  },
+  // Security platforms
+  {
+    name: 'Keybase',
+    url: 'https://keybase.io/_/api/1.0/user/lookup.json?username={username}',
+    type: 'security',
+    checkType: 'json_status',
+    statusField: 'status.code',
+    successValue: 0,
+    profileUrl: 'https://keybase.io/{username}',
+    icon: '🔐'
+  },
+  // Gaming platforms
+  {
+    name: 'Lichess',
+    url: 'https://lichess.org/api/user/{username}',
+    type: 'gaming',
+    checkType: 'json_api',
+    profileUrl: 'https://lichess.org/@/{username}',
+    icon: '♟️'
+  },
+  {
+    name: 'Chess.com',
+    url: 'https://api.chess.com/pub/player/{username}',
+    type: 'gaming',
+    checkType: 'json_api',
+    profileUrl: 'https://chess.com/member/{username}',
+    icon: '♔'
+  },
+  {
+    name: 'Roblox',
+    url: 'https://users.roblox.com/v1/users/search?keyword={username}&limit=10',
+    type: 'gaming',
+    checkType: 'json_field',
+    fieldPath: 'data',
+    matchField: 'name',
+    profileUrl: 'https://www.roblox.com/users/profile?username={username}',
+    icon: '🎮'
+  },
+  // Messaging
+  {
+    name: 'Telegram',
+    url: 'https://t.me/{username}',
+    type: 'messaging',
+    checkType: 'html_pattern',
+    existsPattern: 'tgme_page_title',
+    notExistsPattern: 'tgme_page_error',
+    profileUrl: 'https://t.me/{username}',
+    icon: '📱'
+  },
+  // Media
+  {
+    name: 'Imgur',
+    url: 'https://api.imgur.com/account/v1/accounts/{username}?client_id=546c25a59c58ad7',
+    type: 'media',
+    checkType: 'json_api',
+    profileUrl: 'https://imgur.com/user/{username}',
+    icon: '🖼️'
+  },
+  {
+    name: 'Spotify',
+    url: 'https://open.spotify.com/user/{username}',
+    type: 'music',
+    checkType: 'html_pattern',
+    existsPattern: 'og:title',
+    notExistsPattern: 'Page not found',
+    profileUrl: 'https://open.spotify.com/user/{username}',
+    icon: '🎵'
+  },
+  // Education
+  {
+    name: 'Duolingo',
+    url: 'https://www.duolingo.com/2017-06-30/users?username={username}',
+    type: 'education',
+    checkType: 'json_array',
+    profileUrl: 'https://duolingo.com/profile/{username}',
+    icon: '🦉'
+  },
+  // Code platforms
+  {
+    name: 'Replit',
+    url: 'https://replit.com/@{username}',
+    type: 'dev',
+    checkType: 'html_pattern',
+    existsPattern: 'og:title',
+    notExistsPattern: '404',
+    profileUrl: 'https://replit.com/@{username}',
+    icon: '⚡'
+  },
+  {
+    name: 'CodePen',
+    url: 'https://codepen.io/{username}',
+    type: 'dev',
+    checkType: 'html_pattern',
+    existsPattern: 'og:title',
+    notExistsPattern: '404 - Page Not Found',
+    profileUrl: 'https://codepen.io/{username}',
+    icon: '✏️'
+  },
+  // Additional platforms
+  {
+    name: 'Patreon',
+    url: 'https://www.patreon.com/{username}',
+    type: 'creator',
+    checkType: 'html_pattern',
+    existsPattern: 'og:title',
+    notExistsPattern: '404',
+    profileUrl: 'https://www.patreon.com/{username}',
+    icon: '💰'
+  },
+  {
+    name: 'Linktree',
+    url: 'https://linktr.ee/{username}',
+    type: 'social',
+    checkType: 'html_pattern',
+    existsPattern: 'og:title',
+    notExistsPattern: 'not found',
+    profileUrl: 'https://linktr.ee/{username}',
+    icon: '🌳'
+  },
+];
+
+const SOCIAL_CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+
+// Helper to get nested object values like "status.code"
+function getNestedValue(obj: any, path: string): any {
+  return path.split('.').reduce((current, key) => current?.[key], obj);
+}
+
+// Extract profile data from API responses
+function extractProfileData(data: any, platform: string): Record<string, any> {
+  const profile: Record<string, any> = {};
+  
+  profile.displayName = data.name || data.login || data.username || data.display_name;
+  profile.bio = data.bio || data.description || data.about;
+  profile.avatar = data.avatar_url || data.avatar || data.profile_image || data.icon_url;
+  
+  if (platform === 'GitHub') {
+    profile.followers = data.followers;
+    profile.following = data.following;
+    profile.repos = data.public_repos;
+    profile.joinDate = data.created_at;
+    profile.company = data.company;
+    profile.location = data.location;
+  } else if (platform === 'Reddit') {
+    profile.karma = data.data?.total_karma || data.total_karma;
+    profile.joinDate = data.data?.created_utc ? new Date(data.data.created_utc * 1000).toISOString() : undefined;
+  } else if (platform === 'Chess.com' || platform === 'Lichess') {
+    profile.rating = data.rating || data.perfs?.blitz?.rating;
+    profile.games = data.count?.all || data.games;
+  } else if (platform === 'Mastodon') {
+    profile.followers = data.followers_count;
+    profile.following = data.following_count;
+    profile.posts = data.statuses_count;
+  } else if (platform === 'GitLab') {
+    profile.avatar = data.avatar_url;
+    profile.state = data.state;
+  }
+  
+  return profile;
+}
 
 async function transformSocialSearch(node: GraphNode): Promise<GraphNode[]> {
   const cacheKey = `transform:social:${node.value}`;
@@ -1247,57 +1523,185 @@ async function transformSocialSearch(node: GraphNode): Promise<GraphNode[]> {
 
   const newNodes: GraphNode[] = [];
   const username = node.value.includes('@') ? node.value.split('@')[0] : node.value;
+  
+  console.log(`[Social Search] Starting comprehensive scan for: ${username}`);
+  
+  const batchSize = 6;
+  let foundCount = 0;
 
-  // Check common platforms with public APIs
-  const platforms = [
-    { name: 'GitHub', url: `https://api.github.com/users/${username}` },
-    { name: 'Reddit', url: `https://www.reddit.com/user/${username}/about.json` },
-    { name: 'GitLab', url: `https://gitlab.com/api/v4/users?username=${username}` },
-  ];
-
-  for (const platform of platforms) {
-    try {
-      const response = await fetch(platform.url, {
-        headers: { 'User-Agent': 'OSINT-Hub/1.0' },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Handle different API response formats
-        let profileData = data;
-        if (Array.isArray(data) && data.length > 0) profileData = data[0];
-        if (data.data) profileData = data.data;
-        
-        if (profileData && !profileData.error) {
-          newNodes.push({
-            id: `social-${platform.name}-${username}-${Date.now()}`,
-            type: 'social_profile',
-            label: `${platform.name}: ${profileData.login || profileData.name || username}`,
-            value: profileData.html_url || profileData.web_url || `https://${platform.name.toLowerCase()}.com/${username}`,
-            properties: {
-              platform: platform.name,
-              username: profileData.login || profileData.username || username,
-              displayName: profileData.name,
-              bio: profileData.bio,
-              followers: profileData.followers,
-              avatar: profileData.avatar_url,
-            },
-            position: {
-              x: node.position.x + 300,
-              y: node.position.y - 80 + (newNodes.length * 80),
-            },
-            color: ENTITY_CONFIG.social_profile.color,
-            icon: ENTITY_CONFIG.social_profile.icon,
-            size: 50,
-          });
+  // Process platforms in batches for performance
+  for (let i = 0; i < SOCIAL_PLATFORMS.length; i += batchSize) {
+    const batch = SOCIAL_PLATFORMS.slice(i, i + batchSize);
+    
+    await Promise.all(
+      batch.map(async (platform: any) => {
+        try {
+          const url = platform.url.replace(/{username}/g, encodeURIComponent(username));
+          const profileUrl = platform.profileUrl?.replace(/{username}/g, username) || url;
+          
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+          
+          let exists = false;
+          let profileData: Record<string, any> = {};
+          
+          try {
+            let response: Response | null = null;
+            
+            // Try direct fetch first
+            try {
+              response = await fetch(url, {
+                method: 'GET',
+                signal: controller.signal,
+                headers: { 'User-Agent': 'OSINT-Hub/1.0' },
+              });
+            } catch {
+              // Fallback to CORS proxy for HTML pattern checks
+              if (platform.checkType === 'html_pattern') {
+                response = await fetch(`${SOCIAL_CORS_PROXY}${encodeURIComponent(url)}`, {
+                  signal: controller.signal,
+                });
+              }
+            }
+            
+            clearTimeout(timeoutId);
+            
+            if (!response) return;
+            
+            // Handle different verification types
+            switch (platform.checkType) {
+              case 'json_api': {
+                if (response.ok) {
+                  try {
+                    const data = await response.json();
+                    if (data && !data.error && !data.message?.includes('Not Found')) {
+                      exists = true;
+                      profileData = extractProfileData(data, platform.name);
+                    }
+                  } catch { /* JSON parse failed */ }
+                }
+                break;
+              }
+              
+              case 'json_array': {
+                if (response.ok) {
+                  try {
+                    const data = await response.json();
+                    if (Array.isArray(data) && data.length > 0) {
+                      exists = true;
+                      profileData = extractProfileData(data[0], platform.name);
+                    } else if (data.users && data.users.length > 0) {
+                      exists = true;
+                      profileData = extractProfileData(data.users[0], platform.name);
+                    }
+                  } catch { /* JSON parse failed */ }
+                }
+                break;
+              }
+              
+              case 'json_status': {
+                if (response.ok) {
+                  try {
+                    const data = await response.json();
+                    const statusField = platform.statusField || 'status';
+                    const statusValue = getNestedValue(data, statusField);
+                    if (statusValue === platform.successValue) {
+                      exists = true;
+                      profileData = extractProfileData(data.them || data, platform.name);
+                    }
+                  } catch { /* JSON parse failed */ }
+                }
+                break;
+              }
+              
+              case 'json_field': {
+                if (response.ok) {
+                  try {
+                    const data = await response.json();
+                    const fieldData = getNestedValue(data, platform.fieldPath || 'data');
+                    if (Array.isArray(fieldData)) {
+                      const match = fieldData.find((item: any) => 
+                        item[platform.matchField || 'name']?.toLowerCase() === username.toLowerCase()
+                      );
+                      if (match) {
+                        exists = true;
+                        profileData = extractProfileData(match, platform.name);
+                      }
+                    }
+                  } catch { /* JSON parse failed */ }
+                }
+                break;
+              }
+              
+              case 'html_pattern': {
+                try {
+                  const html = await response.text();
+                  const existsPattern = platform.existsPattern || '';
+                  const notExistsPattern = platform.notExistsPattern || '';
+                  
+                  if (notExistsPattern && html.includes(notExistsPattern)) {
+                    exists = false;
+                  } else if (existsPattern && html.includes(existsPattern)) {
+                    exists = true;
+                    const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+                    if (titleMatch) {
+                      profileData.displayName = titleMatch[1].split(' - ')[0].trim();
+                    }
+                  }
+                } catch { /* HTML parse failed */ }
+                break;
+              }
+            }
+            
+            if (exists) {
+              console.log(`[Social Search] ✅ Found: ${platform.name}`);
+              foundCount++;
+              
+              newNodes.push({
+                id: `social-${platform.name}-${username}-${Date.now()}-${foundCount}`,
+                type: 'social_profile',
+                label: `${platform.icon || '👤'} ${platform.name}: ${profileData.displayName || username}`,
+                value: profileUrl,
+                properties: {
+                  platform: platform.name,
+                  platformType: platform.type,
+                  username: profileData.displayName || username,
+                  displayName: profileData.displayName,
+                  bio: profileData.bio,
+                  followers: profileData.followers,
+                  avatar: profileData.avatar,
+                  ...profileData,
+                },
+                position: {
+                  x: node.position.x + 300 + Math.floor(foundCount / 8) * 200,
+                  y: node.position.y - 300 + ((foundCount - 1) % 8) * 80,
+                },
+                color: ENTITY_CONFIG.social_profile.color,
+                icon: platform.icon || ENTITY_CONFIG.social_profile.icon,
+                size: 45,
+                metadata: {
+                  source: 'social_search',
+                  confidence: platform.checkType === 'json_api' ? 95 : 80,
+                },
+              });
+            }
+          } catch {
+            clearTimeout(timeoutId);
+          }
+        } catch {
+          // Skip platform on error
         }
-      }
-    } catch {
-      continue;
+      })
+    );
+    
+    // Small delay between batches to avoid rate limiting
+    if (i + batchSize < SOCIAL_PLATFORMS.length) {
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
   }
 
+  console.log(`[Social Search] Completed. Found ${newNodes.length} profiles for "${username}"`);
+  
   await cacheAPIResponse(cacheKey, newNodes, 3600);
   return newNodes;
 }
