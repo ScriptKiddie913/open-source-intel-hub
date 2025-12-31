@@ -170,14 +170,37 @@ export async function checkOnionUptime(onion: string) {
 }
 
 /* ============================================================================
+   HELPER: Check if result ACTUALLY contains the full query (exact relevance)
+============================================================================ */
+
+function isRelevantResult(text: string, query: string): boolean {
+  if (!text || !query) return false;
+  const textLower = text.toLowerCase();
+  const queryLower = query.toLowerCase().trim();
+  
+  // Must contain the FULL query, not just parts
+  if (textLower.includes(queryLower)) return true;
+  
+  // For email: check if both local part and domain are present
+  if (query.includes('@')) {
+    const [localPart, domain] = queryLower.split('@');
+    return textLower.includes(localPart) && textLower.includes(domain);
+  }
+  
+  // For usernames: exact match required
+  return false;
+}
+
+/* ============================================================================
    DATA SOURCE: Archive.org (VERIFIED WORKING)
 ============================================================================ */
 
 async function scanArchiveOrg(indicator: string, onSignal?: StreamCallback): Promise<LeakSignal[]> {
   const signals: LeakSignal[] = [];
   try {
-    const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(indicator)}&fl[]=identifier&fl[]=title&fl[]=publicdate&fl[]=description&output=json&rows=25`;
-    console.log(`[Archive.org] Fetching...`);
+    // Use exact phrase search with quotes
+    const url = `https://archive.org/advancedsearch.php?q="${encodeURIComponent(indicator)}"&fl[]=identifier&fl[]=title&fl[]=publicdate&fl[]=description&output=json&rows=30`;
+    console.log(`[Archive.org] Searching for exact: "${indicator}"`);
 
     const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
     if (!res.ok) {
@@ -189,6 +212,11 @@ async function scanArchiveOrg(indicator: string, onSignal?: StreamCallback): Pro
     const docs = data.response?.docs || [];
 
     docs.forEach((d: any) => {
+      const fullText = `${d.title || ''} ${d.description || ''} ${d.identifier || ''}`;
+      
+      // STRICT: Only include if it actually contains the query
+      if (!isRelevantResult(fullText, indicator)) return;
+      
       const signal: LeakSignal = {
         id: `archive-${d.identifier}`,
         title: d.title || 'Archived Dataset',
@@ -217,8 +245,9 @@ async function scanArchiveOrg(indicator: string, onSignal?: StreamCallback): Pro
 async function scanPsbdmp(indicator: string, onSignal?: StreamCallback): Promise<LeakSignal[]> {
   const signals: LeakSignal[] = [];
   try {
+    // Psbdmp API searches paste content
     const url = `https://psbdmp.ws/api/v3/search/${encodeURIComponent(indicator)}`;
-    console.log(`[Psbdmp] Fetching...`);
+    console.log(`[Psbdmp] Searching for exact: "${indicator}"`);
 
     let data: any;
     try {
@@ -237,7 +266,12 @@ async function scanPsbdmp(indicator: string, onSignal?: StreamCallback): Promise
     if (!data) return [];
 
     const items = Array.isArray(data) ? data : (data.data || data.results || []);
-    items.slice(0, 25).forEach((p: any) => {
+    items.slice(0, 30).forEach((p: any) => {
+      const fullText = `${p.text || ''} ${p.content || ''} ${p.title || ''} ${p.tags || ''}`;
+      
+      // STRICT: Only include if it actually contains the query
+      if (!isRelevantResult(fullText, indicator)) return;
+      
       const signal: LeakSignal = {
         id: `psbdmp-${p.id || p.key || Math.random().toString(36).substr(2, 9)}`,
         title: p.title || p.tags || 'Paste Dump',
@@ -245,13 +279,13 @@ async function scanPsbdmp(indicator: string, onSignal?: StreamCallback): Promise
         source: 'psbdmp',
         timestamp: p.time || p.date || p.created || nowISO(),
         url: p.id ? `https://pastebin.com/${p.id}` : `https://psbdmp.ws/${p.key || p.id}`,
-        context: p.text?.substring(0, 100) || p.content?.substring(0, 100) || 'Paste dump match',
+        context: (p.text || p.content || 'Paste dump match').substring(0, 100),
       };
       signals.push(signal);
       onSignal?.(signal, 'Psbdmp');
     });
 
-    console.log(`[Psbdmp] ✅ Found ${signals.length} results`);
+    console.log(`[Psbdmp] ✅ Found ${signals.length} relevant results`);
     return signals;
   } catch (err) {
     console.error('[Psbdmp] ❌ Error:', err);
@@ -266,8 +300,9 @@ async function scanPsbdmp(indicator: string, onSignal?: StreamCallback): Promise
 async function scanGitHubCode(indicator: string, onSignal?: StreamCallback): Promise<LeakSignal[]> {
   const signals: LeakSignal[] = [];
   try {
-    const url = `https://api.github.com/search/code?q=${encodeURIComponent(indicator + ' password OR secret OR api_key')}&per_page=15`;
-    console.log(`[GitHub Code] Searching...`);
+    // Search for EXACT indicator in code - use quotes for exact match
+    const url = `https://api.github.com/search/code?q="${encodeURIComponent(indicator)}"&per_page=20`;
+    console.log(`[GitHub Code] Searching for exact: "${indicator}"`);
 
     const res = await fetch(url, {
       headers: {
@@ -288,6 +323,7 @@ async function scanGitHubCode(indicator: string, onSignal?: StreamCallback): Pro
 
     const data = await res.json();
     (data.items || []).forEach((i: any) => {
+      // GitHub code search already does exact matching with quotes
       const signal: LeakSignal = {
         id: `gh-${i.sha?.substring(0, 8) || Math.random().toString(36).substr(2, 8)}`,
         title: i.name || 'Code file',
@@ -316,8 +352,9 @@ async function scanGitHubCode(indicator: string, onSignal?: StreamCallback): Pro
 async function scanGitHubRepos(indicator: string, onSignal?: StreamCallback): Promise<LeakSignal[]> {
   const signals: LeakSignal[] = [];
   try {
-    const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(indicator + ' leak OR dump OR breach')}&per_page=15&sort=updated`;
-    console.log(`[GitHub Repos] Searching...`);
+    // Search for repos containing the EXACT indicator - use quotes
+    const url = `https://api.github.com/search/repositories?q="${encodeURIComponent(indicator)}"&per_page=20&sort=updated`;
+    console.log(`[GitHub Repos] Searching for exact: "${indicator}"`);
 
     const res = await fetch(url, {
       headers: {
@@ -335,6 +372,11 @@ async function scanGitHubRepos(indicator: string, onSignal?: StreamCallback): Pr
 
     const data = await res.json();
     (data.items || []).forEach((r: any) => {
+      const fullText = `${r.full_name} ${r.description || ''} ${r.name}`;
+      
+      // STRICT: Verify the result actually contains our query
+      if (!isRelevantResult(fullText, indicator)) return;
+      
       const signal: LeakSignal = {
         id: `gh-repo-${r.id}`,
         title: r.full_name,
@@ -348,7 +390,7 @@ async function scanGitHubRepos(indicator: string, onSignal?: StreamCallback): Pr
       onSignal?.(signal, 'GitHub Repos');
     });
 
-    console.log(`[GitHub Repos] ✅ Found ${signals.length} results`);
+    console.log(`[GitHub Repos] ✅ Found ${signals.length} relevant results`);
     return signals;
   } catch (err) {
     console.error('[GitHub Repos] ❌ Error:', err);
@@ -363,8 +405,9 @@ async function scanGitHubRepos(indicator: string, onSignal?: StreamCallback): Pr
 async function scanReddit(indicator: string, onSignal?: StreamCallback): Promise<LeakSignal[]> {
   const signals: LeakSignal[] = [];
   try {
-    const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(indicator + ' leak OR breach OR dump')}&sort=new&limit=20`;
-    console.log(`[Reddit] Searching...`);
+    // Search for EXACT indicator without adding extra keywords
+    const url = `https://www.reddit.com/search.json?q="${encodeURIComponent(indicator)}"&sort=relevance&limit=25`;
+    console.log(`[Reddit] Searching for exact: "${indicator}"`);
 
     const res = await fetch(url, {
       headers: { 'User-Agent': 'OSINT-Hub/1.0' }
@@ -380,6 +423,11 @@ async function scanReddit(indicator: string, onSignal?: StreamCallback): Promise
 
     posts.forEach((post: any) => {
       const p = post.data;
+      const fullText = `${p.title || ''} ${p.selftext || ''} ${p.subreddit || ''}`;
+      
+      // STRICT: Only include if it actually contains the query
+      if (!isRelevantResult(fullText, indicator)) return;
+      
       const signal: LeakSignal = {
         id: `reddit-${p.id}`,
         title: p.title?.substring(0, 100) || 'Reddit Post',
@@ -393,7 +441,7 @@ async function scanReddit(indicator: string, onSignal?: StreamCallback): Promise
       onSignal?.(signal, 'Reddit');
     });
 
-    console.log(`[Reddit] ✅ Found ${signals.length} results`);
+    console.log(`[Reddit] ✅ Found ${signals.length} relevant results`);
     return signals;
   } catch (err) {
     console.error('[Reddit] ❌ Error:', err);
@@ -438,6 +486,20 @@ function parseAlephResults(results: AlephEntity[], indicator: string, onSignal?:
     const props = entity.properties || {};
     const title = props.fileName?.[0] || props.name?.[0] || props.title?.[0] || `Document - ${entity.id.substring(0, 8)}`;
     const timestamp = entity.updated_at || entity.created_at || nowISO();
+
+    // Build full text for relevance check
+    const fullText = [
+      title,
+      props.description?.join(' ') || '',
+      props.companiesMentioned?.join(' ') || '',
+      props.peopleMentioned?.join(' ') || '',
+      props.emailMentioned?.join(' ') || '',
+      entity.highlight?.join(' ') || '',
+      entity.collection?.label || '',
+    ].join(' ');
+    
+    // STRICT: Only include if it actually contains the query
+    if (!isRelevantResult(fullText, indicator)) return;
 
     const contextParts: string[] = [];
     if (entity.collection?.label) contextParts.push(`📁 ${entity.collection.label}`);
