@@ -72,7 +72,7 @@ export function NewsIntelligence() {
     setLoading(true);
     try {
       const trending = await getTrendingNews('cybersecurity');
-      setArticles(trending. slice(0, 20));
+      setArticles(trending.slice(0, 20));
       const newsStats = calculateNewsStats(trending);
       setStats(newsStats);
     } catch (error) {
@@ -83,7 +83,7 @@ export function NewsIntelligence() {
   };
 
   const handleSearch = async () => {
-    if (!query. trim()) {
+    if (!query.trim()) {
       toast.error('Please enter a search query');
       return;
     }
@@ -93,9 +93,9 @@ export function NewsIntelligence() {
     setStats(null);
 
     try {
-      const params:  NewsSearchParams = {
-        ... filters,
-        query:  query.trim(),
+      const params: NewsSearchParams = {
+        ...filters,
+        query: query.trim(),
       };
 
       const results = await searchNews(params);
@@ -152,19 +152,19 @@ export function NewsIntelligence() {
 
   const exportResults = () => {
     const csv = [
-      ['Title', 'Source', 'Date', 'URL', 'Category', 'Sentiment']. join(','),
-      ...articles. map(a => [
-        `"${a.title. replace(/"/g, '""')}"`,
+      ['Title', 'Source', 'Date', 'URL', 'Category', 'Sentiment'].join(','),
+      ...articles.map(a => [
+        `"${a.title.replace(/"/g, '""')}"`,
         a.source.name,
         new Date(a.publishedAt).toLocaleDateString(),
         a.url,
         a.category,
         a.sentiment || 'neutral',
-      ]. join(',')),
+      ].join(',')),
     ].join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL. createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `news-intel-${Date.now()}.csv`;
@@ -260,7 +260,7 @@ export function NewsIntelligence() {
 
             <Select
               value={filters.sortBy}
-              onValueChange={(v) => setFilters({ ... filters, sortBy: v as any })}
+              onValueChange={(v) => setFilters({ ...filters, sortBy: v as any })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Sort By" />
@@ -308,7 +308,7 @@ export function NewsIntelligence() {
               <div className="text-center">
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-2xl">😊</span>
-                  <span className="text-xl font-bold">{stats.sentiment. positive}</span>
+                  <span className="text-xl font-bold">{stats.sentiment.positive}</span>
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">Positive</div>
               </div>
@@ -320,7 +320,7 @@ export function NewsIntelligence() {
               <div className="text-center">
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-2xl">😟</span>
-                  <span className="text-xl font-bold text-red-500">{stats. sentiment.negative}</span>
+                  <span className="text-xl font-bold text-red-500">{stats.sentiment.negative}</span>
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">Negative</div>
               </div>
@@ -353,7 +353,7 @@ export function NewsIntelligence() {
             </div>
           )}
 
-          {! loading && articles.length === 0 && (
+          {!loading && articles.length === 0 && (
             <Card className="border-dashed">
               <CardContent className="pt-12 pb-12 text-center">
                 <Newspaper className="h-16 w-16 mx-auto text-muted-foreground opacity-50 mb-4" />
@@ -364,14 +364,14 @@ export function NewsIntelligence() {
             </Card>
           )}
 
-          {! loading && articles.map((article) => (
+          {!loading && articles.map((article) => (
             <NewsArticleCard key={article.id} article={article} />
           ))}
         </TabsContent>
 
         <TabsContent value="trending" className="space-y-4 mt-6">
           {articles.map((article) => (
-            <NewsArticleCard key={article. id} article={article} />
+            <NewsArticleCard key={article.id} article={article} />
           ))}
         </TabsContent>
 
