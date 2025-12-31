@@ -114,7 +114,7 @@ export async function discoverOnionSites(query: string): Promise<OnionSite[]> {
     const titles = [...html.matchAll(/<h4[^>]*><a[^>]*>([^<]+)</gi)].map(m => stripHtml(m[1]));
     const descs  = [...html.matchAll(/<p class="result[^"]*">([^<]+)/gi)].map(m => stripHtml(m[1]));
 
-    const sites = onions.map((o, i) => {
+    const sites: OnionSite[] = onions.map((o, i) => {
       const ctx = `${titles[i] || ''} ${descs[i] || ''}`;
       return {
         url: o,
@@ -123,7 +123,7 @@ export async function discoverOnionSites(query: string): Promise<OnionSite[]> {
         category: categorize(ctx),
         riskLevel: calculateRisk(ctx),
         lastSeen: nowISO(),
-        status: 'unknown',
+        status: 'unknown' as const,
         tags: extractTags(ctx),
         discoveredFrom: 'ahmia',
       };
@@ -248,10 +248,13 @@ function generateSessionId(): string {
   });
 }
 
-// Parse Library of Leaks API response
+// Parse Library of Leaks API response - based on actual Aleph API structure
 interface AlephEntity {
   id: string;
   schema: string;
+  score?: number;
+  created_at?: string;
+  updated_at?: string;
   properties: {
     name?: string[];
     title?: string[];
@@ -264,29 +267,109 @@ interface AlephEntity {
     modifiedAt?: string[];
     date?: string[];
     emails?: string[];
+    emailMentioned?: string[];
     phones?: string[];
     addresses?: string[];
     country?: string[];
+    companiesMentioned?: string[];
+    peopleMentioned?: string[];
+    detectedLanguage?: string[];
   };
   links?: {
     self?: string;
     ui?: string;
+    file?: string;
+    expand?: string;
   };
   highlight?: string[];
   collection?: {
     label?: string;
     category?: string;
+    summary?: string;
+    collection_id?: string;
+    info_url?: string;
   };
-  created_at?: string;
-  updated_at?: string;
 }
 
 interface AlephResponse {
   results: AlephEntity[];
   total: number;
+  total_type?: string;
   limit: number;
   offset: number;
+  page?: number;
+  pages?: number;
+  query_text?: string;
   facets?: Record<string, any>;
+}
+
+// Helper function to parse Aleph API results into LeakSignal format
+function parseAlephResults(results: AlephEntity[], indicator: string, signals: LeakSignal[]): void {
+  results.forEach((entity: AlephEntity) => {
+    const props = entity.properties || {};
+    
+    // Get title from various possible fields
+    const title = props.fileName?.[0] || 
+                  props.name?.[0] || 
+                  props.title?.[0] || 
+                  `${entity.schema || 'Document'} - ${entity.id.substring(0, 8)}`;
+    
+    // Get timestamp
+    const timestamp = entity.updated_at || entity.created_at || nowISO();
+    
+    // Clean up highlight text (remove HTML tags)
+    const highlightRaw = entity.highlight?.join(' ') || '';
+    const highlight = highlightRaw.replace(/<\/?em>/g, '**').replace(/<[^>]*>/g, '').substring(0, 150);
+    
+    // Build context from available data
+    const contextParts: string[] = [];
+    
+    // Collection info
+    if (entity.collection?.label) {
+      contextParts.push(`📁 ${entity.collection.label}`);
+    }
+    
+    // Document type
+    if (entity.schema && entity.schema !== 'Thing') {
+      contextParts.push(`Type: ${entity.schema}`);
+    }
+    
+    // File type
+    if (props.mimeType?.[0]) {
+      const mime = props.mimeType[0];
+      const fileType = mime.includes('pdf') ? 'PDF' : 
+                       mime.includes('email') ? 'Email' : 
+                       mime.includes('text') ? 'Text' :
+                       mime.includes('image') ? 'Image' : mime.split('/')[1];
+      contextParts.push(`Format: ${fileType}`);
+    }
+    
+    // Mentioned entities
+    if (props.companiesMentioned?.length) {
+      contextParts.push(`Companies: ${props.companiesMentioned.slice(0, 2).join(', ')}`);
+    }
+    if (props.peopleMentioned?.length) {
+      contextParts.push(`People: ${props.peopleMentioned.slice(0, 2).join(', ')}`);
+    }
+    if (props.emailMentioned?.length) {
+      contextParts.push(`Email: ${props.emailMentioned[0]}`);
+    }
+    
+    // Highlight/match context
+    if (highlight) {
+      contextParts.push(`"${highlight}..."`);
+    }
+
+    signals.push({
+      id: `lol-${entity.id}`,
+      title: title.substring(0, 100),
+      indicator,
+      source: 'libraryofleaks',
+      timestamp,
+      url: entity.links?.ui || `${LIBRARY_OF_LEAKS_BASE}/entities/${entity.id}`,
+      context: contextParts.join(' • ') || 'Library of Leaks document',
+    });
+  });
 }
 
 async function scanLibraryOfLeaks(indicator: string): Promise<LeakSignal[]> {
@@ -295,133 +378,105 @@ async function scanLibraryOfLeaks(indicator: string): Promise<LeakSignal[]> {
   if (cached) return cached;
 
   const signals: LeakSignal[] = [];
-
-  /* ------------------ LIBRARY OF LEAKS ALEPH API ------------------ */
-  // Try the Vercel API proxy first (works in production), then fall back to direct API
   let libraryOfLeaksSuccess = false;
-  
-  // Method 1: Use Vercel serverless function proxy (avoids CORS in production)
+
+  /* ------------------ METHOD 1: VERCEL PROXY (for production) ------------------ */
   try {
-    const proxyUrl = `/api/library-of-leaks?q=${encodeURIComponent(indicator)}&limit=30&schema=Thing`;
-    console.log(`[Library of Leaks] Trying proxy: ${proxyUrl}`);
+    const proxyUrl = `/api/library-of-leaks?q=${encodeURIComponent(indicator)}&limit=30`;
+    console.log(`[Library of Leaks] Trying Vercel proxy: ${proxyUrl}`);
     
     const proxyRes = await fetch(proxyUrl, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: { 'Accept': 'application/json' },
     });
 
     if (proxyRes.ok) {
       const data: AlephResponse = await proxyRes.json();
-      
       if (data.results && data.results.length > 0) {
         libraryOfLeaksSuccess = true;
-        
-        data.results.forEach((entity: AlephEntity) => {
-          const props = entity.properties || {};
-          const title = props.name?.[0] || props.title?.[0] || props.fileName?.[0] || 'Leaked Document';
-          const sourceUrl = props.sourceUrl?.[0];
-          const publishedAt = props.publishedAt?.[0] || props.modifiedAt?.[0] || props.date?.[0];
-          const highlight = entity.highlight?.join(' ') || '';
-          const collection = entity.collection?.label || 'Unknown Collection';
-          
-          // Build context from available data
-          const contextParts: string[] = [];
-          if (collection) contextParts.push(`Collection: ${collection}`);
-          if (props.emails?.length) contextParts.push(`Emails: ${props.emails.slice(0, 3).join(', ')}`);
-          if (props.country?.length) contextParts.push(`Country: ${props.country[0]}`);
-          if (highlight) contextParts.push(`Match: ${highlight.substring(0, 100)}...`);
-          if (entity.schema) contextParts.push(`Type: ${entity.schema}`);
-
-          signals.push({
-            id: `lol-${entity.id}`,
-            title: title.substring(0, 100),
-            indicator,
-            source: 'libraryofleaks',
-            timestamp: publishedAt || nowISO(),
-            url: entity.links?.ui || sourceUrl || `${LIBRARY_OF_LEAKS_BASE}/entities/${entity.id}`,
-            context: contextParts.join(' • ') || 'Library of Leaks document',
-          });
-        });
-
-        console.log(`[Library of Leaks] Proxy success: Found ${data.total} total results, returned ${signals.length} signals for "${indicator}"`);
+        parseAlephResults(data.results, indicator, signals);
+        console.log(`[Library of Leaks] Proxy: Found ${data.total} total, returned ${signals.length} signals`);
       }
     } else {
-      console.warn(`[Library of Leaks] Proxy returned ${proxyRes.status}: ${proxyRes.statusText}`);
+      console.warn(`[Library of Leaks] Proxy failed: ${proxyRes.status}`);
     }
-  } catch (proxyErr) {
-    console.warn('[Library of Leaks] Proxy error (trying direct API):', proxyErr);
+  } catch (err) {
+    console.warn('[Library of Leaks] Proxy unavailable:', err);
   }
 
-  // Method 2: Direct API call (may work locally or if CORS is allowed)
+  /* ------------------ METHOD 2: DIRECT API (may have CORS issues) ------------------ */
   if (!libraryOfLeaksSuccess) {
     try {
       const sessionId = generateSessionId();
       const params = new URLSearchParams({
         'filter:schemata': 'Thing',
-        highlight: 'true',
-        limit: '30',
-        q: indicator,
+        'highlight': 'true',
+        'limit': '30',
+        'q': indicator,
       });
 
-      const res = await fetch(`${LIBRARY_OF_LEAKS_BASE}/api/2/entities?${params.toString()}`, {
+      const apiUrl = `${LIBRARY_OF_LEAKS_BASE}/api/2/entities?${params.toString()}`;
+      console.log(`[Library of Leaks] Trying direct API: ${apiUrl}`);
+      
+      const res = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'Accept': 'application/json, text/plain, */*',
           'Accept-Language': 'en',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
-          'Sec-CH-UA': '"Not_A Brand";v="99", "Chromium";v="142"',
-          'Sec-CH-UA-Mobile': '?0',
-          'Sec-CH-UA-Platform': '"Windows"',
-          'Sec-Fetch-Site': 'same-origin',
-          'Sec-Fetch-Mode': 'cors',
-          'Sec-Fetch-Dest': 'empty',
-          'Referer': `${LIBRARY_OF_LEAKS_BASE}/`,
           'X-Aleph-Session': sessionId,
         },
       });
 
       if (res.ok) {
         const data: AlephResponse = await res.json();
-        
-        (data.results || []).forEach((entity: AlephEntity) => {
-          const props = entity.properties || {};
-          const title = props.name?.[0] || props.title?.[0] || props.fileName?.[0] || 'Leaked Document';
-          const sourceUrl = props.sourceUrl?.[0];
-          const publishedAt = props.publishedAt?.[0] || props.modifiedAt?.[0] || props.date?.[0];
-          const highlight = entity.highlight?.join(' ') || '';
-          const collection = entity.collection?.label || 'Unknown Collection';
-          
-          // Build context from available data
-          const contextParts: string[] = [];
-          if (collection) contextParts.push(`Collection: ${collection}`);
-          if (props.emails?.length) contextParts.push(`Emails: ${props.emails.slice(0, 3).join(', ')}`);
-          if (props.country?.length) contextParts.push(`Country: ${props.country[0]}`);
-          if (highlight) contextParts.push(`Match: ${highlight.substring(0, 100)}...`);
-          if (entity.schema) contextParts.push(`Type: ${entity.schema}`);
-
-          signals.push({
-            id: `lol-${entity.id}`,
-            title: title.substring(0, 100),
-            indicator,
-            source: 'libraryofleaks',
-            timestamp: publishedAt || nowISO(),
-            url: entity.links?.ui || sourceUrl || `${LIBRARY_OF_LEAKS_BASE}/entities/${entity.id}`,
-            context: contextParts.join(' • ') || 'Library of Leaks document',
-          });
-        });
-
-        console.log(`[Library of Leaks] Direct API: Found ${data.total} total results, returned ${signals.length} signals for "${indicator}"`);
+        if (data.results && data.results.length > 0) {
+          libraryOfLeaksSuccess = true;
+          parseAlephResults(data.results, indicator, signals);
+          console.log(`[Library of Leaks] Direct: Found ${data.total} total, returned ${signals.length} signals`);
+        }
       } else {
-        console.warn(`[Library of Leaks] Direct API returned ${res.status}: ${res.statusText}`);
+        console.warn(`[Library of Leaks] Direct API failed: ${res.status}`);
       }
     } catch (err) {
       console.error('[Library of Leaks] Direct API error:', err);
     }
   }
 
-  /* ------------------ ARCHIVE.ORG DATASETS (FALLBACK) ------------------ */
+  /* ------------------ METHOD 3: CORS PROXY FALLBACK ------------------ */
+  if (!libraryOfLeaksSuccess) {
+    try {
+      const params = new URLSearchParams({
+        'filter:schemata': 'Thing',
+        'highlight': 'true',
+        'limit': '30',
+        'q': indicator,
+      });
+      
+      // Use a public CORS proxy as last resort
+      const targetUrl = `${LIBRARY_OF_LEAKS_BASE}/api/2/entities?${params.toString()}`;
+      const corsProxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+      
+      console.log(`[Library of Leaks] Trying CORS proxy fallback`);
+      
+      const res = await fetch(corsProxyUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (res.ok) {
+        const data: AlephResponse = await res.json();
+        if (data.results && data.results.length > 0) {
+          libraryOfLeaksSuccess = true;
+          parseAlephResults(data.results, indicator, signals);
+          console.log(`[Library of Leaks] CORS proxy: Found ${data.total} total, returned ${signals.length} signals`);
+        }
+      }
+    } catch (err) {
+      console.error('[Library of Leaks] CORS proxy error:', err);
+    }
+  }
+
+  /* ------------------ ARCHIVE.ORG DATASETS (ADDITIONAL) ------------------ */
   try {
     const res = await fetch(
       `https://archive.org/advancedsearch.php?q=${encodeURIComponent(
