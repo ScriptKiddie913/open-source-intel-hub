@@ -55,7 +55,7 @@ import { cn } from '@/lib/utils';
 type SearchType = 'leaks' | 'channels' | 'users';
 type LeakType = 'email' | 'username' | 'phone' | 'password' | 'domain' | 'keyword';
 
-const SEVERITY_COLORS:  Record<'critical' | 'high' | 'medium' | 'low', string> = {
+const SEVERITY_COLORS: Record<'critical' | 'high' | 'medium' | 'low', string> = {
   critical: 'border-red-500/40 bg-red-500/10 text-red-400',
   high: 'border-orange-500/40 bg-orange-500/10 text-orange-400',
   medium: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400',
@@ -73,8 +73,8 @@ export function TelegramIntelligence() {
   const [users, setUsers] = useState<TelegramUser[]>([]);
 
   const runSearch = useCallback(async () => {
-    if (! query.trim()) {
-      toast. error('Enter a search term (email, username, keyword, etc.)');
+    if (!query.trim()) {
+      toast.error('Enter a search term (email, username, keyword, etc.)');
       return;
     }
 
@@ -166,7 +166,7 @@ export function TelegramIntelligence() {
       {/* SEARCH INTERFACE */}
       <Card className="border-primary/30">
         <CardContent className="pt-6 space-y-4">
-          <div className="grid grid-cols-1 md: grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Select value={searchType} onValueChange={(v) => setSearchType(v as SearchType)}>
               <SelectTrigger>
                 <SelectValue />
@@ -295,7 +295,7 @@ export function TelegramIntelligence() {
           <CardContent className="pt-6">
             <div className="text-center">
               <Users className="h-5 w-5 mx-auto text-purple-500 mb-2" />
-              <div className="text-2xl font-bold">{stats.totalMembers. toLocaleString()}</div>
+              <div className="text-2xl font-bold">{stats.totalMembers.toLocaleString()}</div>
               <div className="text-xs text-muted-foreground">Members</div>
             </div>
           </CardContent>
@@ -332,7 +332,7 @@ export function TelegramIntelligence() {
         {/* LEAKS TAB */}
         <TabsContent value="leaks" className="mt-6 space-y-3">
           {loading && <LoadingState />}
-          {! loading && leaks.length === 0 && (
+          {!loading && leaks.length === 0 && (
             <EmptyState
               icon={Database}
               message="No leaks found. Try a different search term or identifier."
@@ -366,7 +366,7 @@ export function TelegramIntelligence() {
               message="No users found. Try searching with a username, phone, or user ID."
             />
           )}
-          {!loading && users. map(user => (
+          {!loading && users.map(user => (
             <UserCard key={user.id} user={user} />
           ))}
         </TabsContent>
@@ -381,7 +381,7 @@ export function TelegramIntelligence() {
             <p className="text-sm text-muted-foreground mt-1">
               <strong>Leak Detection:</strong> Psbdmp, HaveIBeenPwned, Telegram Indexes
               {' • '}
-              <strong>Channel Indexing:</strong> Telemetr. io, Tgstat, Lyzem
+              <strong>Channel Indexing:</strong> Telemetr.io, Tgstat, Lyzem
               {' • '}
               <strong>User OSINT:</strong> TelegramDB, Telegram Search APIs
               {' • '}
@@ -400,7 +400,7 @@ export function TelegramIntelligence() {
 
 function LeakCard({ leak }: { leak: TelegramLeak }) {
   return (
-    <Card className={cn('border-2', SEVERITY_COLORS[leak. severity])}>
+    <Card className={cn('border-2', SEVERITY_COLORS[leak.severity])}>
       <CardContent className="pt-6">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="flex-1 min-w-0">
@@ -453,7 +453,7 @@ function LeakCard({ leak }: { leak: TelegramLeak }) {
             </span>
             <span className="flex items-center gap-1">
               <Database className="h-3 w-3" />
-              {leak. source}
+              {leak.source}
             </span>
           </div>
 
@@ -505,7 +505,7 @@ function ChannelCard({ channel }: { channel: TelegramChannel }) {
             <div className="flex flex-wrap gap-3 mt-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Users className="h-3 w-3" />
-                {channel. members.toLocaleString()} members
+                {channel.members.toLocaleString()} members
               </span>
               {channel.category && (
                 <Badge variant="outline" className="text-xs">
@@ -570,7 +570,7 @@ function UserCard({ user }: { user: TelegramUser }) {
 
             {user.bio && (
               <p className="text-sm text-muted-foreground line-clamp-2 mt-2">
-                {user. bio}
+                {user.bio}
               </p>
             )}
 
