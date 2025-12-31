@@ -21,6 +21,7 @@ import { GraphVisualization } from "@/components/osint/GraphVisualization";
 import { NewsIntelligence } from "@/components/osint/NewsIntelligence";
 import { TelegramIntelligence } from "@/components/osint/TelegramIntelligence";
 import MalwarePipeline from "@/components/osint/MalwarePipeline";
+import { StealthMoleScanner } from "@/components/osint/StealthMoleScanner";
 
 import { initDatabase } from "@/lib/database";
 import { cn } from "@/lib/utils";
@@ -583,7 +584,7 @@ const Index = () => {
           <Route path="/news" element={<NewsIntelligence />} />
           <Route path="/telegram" element={<TelegramIntelligence />} />
           <Route path="/malware-pipeline" element={<MalwarePipeline />} />
-          <Route path="/campaigns" element={<MalwarePipeline />} />
+          <Route path="/stealthmole" element={<StealthMoleScanner />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
