@@ -1129,10 +1129,17 @@ async function transformPasteSearch(node: GraphNode): Promise<GraphNode[]> {
   if (cached) return cached;
 
   const newNodes: GraphNode[] = [];
+  const query = node.value.trim();
+  
+  // Helper to check relevance - must contain FULL query
+  const isRelevant = (text: string): boolean => {
+    if (!text) return false;
+    return text.toLowerCase().includes(query.toLowerCase());
+  };
 
   try {
-    const psbdmpUrl = `https://psbdmp.ws/api/v3/search/${encodeURIComponent(node.value)}`;
-    console.log(`[Paste Search] Searching for: ${node.value}`);
+    const psbdmpUrl = `https://psbdmp.ws/api/v3/search/${encodeURIComponent(query)}`;
+    console.log(`[Paste Search] Searching for exact: "${query}"`);
     
     let data: any = null;
     
@@ -1164,16 +1171,21 @@ async function transformPasteSearch(node: GraphNode): Promise<GraphNode[]> {
     }
     
     if (!data) {
-      // Try Archive.org as alternative paste source
-      console.log('[Paste Search] Trying Archive.org');
+      // Try Archive.org as alternative paste source - with EXACT query
+      console.log('[Paste Search] Trying Archive.org with exact query');
       try {
-        const archiveUrl = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(node.value)}&fl[]=identifier&fl[]=title&fl[]=description&output=json&rows=15`;
+        const archiveUrl = `https://archive.org/advancedsearch.php?q="${encodeURIComponent(query)}"&fl[]=identifier&fl[]=title&fl[]=description&output=json&rows=20`;
         const archiveRes = await fetch(archiveUrl);
         if (archiveRes.ok) {
           const archiveData = await archiveRes.json();
           const docs = archiveData.response?.docs || [];
           
-          docs.slice(0, 8).forEach((doc: any, idx: number) => {
+          docs.forEach((doc: any, idx: number) => {
+            const fullText = `${doc.title || ''} ${doc.description || ''} ${doc.identifier || ''}`;
+            
+            // STRICT: Only include if it actually contains the query
+            if (!isRelevant(fullText)) return;
+            
             newNodes.push({
               id: `archive-${doc.identifier}-${Date.now()}`,
               type: 'paste',
@@ -1186,7 +1198,7 @@ async function transformPasteSearch(node: GraphNode): Promise<GraphNode[]> {
               },
               position: {
                 x: node.position.x + 300,
-                y: node.position.y - 150 + (idx * 50),
+                y: node.position.y - 150 + (newNodes.length * 50),
               },
               color: ENTITY_CONFIG.paste.color,
               icon: '📚',
@@ -1199,13 +1211,18 @@ async function transformPasteSearch(node: GraphNode): Promise<GraphNode[]> {
       }
     } else {
       const pastes = Array.isArray(data) ? data : (data.data || data.results || []);
-      console.log(`[Paste Search] ✅ Found ${pastes.length} results from Psbdmp`);
+      console.log(`[Paste Search] Processing ${pastes.length} results from Psbdmp`);
       
-      pastes.slice(0, 12).forEach((paste: any, idx: number) => {
+      pastes.forEach((paste: any, idx: number) => {
+        const fullText = `${paste.text || ''} ${paste.content || ''} ${paste.title || ''} ${paste.tags || ''}`;
+        
+        // STRICT: Only include if it actually contains the query
+        if (!isRelevant(fullText)) return;
+        
         newNodes.push({
           id: `paste-${paste.id || paste.key || idx}-${Date.now()}`,
           type: 'paste',
-          label: paste.title || paste.tags || `Paste #${idx + 1}`,
+          label: paste.title || paste.tags || `Paste #${newNodes.length + 1}`,
           value: paste.id || paste.key,
           properties: {
             source: 'Psbdmp',
@@ -1215,7 +1232,7 @@ async function transformPasteSearch(node: GraphNode): Promise<GraphNode[]> {
           },
           position: {
             x: node.position.x + 300,
-            y: node.position.y - 250 + (idx * 45),
+            y: node.position.y - 250 + (newNodes.length * 45),
           },
           color: ENTITY_CONFIG.paste.color,
           icon: ENTITY_CONFIG.paste.icon,
@@ -1716,23 +1733,34 @@ async function transformDarkwebScan(node: GraphNode): Promise<GraphNode[]> {
   if (cached) return cached;
 
   const newNodes: GraphNode[] = [];
+  const query = node.value.trim();
+  
+  // Helper to check relevance - must contain FULL query
+  const isRelevant = (text: string): boolean => {
+    if (!text) return false;
+    return text.toLowerCase().includes(query.toLowerCase());
+  };
 
   try {
-    console.log(`[Dark Web] Scanning for: ${node.value}`);
+    console.log(`[Dark Web] Scanning for exact: "${query}"`);
     
     // Use torService's searchDarkWebSignals function
-    const leakResults = await searchDarkWebSignals(node.value);
+    const leakResults = await searchDarkWebSignals(query);
     
     if (leakResults && leakResults.length > 0) {
-      console.log(`[Dark Web] ✅ Found ${leakResults.length} results`);
+      console.log(`[Dark Web] Processing ${leakResults.length} results`);
       
-      leakResults.slice(0, 15).forEach((leak: any, idx: number) => {
+      leakResults.forEach((leak: any, idx: number) => {
+        // STRICT: Double-check relevance (torService should already filter)
+        const fullText = `${leak.title || ''} ${leak.context || ''} ${leak.indicator || ''}`;
+        if (!isRelevant(fullText)) return;
+        
         const nodeType = leak.source === 'psbdmp' || leak.source === 'ghostbin' ? 'paste' : 'breach';
         
         newNodes.push({
           id: `darkweb-${leak.id || idx}-${Date.now()}`,
           type: nodeType,
-          label: leak.title || `${leak.source}: ${node.value}`,
+          label: leak.title || `${leak.source}: ${query}`,
           value: leak.url || leak.id,
           properties: {
             source: leak.source,
@@ -1743,7 +1771,7 @@ async function transformDarkwebScan(node: GraphNode): Promise<GraphNode[]> {
           },
           position: {
             x: node.position.x + 350,
-            y: node.position.y - 300 + (idx * 45),
+            y: node.position.y - 300 + (newNodes.length * 45),
           },
           color: nodeType === 'breach' ? ENTITY_CONFIG.breach.color : ENTITY_CONFIG.paste.color,
           icon: '🕸️',
@@ -1755,13 +1783,17 @@ async function transformDarkwebScan(node: GraphNode): Promise<GraphNode[]> {
           },
         });
       });
+      
+      console.log(`[Dark Web] ✅ Added ${newNodes.length} relevant nodes`);
     } else {
       // Fallback: Direct Ahmia search for onion mentions
       console.log('[Dark Web] No leaks found, trying Ahmia search');
       try {
-        const ahmiaRes = await fetch(`https://ahmia.fi/search/?q=${encodeURIComponent(node.value)}`);
+        const ahmiaRes = await fetch(`https://ahmia.fi/search/?q=${encodeURIComponent(query)}`);
         if (ahmiaRes.ok) {
           const html = await ahmiaRes.text();
+          
+          // Only get onions that appear in relevant context
           const onionMatches = html.match(/([a-z2-7]{16,56}\.onion)/gi) || [];
           const uniqueOnions = [...new Set(onionMatches)].slice(0, 8);
           
@@ -1773,7 +1805,7 @@ async function transformDarkwebScan(node: GraphNode): Promise<GraphNode[]> {
               value: onion,
               properties: {
                 type: 'onion_site',
-                query: node.value,
+                query: query,
                 source: 'ahmia',
               },
               position: {
@@ -1813,9 +1845,16 @@ async function transformTelegramScan(node: GraphNode): Promise<GraphNode[]> {
   if (cached) return cached;
 
   const newNodes: GraphNode[] = [];
+  const query = node.value.trim();
+  
+  // Helper to check relevance - must contain FULL query
+  const isRelevant = (text: string): boolean => {
+    if (!text) return false;
+    return text.toLowerCase().includes(query.toLowerCase());
+  };
 
   try {
-    console.log(`[Telegram] Scanning for: ${node.value}`);
+    console.log(`[Telegram] Scanning for exact: "${query}"`);
     
     // Determine scan type based on node type
     let scanType: 'email' | 'username' | 'phone' | 'keyword' = 'keyword';
@@ -1824,12 +1863,16 @@ async function transformTelegramScan(node: GraphNode): Promise<GraphNode[]> {
     else if (node.type === 'person') scanType = 'username';
     
     // Use telegramService's searchTelegramLeaks function
-    const telegramResults = await searchTelegramLeaks(node.value, scanType);
+    const telegramResults = await searchTelegramLeaks(query, scanType);
     
     if (telegramResults && telegramResults.length > 0) {
-      console.log(`[Telegram] ✅ Found ${telegramResults.length} results`);
+      console.log(`[Telegram] Processing ${telegramResults.length} results`);
       
-      telegramResults.slice(0, 12).forEach((result: any, idx: number) => {
+      telegramResults.forEach((result: any, idx: number) => {
+        // STRICT: Double-check relevance (telegramService should already filter)
+        const fullText = `${result.title || ''} ${result.context || ''} ${result.identifier || ''}`;
+        if (!isRelevant(fullText)) return;
+        
         newNodes.push({
           id: `telegram-${result.id || idx}-${Date.now()}`,
           type: 'breach',
@@ -1847,7 +1890,7 @@ async function transformTelegramScan(node: GraphNode): Promise<GraphNode[]> {
           },
           position: {
             x: node.position.x + 350,
-            y: node.position.y - 200 + (idx * 45),
+            y: node.position.y - 200 + (newNodes.length * 45),
           },
           color: result.severity === 'critical' ? '#dc2626' : 
                  result.severity === 'high' ? '#ef4444' : '#f97316',
@@ -1861,12 +1904,14 @@ async function transformTelegramScan(node: GraphNode): Promise<GraphNode[]> {
           },
         });
       });
+      
+      console.log(`[Telegram] ✅ Added ${newNodes.length} relevant nodes`);
     } else {
-      // Fallback: Check via Reddit for Telegram leak mentions
-      console.log('[Telegram] No direct results, checking Reddit for Telegram mentions');
+      // Fallback: Check via Reddit for Telegram leak mentions - with EXACT query
+      console.log('[Telegram] No direct results, checking Reddit');
       try {
         const redditRes = await fetch(
-          `https://www.reddit.com/search.json?q=${encodeURIComponent(node.value + ' telegram leak')}&limit=10&sort=new`,
+          `https://www.reddit.com/search.json?q="${encodeURIComponent(query)}"&limit=15&sort=relevance`,
           { headers: { 'User-Agent': 'OSINT-Hub/1.0' } }
         );
         
@@ -1874,31 +1919,33 @@ async function transformTelegramScan(node: GraphNode): Promise<GraphNode[]> {
           const redditData = await redditRes.json();
           const posts = redditData.data?.children || [];
           
-          posts.slice(0, 6).forEach((post: any, idx: number) => {
+          posts.forEach((post: any, idx: number) => {
             const p = post.data;
-            if (p.title?.toLowerCase().includes('telegram') || 
-                p.selftext?.toLowerCase().includes('telegram')) {
-              newNodes.push({
-                id: `reddit-tg-${p.id}-${Date.now()}`,
-                type: 'paste',
-                label: `Reddit: ${p.title?.substring(0, 40)}...`,
-                value: `https://reddit.com${p.permalink}`,
-                properties: {
-                  source: 'Reddit',
-                  subreddit: p.subreddit,
-                  author: p.author,
-                  score: p.score,
-                  created: new Date(p.created_utc * 1000).toISOString(),
-                },
-                position: {
-                  x: node.position.x + 350,
-                  y: node.position.y - 100 + (idx * 50),
-                },
-                color: '#ff4500',
-                icon: '📱',
-                size: 40,
-              });
-            }
+            const fullText = `${p.title || ''} ${p.selftext || ''}`;
+            
+            // STRICT: Only include if it actually contains the query
+            if (!isRelevant(fullText)) return;
+            
+            newNodes.push({
+              id: `reddit-tg-${p.id}-${Date.now()}`,
+              type: 'paste',
+              label: `Reddit: ${p.title?.substring(0, 40)}...`,
+              value: `https://reddit.com${p.permalink}`,
+              properties: {
+                source: 'Reddit',
+                subreddit: p.subreddit,
+                author: p.author,
+                score: p.score,
+                created: new Date(p.created_utc * 1000).toISOString(),
+              },
+              position: {
+                x: node.position.x + 350,
+                y: node.position.y - 100 + (newNodes.length * 50),
+              },
+              color: '#ff4500',
+              icon: '📱',
+              size: 40,
+            });
           });
         }
       } catch (e) {
