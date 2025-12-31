@@ -70,6 +70,18 @@ const nowISO = () => new Date().toISOString();
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').trim();
 const unique = <T>(a: T[]) => Array.from(new Set(a));
 
+const BYTES_PER_MB = 1024 * 1024;
+const KB_PER_MB = 1024;
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= BYTES_PER_MB) {
+    return `${(bytes / BYTES_PER_MB).toFixed(2)} MB`;
+  } else if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(2)} KB`;
+  }
+  return `${bytes} B`;
+}
+
 /* ============================================================================
    RISK ENGINE
 ============================================================================ */
@@ -279,7 +291,7 @@ async function scanLibraryOfLeaks(indicator: string): Promise<LeakSignal[]> {
         // Extract download link (convert relative to absolute)
         const downloadUrl = href.startsWith('http') 
           ? href 
-          : `https://search.libraryofleaks.org${href.startsWith('/') ? '' : '/'}${href}`;
+          : `https://search.libraryofleaks.org${href.startsWith('/') ? href : `/${href}`}`;
         
         // Extract metadata from surrounding context
         const contextMatch = html.substring(match.index || 0, (match.index || 0) + 500)
@@ -295,7 +307,7 @@ async function scanLibraryOfLeaks(indicator: string): Promise<LeakSignal[]> {
         const timestamp = dateMatch ? dateMatch[0] : nowISO();
         
         signals.push({
-          id: `lol-${Date.now()}-${i}`,
+          id: `lol-${crypto.randomUUID()}`,
           title,
           indicator,
           source: 'libraryofleaks',
@@ -339,7 +351,7 @@ async function scanLibraryOfLeaks(indicator: string): Promise<LeakSignal[]> {
           url: `https://archive.org/details/${d.identifier}`,
           downloadUrl,
           context: 'Archive.org leak dataset',
-          fileSize: d.item_size ? `${(d.item_size / 1024 / 1024).toFixed(2)} MB` : undefined,
+          fileSize: d.item_size ? formatFileSize(d.item_size) : undefined,
           category: 'Archive',
           riskLevel: calculateRisk(d.title || ''),
         });
@@ -368,6 +380,9 @@ async function scanLibraryOfLeaks(indicator: string): Promise<LeakSignal[]> {
         // GitHub repos can have releases or direct archive downloads
         const downloadUrl = `${r.html_url}/archive/refs/heads/${r.default_branch || 'main'}.zip`;
         
+        // GitHub API returns size in KB, convert to bytes first
+        const sizeInBytes = r.size ? r.size * 1024 : undefined;
+        
         signals.push({
           id: `lol-gh-${r.id}`,
           title: r.full_name,
@@ -377,7 +392,7 @@ async function scanLibraryOfLeaks(indicator: string): Promise<LeakSignal[]> {
           url: r.html_url,
           downloadUrl,
           context: `GitHub leak mirror - ${r.description || 'No description'}`,
-          fileSize: r.size ? `${(r.size / 1024).toFixed(2)} MB` : undefined,
+          fileSize: sizeInBytes ? formatFileSize(sizeInBytes) : undefined,
           category: 'GitHub Mirror',
           riskLevel: calculateRisk(r.full_name + ' ' + (r.description || '')),
         });
