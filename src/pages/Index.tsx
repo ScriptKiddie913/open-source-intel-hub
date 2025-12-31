@@ -13,6 +13,7 @@ import { SettingsPage } from "@/components/osint/SettingsPage";
 import { ThreatIntelSearch } from "@/components/osint/ThreatIntelSearch";
 import { CVEExplorer } from "@/components/osint/CVEExplorer";
 import { LiveThreatFeed } from "@/components/osint/LiveThreatFeed";
+import { LiveThreatMap } from "@/components/osint/LiveThreatMap";
 
 // NEW IMPORTS
 import { UsernameEnumeration } from "@/components/osint/UsernameEnumeration";
@@ -585,6 +586,7 @@ const Index = () => {
           <Route path="/telegram" element={<TelegramIntelligence />} />
           <Route path="/malware-pipeline" element={<MalwarePipeline />} />
           <Route path="/stealthmole" element={<StealthMoleScanner />} />
+          <Route path="/threat-map" element={<LiveThreatMap />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
