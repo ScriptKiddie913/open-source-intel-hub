@@ -137,21 +137,104 @@ export async function searchCVE(query: string, limit = 20): Promise<CVEData[]> {
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
+  const normalizedQuery = query.trim();
+  
   try {
-    // Try NVD first
-    const nvdCVEs = await searchNVD(query, limit);
+    // If it's a CVE ID, use specific lookup
+    if (normalizedQuery.toUpperCase().startsWith('CVE-')) {
+      const cveId = normalizedQuery.toUpperCase();
+      console.log(`[CVE] Looking up specific CVE: ${cveId}`);
+      
+      // Try multiple sources for specific CVE
+      let cve = await getCVEFromNVD(cveId);
+      if (!cve) cve = await getCVEFromCIRCL(cveId);
+      if (!cve) cve = await getCVEFromMITRE(cveId);
+      
+      if (cve) {
+        await cacheAPIResponse(cacheKey, [cve], CVE_CACHE_TTL);
+        return [cve];
+      }
+      return [];
+    }
+    
+    // For keyword searches, use NVD (most reliable for keyword search)
+    console.log(`[CVE] Searching NVD for keyword: ${normalizedQuery}`);
+    const nvdCVEs = await searchNVD(normalizedQuery, limit);
+    
     if (nvdCVEs.length > 0) {
+      console.log(`[CVE] ✅ NVD found ${nvdCVEs.length} results`);
       await cacheAPIResponse(cacheKey, nvdCVEs, CVE_CACHE_TTL);
       return nvdCVEs;
     }
     
-    // Fallback to CIRCL
-    const circlCVEs = await searchCIRCL(query, limit);
-    await cacheAPIResponse(cacheKey, circlCVEs, CVE_CACHE_TTL);
-    return circlCVEs;
+    // If NVD returns nothing, search ExploitDB for related exploits
+    console.log(`[CVE] NVD returned 0 results, searching ExploitDB...`);
+    const exploits = await searchExploitDB(normalizedQuery, limit);
+    
+    if (exploits.length > 0) {
+      // Convert exploits to CVE-like format for display
+      const exploitCVEs: CVEData[] = exploits.map(exp => ({
+        id: exp.id,
+        description: exp.title,
+        published: exp.date,
+        modified: exp.date,
+        cvss: { score: 7.5, severity: 'HIGH', vector: '' },
+        references: [exp.sourceUrl],
+        cwe: [],
+        exploitAvailable: true,
+        exploitDetails: exp,
+        source: 'combined' as const,
+      }));
+      
+      console.log(`[CVE] ✅ ExploitDB found ${exploitCVEs.length} results`);
+      await cacheAPIResponse(cacheKey, exploitCVEs, CVE_CACHE_TTL);
+      return exploitCVEs;
+    }
+    
+    // Last resort: Search GitHub for PoCs
+    console.log(`[CVE] Searching GitHub for exploits...`);
+    const pocs = await searchGitHubPoC(normalizedQuery);
+    
+    if (pocs.length > 0) {
+      const pocCVEs: CVEData[] = pocs.slice(0, limit).map(poc => ({
+        id: `github-${poc.name}`,
+        description: poc.description || poc.name,
+        published: poc.updatedAt,
+        modified: poc.updatedAt,
+        cvss: { score: 0, severity: 'UNKNOWN', vector: '' },
+        references: [poc.url],
+        cwe: [],
+        exploitAvailable: true,
+        pocRepos: [poc],
+        source: 'combined' as const,
+      }));
+      
+      console.log(`[CVE] ✅ GitHub found ${pocCVEs.length} results`);
+      await cacheAPIResponse(cacheKey, pocCVEs, CVE_CACHE_TTL);
+      return pocCVEs;
+    }
+    
+    console.log(`[CVE] No results found for: ${normalizedQuery}`);
+    return [];
   } catch (error) {
     console.error('CVE search error:', error);
     return [];
+  }
+}
+
+// Get specific CVE from NVD
+async function getCVEFromNVD(cveId: string): Promise<CVEData | null> {
+  try {
+    const response = await fetch(
+      `https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=${cveId}`
+    );
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    const cves = parseNVDResponse(data);
+    return cves.length > 0 ? cves[0] : null;
+  } catch {
+    return null;
   }
 }
 
@@ -202,38 +285,145 @@ function parseNVDResponse(data: any): CVEData[] {
 
 // ============================================================================
 // 2️⃣ CIRCL CVE Search — Fast, clean, no key needed
+// Note: CIRCL now uses CVE JSON 5.0 format
 // ============================================================================
 
 async function searchCIRCL(query: string, limit: number): Promise<CVEData[]> {
   try {
     // Check if query is a CVE ID
     if (query.toUpperCase().startsWith('CVE-')) {
-      const response = await fetch(`https://cve.circl.lu/api/cve/${query.toUpperCase()}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data) return [parseCIRCLCVE(data)];
-      }
-      return [];
+      const cve = await getCVEFromCIRCL(query.toUpperCase());
+      return cve ? [cve] : [];
     }
     
-    // Try vendor/product search
-    const response = await fetch(`https://cve.circl.lu/api/search/${encodeURIComponent(query)}`);
-    if (!response.ok) throw new Error('CIRCL API error');
-    
-    const data = await response.json();
-    return (data || []).slice(0, limit).map(parseCIRCLCVE);
+    // For non-CVE queries, search NVD instead (CIRCL doesn't have good keyword search)
+    return [];
   } catch (error) {
     console.error('CIRCL search error:', error);
     return [];
   }
 }
 
+// Parse single CVE from CIRCL (CVE JSON 5.0 format)
+async function getCVEFromCIRCL(cveId: string): Promise<CVEData | null> {
+  try {
+    const response = await fetch(`https://cve.circl.lu/api/cve/${cveId}`);
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    return parseCVE5Format(data);
+  } catch {
+    return null;
+  }
+}
+
+// Parse CVE JSON 5.0 format (used by CIRCL and MITRE)
+function parseCVE5Format(data: any): CVEData | null {
+  if (!data || !data.cveMetadata) return null;
+  
+  const cna = data.containers?.cna;
+  const adp = Array.isArray(data.containers?.adp) ? data.containers.adp : [];
+  
+  // Get description from CNA
+  let description = 'No description available';
+  if (cna?.descriptions && Array.isArray(cna.descriptions)) {
+    const engDesc = cna.descriptions.find((d: any) => d.lang === 'en' || !d.lang);
+    description = engDesc?.value || cna.descriptions[0]?.value || description;
+  }
+  
+  // Get CVSS from metrics
+  let cvssScore = 0;
+  let cvssSeverity = 'UNKNOWN';
+  let cvssVector = '';
+  
+  if (cna?.metrics && Array.isArray(cna.metrics)) {
+    for (const metric of cna.metrics) {
+      const cvss = metric.cvssV3_1 || metric.cvssV3_0 || metric.cvssV31 || metric.cvssV30;
+      if (cvss) {
+        cvssScore = cvss.baseScore || 0;
+        cvssSeverity = cvss.baseSeverity || getCVSSSeverity(cvssScore);
+        cvssVector = cvss.vectorString || '';
+        break;
+      }
+    }
+  }
+  
+  // Check ADP for additional CVSS data
+  if (cvssScore === 0 && adp.length > 0) {
+    for (const adpEntry of adp) {
+      if (adpEntry.metrics && Array.isArray(adpEntry.metrics)) {
+        for (const metric of adpEntry.metrics) {
+          const cvss = metric.cvssV3_1 || metric.cvssV3_0 || metric.cvssV31 || metric.cvssV30;
+          if (cvss) {
+            cvssScore = cvss.baseScore || 0;
+            cvssSeverity = cvss.baseSeverity || getCVSSSeverity(cvssScore);
+            cvssVector = cvss.vectorString || '';
+            break;
+          }
+        }
+      }
+    }
+  }
+  
+  // Get references
+  const references: string[] = [];
+  if (cna?.references && Array.isArray(cna.references)) {
+    cna.references.slice(0, 10).forEach((ref: any) => {
+      if (ref.url) references.push(ref.url);
+    });
+  }
+  
+  // Get CWE
+  const cweIds: string[] = [];
+  if (cna?.problemTypes && Array.isArray(cna.problemTypes)) {
+    for (const pt of cna.problemTypes) {
+      if (pt.descriptions && Array.isArray(pt.descriptions)) {
+        for (const desc of pt.descriptions) {
+          if (desc.cweId) cweIds.push(desc.cweId);
+        }
+      }
+    }
+  }
+  
+  return {
+    id: data.cveMetadata.cveId,
+    description,
+    published: data.cveMetadata.datePublished || '',
+    modified: data.cveMetadata.dateUpdated || '',
+    cvss: {
+      score: cvssScore,
+      severity: cvssSeverity,
+      vector: cvssVector,
+    },
+    references,
+    cwe: cweIds,
+    exploitAvailable: false,
+    source: 'circl',
+  };
+}
+
 function parseCIRCLCVE(cve: any): CVEData {
+  // Handle both old format and new CVE 5.0 format
+  if (cve.cveMetadata) {
+    return parseCVE5Format(cve) || {
+      id: cve.cveMetadata?.cveId || 'UNKNOWN',
+      description: 'No description',
+      published: '',
+      modified: '',
+      cvss: { score: 0, severity: 'UNKNOWN', vector: '' },
+      references: [],
+      cwe: [],
+      exploitAvailable: false,
+      source: 'circl',
+    };
+  }
+  
+  // Old format fallback
   return {
     id: cve.id || cve.cve,
     description: cve.summary || 'No description',
-    published: cve.Published || cve.published,
-    modified: cve.Modified || cve.modified,
+    published: cve.Published || cve.published || '',
+    modified: cve.Modified || cve.modified || '',
     cvss: {
       score: cve.cvss || cve.cvss_score || 0,
       severity: getCVSSSeverity(cve.cvss || cve.cvss_score || 0),
@@ -266,7 +456,17 @@ export async function getLatestCVEsFromCIRCL(limit = 30): Promise<CVEData[]> {
     if (!response.ok) throw new Error('CIRCL latest API error');
     
     const data = await response.json();
-    const cves = (data || []).slice(0, limit).map(parseCIRCLCVE);
+    
+    // Handle both array response and CVE 5.0 format
+    const cves: CVEData[] = [];
+    const items = Array.isArray(data) ? data : (data.value || []);
+    
+    for (const item of items.slice(0, limit)) {
+      const parsed = parseCVE5Format(item);
+      if (parsed) {
+        cves.push(parsed);
+      }
+    }
     
     console.log(`[CVE] ✅ CIRCL returned ${cves.length} latest CVEs`);
     await cacheAPIResponse(cacheKey, cves, CVE_CACHE_TTL);
@@ -578,6 +778,7 @@ export async function getRecentCVEs(days = 7, limit = 50): Promise<CVEData[]> {
           w.description?.map((d: any) => d.value) || []
         ).slice(0, 2),
         exploitAvailable: false,
+        source: 'nvd',
       });
     }
 
@@ -674,21 +875,30 @@ export async function getPacketStormFeed(): Promise<PacketStormEntry[]> {
 // 8️⃣ GitHub PoC Search (NO KEY, LIMITED RATE)
 // ============================================================================
 
-export async function searchGitHubPoC(cveId: string): Promise<GitHubPoC[]> {
-  const cacheKey = `cve:github:poc:${cveId}`;
+export async function searchGitHubPoC(query: string, limit = 10): Promise<GitHubPoC[]> {
+  const cacheKey = `cve:github:poc:${query}:${limit}`;
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
   
   try {
-    console.log(`[GitHub PoC] Searching for: ${cveId}`);
+    // Build search query - add exploit/poc keywords if not already present
+    let searchQuery = query;
+    const queryLower = query.toLowerCase();
+    if (!queryLower.includes('exploit') && !queryLower.includes('poc') && !queryLower.includes('vulnerability')) {
+      searchQuery = `${query} exploit OR poc OR vulnerability`;
+    }
+    
+    console.log(`[GitHub PoC] Searching for: ${searchQuery}`);
     const response = await fetch(
-      `https://api.github.com/search/repositories?q=${encodeURIComponent(cveId + ' exploit')}&sort=stars&order=desc&per_page=10`,
+      `https://api.github.com/search/repositories?q=${encodeURIComponent(searchQuery)}&sort=stars&order=desc&per_page=${limit}`,
       { headers: { 'User-Agent': 'OSINT-Hub/1.0' } }
     );
     
     if (!response.ok) {
       if (response.status === 403) {
         console.warn('[GitHub PoC] Rate limited');
+      } else {
+        console.warn(`[GitHub PoC] API error: ${response.status}`);
       }
       return [];
     }
@@ -865,7 +1075,7 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
       const now = new Date().toISOString();
       for (const url of urls) {
         feeds.push({
-          id: `openphish-${Buffer.from(url).toString('base64').slice(0, 16)}`,
+          id: `openphish-${btoa(url).slice(0, 16)}`,
           type: 'phishing',
           indicator: url,
           indicatorType: 'url',
