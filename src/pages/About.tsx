@@ -95,7 +95,7 @@ export default function About() {
                 <Shield className="h-6 w-6 text-primary" />
               </div>
               <span className="text-xl font-bold bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent">
-                CIPHER OSINT
+                SoTaNik OSINT HUB
               </span>
             </Link>
             <div className="flex items-center gap-4">
@@ -128,7 +128,7 @@ export default function About() {
           <h1 className="text-4xl md:text-5xl font-bold mb-6">
             About{' '}
             <span className="bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent">
-              CIPHER OSINT
+               SoTaNik OSINT HUB
             </span>
           </h1>
           <p className="text-xl text-slate-400 max-w-3xl mx-auto">
@@ -149,7 +149,7 @@ export default function About() {
                 threat intelligence shouldn't be limited to large enterprises with deep pockets.
               </p>
               <p className="text-slate-400 mb-4">
-                CIPHER OSINT democratizes threat intelligence by providing powerful, 
+                SoTaNik OSINT HUB democratizes threat intelligence by providing powerful, 
                 easy-to-use tools that aggregate data from hundreds of sources into a 
                 single, actionable dashboard.
               </p>
@@ -285,7 +285,7 @@ export default function About() {
             Ready to get started?
           </h2>
           <p className="text-slate-400 mb-8">
-            Join thousands of security professionals already using CIPHER OSINT.
+            Join thousands of security professionals already using SoTaNik OSINT HUB.
           </p>
           <Link to="/auth">
             <Button size="lg" className="bg-gradient-to-r from-primary to-cyan-500 text-slate-900 font-semibold text-lg px-8">
@@ -304,7 +304,7 @@ export default function About() {
               <div className="p-2 bg-primary/10 rounded-lg border border-primary/20">
                 <Shield className="h-5 w-5 text-primary" />
               </div>
-              <span className="font-semibold text-slate-300">CIPHER OSINT</span>
+              <span className="font-semibold text-slate-300">SoTaNik OSINT HUB</span>
             </div>
             <div className="flex items-center gap-6 text-sm text-slate-400">
               <Link to="/" className="hover:text-white transition-colors">Home</Link>
@@ -312,7 +312,7 @@ export default function About() {
               <a href="#" className="hover:text-white transition-colors">Terms</a>
             </div>
             <p className="text-sm text-slate-500">
-              © 2026 CIPHER OSINT. All rights reserved.
+              © 2026 SoTaNik OSINT HUB. All rights reserved.
             </p>
           </div>
         </div>
