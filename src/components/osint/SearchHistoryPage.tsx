@@ -36,7 +36,7 @@ import {
 import {
   getEnhancedSearchHistory,
   getHistoryByCategory,
-  type EnhancedSearchHistoryItem,
+  type EnhancedSearchHistory,
   type SearchCategory,
 } from '@/services/searchHistoryService';
 import { cn } from '@/lib/utils';
@@ -63,13 +63,19 @@ const CATEGORY_CONFIG: Record<SearchCategory, { icon: any; label: string; color:
   darkweb: { icon: Hash, label: 'Dark Web', color: 'bg-red-500/20 text-red-400 border-red-500/50' },
   malware: { icon: Bug, label: 'Malware', color: 'bg-green-500/20 text-green-400 border-green-500/50' },
   threat_intel: { icon: Shield, label: 'Threat Intel', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' },
+  ransomware: { icon: AlertTriangle, label: 'Ransomware', color: 'bg-red-600/20 text-red-500 border-red-600/50' },
+  ip: { icon: Globe, label: 'IP', color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50' },
+  domain: { icon: Globe, label: 'Domain', color: 'bg-teal-500/20 text-teal-400 border-teal-500/50' },
+  breach: { icon: Mail, label: 'Breach', color: 'bg-pink-500/20 text-pink-400 border-pink-500/50' },
+  cve: { icon: AlertTriangle, label: 'CVE', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50' },
+  telegram: { icon: Hash, label: 'Telegram', color: 'bg-sky-500/20 text-sky-400 border-sky-500/50' },
   general: { icon: Search, label: 'General', color: 'bg-gray-500/20 text-gray-400 border-gray-500/50' },
 };
 
 export function SearchHistoryPage() {
   const navigate = useNavigate();
   const [history, setHistory] = useState<SearchHistoryItem[]>([]);
-  const [enhancedHistory, setEnhancedHistory] = useState<EnhancedSearchHistoryItem[]>([]);
+  const [enhancedHistory, setEnhancedHistory] = useState<EnhancedSearchHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchFilter, setSearchFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
@@ -100,11 +106,11 @@ export function SearchHistoryPage() {
   const loadEnhancedHistory = async () => {
     try {
       if (categoryFilter === 'all') {
-        const data = await getEnhancedSearchHistory(100);
+        const data = await getEnhancedSearchHistory({ limit: 100 });
         setEnhancedHistory(data);
       } else {
-        const data = await getHistoryByCategory(categoryFilter);
-        setEnhancedHistory(data);
+        const byCategory = await getHistoryByCategory();
+        setEnhancedHistory(byCategory[categoryFilter] || []);
       }
     } catch (error) {
       console.error('Error loading enhanced history:', error);
