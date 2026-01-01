@@ -1,42 +1,16 @@
 // OpenCTI-style threat correlation service - NO MOCK DATA
 // Unifies all real threat intelligence sources into standardized objects
 
-// Import services with try-catch fallbacks for build compatibility
-let mitreAttackService: any;
-let malwareBazaarService: any;
-let urlhausService: any;
-let feodoTrackerService: any;
-let gitHubMalwareService: any;
-
-try {
-  mitreAttackService = require('./mitreAttackService').mitreAttackService;
-} catch {
-  mitreAttackService = { getMalwareByName: async () => null };
-}
-
-try {
-  malwareBazaarService = require('./malwareBazaarService').malwareBazaarService;
-} catch {
-  malwareBazaarService = { searchMalwareFamily: async () => ({ data: [] }), fetchRecentSamples: async () => ({ data: [] }) };
-}
-
-try {
-  urlhausService = require('./urlhausService').urlhausService;
-} catch {
-  urlhausService = { searchUrlsByTag: async () => ({ urls: [] }), fetchRecentUrls: async () => ({ urls: [] }) };
-}
-
-try {
-  feodoTrackerService = require('./feodoTrackerService').feodoTrackerService;
-} catch {
-  feodoTrackerService = { getC2ServersByMalware: async () => [], fetchActiveC2Servers: async () => ({ data: [] }) };
-}
-
-try {
-  gitHubMalwareService = require('./githubMalwareService').gitHubMalwareService;
-} catch {
-  gitHubMalwareService = { searchMalwareRepositories: async () => [] };
-}
+import { 
+  fetchFeodoC2Servers, 
+  fetchURLhausRecent, 
+  fetchThreatFoxIOCs, 
+  fetchMalwareBazaarRecent,
+  type C2Server,
+  type URLhausEntry,
+  type ThreatFoxIOC,
+  type MalwareSample
+} from './mispFeedService';
 
 // Unified OpenCTI object following exact user specification
 export interface OpenCTIObject {
@@ -71,52 +45,51 @@ class OpenCTICorrelationService {
   async correlateMalwareFamilies(family: string): Promise<OpenCTIObject[]> {
     console.log(`[OpenCTI] Starting correlation for malware family: ${family}`);
     const results: OpenCTIObject[] = [];
+    const familyLower = family.toLowerCase();
     
     try {
-      // 1. Get MITRE ATT&CK data
-      const mitreData = await mitreAttackService.getMalwareByName(family);
-      if (mitreData) {
-        results.push(this.convertMitreToOpenCTI(mitreData));
-      }
-
-      // 2. Get MalwareBazaar samples  
-      const bazaarData = await malwareBazaarService.searchMalwareFamily(family);
-      if (bazaarData.data && bazaarData.data.length > 0) {
-        bazaarData.data.forEach(sample => {
-          results.push(this.convertBazaarToOpenCTI(sample));
-        });
-      }
-
-      // 3. Get URLhaus URLs
-      const urlData = await urlhausService.searchUrlsByTag(family);
-      if (urlData.urls && urlData.urls.length > 0) {
-        urlData.urls.forEach(url => {
-          results.push(this.convertUrlhausToOpenCTI(url));
-        });
-      }
-
-      // 4. Get Feodo C2 servers
-      const feodoData = await feodoTrackerService.getC2ServersByMalware(family);
-      if (feodoData.length > 0) {
-        feodoData.forEach(server => {
-          results.push(this.convertFeodoToOpenCTI(server));
-        });
-      }
-
-      // 5. Get GitHub repositories
-      const githubData = await gitHubMalwareService.searchMalwareRepositories(family);
-      if (githubData.length > 0) {
-        githubData.forEach(repo => {
-          results.push(this.convertGitHubToOpenCTI(repo));
-        });
-      }
+      // 1. Get Feodo C2 servers and filter by family
+      const feodoServers = await fetchFeodoC2Servers();
+      const matchingC2 = feodoServers.filter(server => 
+        server.malwareFamily?.toLowerCase().includes(familyLower)
+      );
+      matchingC2.forEach(server => {
+        results.push(this.convertFeodoToOpenCTI(server));
+      });
+      
+      // 2. Get URLhaus URLs and filter by tags/threat
+      const urlEntries = await fetchURLhausRecent();
+      const matchingUrls = urlEntries.filter(entry =>
+        entry.threat?.toLowerCase().includes(familyLower) ||
+        entry.tags?.some(tag => tag.toLowerCase().includes(familyLower))
+      );
+      matchingUrls.slice(0, 50).forEach(url => {
+        results.push(this.convertUrlhausToOpenCTI(url));
+      });
+      
+      // 3. Get ThreatFox IOCs and filter by malware
+      const threatfoxIOCs = await fetchThreatFoxIOCs(7);
+      const matchingIOCs = threatfoxIOCs.filter(ioc =>
+        ioc.malware?.toLowerCase().includes(familyLower) ||
+        ioc.malwarePrintable?.toLowerCase().includes(familyLower) ||
+        ioc.tags?.some(tag => tag.toLowerCase().includes(familyLower))
+      );
+      matchingIOCs.slice(0, 50).forEach(ioc => {
+        results.push(this.convertThreatFoxToOpenCTI(ioc));
+      });
+      
+      // 4. Get MalwareBazaar samples (limited filtering as export is just hashes)
+      const bazaarSamples = await fetchMalwareBazaarRecent(50);
+      bazaarSamples.slice(0, 20).forEach(sample => {
+        results.push(this.convertBazaarToOpenCTI(sample));
+      });
 
       console.log(`[OpenCTI] Correlated ${results.length} total objects for ${family}`);
       return results;
 
     } catch (error) {
       console.error(`[OpenCTI] Correlation failed for ${family}:`, error);
-      throw new Error(`OpenCTI correlation failed: ${error.message}`);
+      return results; // Return what we have so far
     }
   }
 
@@ -132,19 +105,19 @@ class OpenCTICorrelationService {
     console.log('[OpenCTI] Generating live threat landscape...');
     
     try {
-      const [malwareCount, c2Count, urlCount, repoCount] = await Promise.all([
-        malwareBazaarService.fetchRecentSamples(100),
-        feodoTrackerService.fetchActiveC2Servers(),
-        urlhausService.fetchRecentUrls(100), 
-        gitHubMalwareService.searchMalwareRepositories('apt', 50)
+      const [c2Servers, urlEntries, threatfoxIOCs, malwareSamples] = await Promise.all([
+        fetchFeodoC2Servers(),
+        fetchURLhausRecent(),
+        fetchThreatFoxIOCs(7),
+        fetchMalwareBazaarRecent(100)
       ]);
 
       const landscape = {
-        total_threats: malwareCount.data.length + c2Count.data.length + urlCount.urls.length + repoCount.length,
-        recent_malware: malwareCount.data.length,
-        active_c2: c2Count.data.length,
-        malicious_urls: urlCount.urls.length,
-        threat_repositories: repoCount.length,
+        total_threats: c2Servers.length + urlEntries.length + threatfoxIOCs.length + malwareSamples.length,
+        recent_malware: malwareSamples.length,
+        active_c2: c2Servers.length,
+        malicious_urls: urlEntries.length + threatfoxIOCs.length,
+        threat_repositories: 0, // GitHub search disabled for now
         last_updated: new Date().toISOString()
       };
 
@@ -179,41 +152,41 @@ class OpenCTICorrelationService {
   }
 
   // Convert MalwareBazaar data to OpenCTI format  
-  private convertBazaarToOpenCTI(sample: any): OpenCTIObject {
+  private convertBazaarToOpenCTI(sample: MalwareSample): OpenCTIObject {
     return {
-      id: `bazaar-${sample.sha256_hash}`,
+      id: `bazaar-${sample.sha256.slice(0, 16)}`,
       type: 'malware',
-      name: sample.file_name || 'Unknown Sample',
-      description: `Malware sample: ${sample.signature || 'Unknown'} (${sample.file_type})`,
-      labels: sample.tags || [sample.signature || 'malware'],
+      name: sample.fileName || `Sample ${sample.sha256.slice(0, 16)}`,
+      description: `Malware sample: ${sample.signature || sample.malwareFamily || 'Unknown'}`,
+      labels: sample.tags || [sample.malwareFamily || 'malware'],
       confidence: 90,
-      created: sample.first_seen,
-      modified: sample.last_seen || sample.first_seen,
+      created: sample.firstSeen,
+      modified: sample.lastSeen || sample.firstSeen,
       source: 'MalwareBazaar',
       external_references: [{
         source_name: 'malware-bazaar',
-        url: `https://bazaar.abuse.ch/sample/${sample.sha256_hash}/`,
+        url: sample.downloadUrl || `https://bazaar.abuse.ch/sample/${sample.sha256}/`,
         description: 'MalwareBazaar Sample'
       }],
       indicators: [{
         type: 'file-sha256',
-        value: sample.sha256_hash,
+        value: sample.sha256,
         source: 'MalwareBazaar'
       }]
     };
   }
 
   // Convert URLhaus data to OpenCTI format
-  private convertUrlhausToOpenCTI(url: any): OpenCTIObject {
+  private convertUrlhausToOpenCTI(entry: URLhausEntry): OpenCTIObject {
     return {
-      id: `urlhaus-${url.id}`,
+      id: entry.id,
       type: 'url',
-      name: url.host || 'Malicious URL',
-      description: `Malicious URL hosting ${url.threat || 'malware'}`,
-      labels: url.tags || [url.threat || 'malicious-url'],
+      name: entry.host || 'Malicious URL',
+      description: `Malicious URL hosting ${entry.threat || 'malware'}`,
+      labels: entry.tags || [entry.threat || 'malicious-url'],
       confidence: 85,
-      created: url.date_added,
-      modified: url.date_added,
+      created: entry.dateAdded,
+      modified: entry.dateAdded,
       source: 'URLhaus',
       external_references: [{
         source_name: 'urlhaus',
@@ -222,23 +195,23 @@ class OpenCTICorrelationService {
       }],
       indicators: [{
         type: 'url',
-        value: url.url,
+        value: entry.url,
         source: 'URLhaus'
       }]
     };
   }
 
   // Convert Feodo data to OpenCTI format
-  private convertFeodoToOpenCTI(server: any): OpenCTIObject {
+  private convertFeodoToOpenCTI(server: C2Server): OpenCTIObject {
     return {
-      id: `feodo-${server.id}`,
+      id: server.id,
       type: 'infrastructure',
-      name: server.hostname || server.ip,
-      description: `${server.malware} C2 server at ${server.ip}:${server.port}`,
-      labels: [server.malware.toLowerCase(), 'c2-server', 'botnet'],
-      confidence: parseInt(server.confidence) || 80,
-      created: server.first_seen,
-      modified: server.last_seen,
+      name: `${server.malwareFamily} C2 (${server.ip})`,
+      description: `${server.malwareFamily} C2 server at ${server.ip}:${server.port} (${server.country || 'Unknown'})`,
+      labels: [server.malwareFamily.toLowerCase(), 'c2-server', 'botnet'],
+      confidence: 80,
+      created: server.firstSeen,
+      modified: server.lastOnline,
       source: 'Feodo Tracker',
       external_references: [{
         source_name: 'feodo-tracker',
@@ -249,6 +222,31 @@ class OpenCTICorrelationService {
         type: 'ipv4-addr',
         value: server.ip,
         source: 'Feodo Tracker'
+      }]
+    };
+  }
+
+  // Convert ThreatFox data to OpenCTI format
+  private convertThreatFoxToOpenCTI(ioc: ThreatFoxIOC): OpenCTIObject {
+    return {
+      id: ioc.id,
+      type: ioc.threatType === 'botnet_cc' ? 'infrastructure' : 'malware',
+      name: ioc.malwarePrintable || ioc.malware || 'Unknown IOC',
+      description: `${ioc.threatType}: ${ioc.iocType} - ${ioc.ioc}`,
+      labels: ioc.tags || [ioc.malware || 'ioc'],
+      confidence: ioc.confidenceLevel,
+      created: ioc.firstSeen,
+      modified: ioc.lastSeen || ioc.firstSeen,
+      source: 'ThreatFox',
+      external_references: [{
+        source_name: 'threatfox',
+        url: ioc.reference || 'https://threatfox.abuse.ch/',
+        description: 'ThreatFox IOC Database'
+      }],
+      indicators: [{
+        type: ioc.iocType === 'ip:port' ? 'ipv4-addr' : (ioc.iocType === 'domain' ? 'domain-name' : ioc.iocType),
+        value: ioc.ioc,
+        source: 'ThreatFox'
       }]
     };
   }
