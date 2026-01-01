@@ -126,7 +126,8 @@ export async function fetchFeodoC2Servers(): Promise<C2Server[]> {
   try {
     console.log('[FeodoTracker] Fetching C2 server data...');
     
-    const response = await fetch('https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json');
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/feodo/ipblocklist_recommended.json');
     
     if (!response.ok) {
       throw new Error(`Feodo fetch failed: ${response.status}`);
@@ -175,7 +176,8 @@ export async function fetchURLhausRecent(): Promise<URLhausEntry[]> {
   try {
     console.log('[URLhaus] Fetching recent malware URLs...');
     
-    const response = await fetch('https://urlhaus.abuse.ch/downloads/json_recent/');
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/urlhaus/json_recent/');
     
     if (!response.ok) {
       throw new Error(`URLhaus fetch failed: ${response.status}`);
@@ -234,8 +236,8 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
   try {
     console.log('[ThreatFox] Fetching recent IOCs...');
     
-    // Use export endpoint (no auth required) instead of API endpoint
-    const response = await fetch('https://threatfox.abuse.ch/export/json/recent/');
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/threatfox/json/recent/');
     
     if (!response.ok) {
       throw new Error(`ThreatFox fetch failed: ${response.status}`);
@@ -290,9 +292,8 @@ export async function fetchMalwareBazaarRecent(limit: number = 100): Promise<Mal
   try {
     console.log('[MalwareBazaar] Fetching recent samples...');
     
-    // Use text export endpoint (no auth required) instead of API
-    // This returns recent SHA256 hashes
-    const response = await fetch('https://bazaar.abuse.ch/export/txt/sha256/recent/');
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/bazaar/txt/sha256/recent/');
     
     if (!response.ok) {
       throw new Error(`MalwareBazaar fetch failed: ${response.status}`);
