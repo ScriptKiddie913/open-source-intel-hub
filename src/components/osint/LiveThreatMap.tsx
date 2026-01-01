@@ -25,6 +25,7 @@ import {
   Lock,
   Wifi,
   Eye,
+  Box,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +35,7 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import ThreatGlobe from './ThreatGlobe';
 
 /* ============================================================================
    TYPES
@@ -391,6 +393,7 @@ export function LiveThreatMap() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showArcs, setShowArcs] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d'); // Default to 3D globe
   const [stats, setStats] = useState<ThreatStats>({
     total: 0,
     critical: 0,
@@ -672,10 +675,34 @@ export function LiveThreatMap() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Switch id="arcs" checked={showArcs} onCheckedChange={setShowArcs} />
-            <Label htmlFor="arcs" className="text-xs">Show Arcs</Label>
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-2 bg-secondary/50 rounded-lg p-1">
+            <Button 
+              size="sm" 
+              variant={viewMode === '2d' ? 'default' : 'ghost'}
+              onClick={() => setViewMode('2d')}
+              className="text-xs h-7"
+            >
+              <Globe className="h-3 w-3 mr-1" />
+              2D Map
+            </Button>
+            <Button 
+              size="sm" 
+              variant={viewMode === '3d' ? 'default' : 'ghost'}
+              onClick={() => setViewMode('3d')}
+              className="text-xs h-7"
+            >
+              <Box className="h-3 w-3 mr-1" />
+              3D Globe
+            </Button>
           </div>
+          
+          {viewMode === '2d' && (
+            <div className="flex items-center gap-2">
+              <Switch id="arcs" checked={showArcs} onCheckedChange={setShowArcs} />
+              <Label htmlFor="arcs" className="text-xs">Show Arcs</Label>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Switch id="auto" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
             <Label htmlFor="auto" className="text-xs">Auto Refresh</Label>
@@ -704,8 +731,12 @@ export function LiveThreatMap() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center justify-between">
               <span className="flex items-center gap-2">
-                <Globe className="h-5 w-5 text-primary" />
-                Global Attack Distribution
+                {viewMode === '3d' ? (
+                  <Box className="h-5 w-5 text-primary" />
+                ) : (
+                  <Globe className="h-5 w-5 text-primary" />
+                )}
+                {viewMode === '3d' ? '3D Interactive Globe' : 'Global Attack Distribution'}
               </span>
               {lastUpdate && (
                 <span className="text-xs text-muted-foreground font-mono">
@@ -715,11 +746,38 @@ export function LiveThreatMap() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <canvas
-              ref={canvasRef}
-              className="w-full h-[500px] rounded-lg"
-              style={{ background: '#0a0e1a' }}
-            />
+            {viewMode === '3d' ? (
+              <ThreatGlobe 
+                threats={attacks.map(a => ({
+                  id: a.id,
+                  lat: a.sourceLat,
+                  lon: a.sourceLon,
+                  type: a.type as any,
+                  severity: a.severity,
+                  label: `${a.sourceCity}, ${a.sourceCountry}`,
+                  details: {
+                    indicator: a.indicator,
+                    malwareFamily: a.malwareFamily,
+                    timestamp: a.timestamp,
+                    port: a.port,
+                  },
+                  targetLat: a.targetLat,
+                  targetLon: a.targetLon,
+                }))}
+                height={500}
+                onThreatClick={(threat) => {
+                  toast.info(`${ATTACK_LABELS[threat.type as AttackType] || threat.type}: ${threat.label}`, {
+                    description: threat.details?.indicator,
+                  });
+                }}
+              />
+            ) : (
+              <canvas
+                ref={canvasRef}
+                className="w-full h-[500px] rounded-lg"
+                style={{ background: '#0a0e1a' }}
+              />
+            )}
             
             {/* Legend */}
             <div className="mt-4 flex flex-wrap gap-4 text-xs">
