@@ -101,14 +101,24 @@ export default function Home() {
 
   /* ================= RENDER ================= */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
+    <div className="relative min-h-screen text-white overflow-hidden">
+      {/* ========================================================= */}
+      {/* GLOBAL BACKGROUND IMAGE                                  */}
+      {/* ========================================================= */}
+      <div
+        className="fixed inset-0 -z-20 bg-cover bg-center"
+        style={{ backgroundImage: "url('/bg1111.png')" }}
+      />
+
+      {/* Dark overlay for readability */}
+      <div className="fixed inset-0 -z-10 bg-slate-950/85 backdrop-blur-[1px]" />
+
       {/* ========================================================= */}
       {/* NAVBAR                                                    */}
       {/* ========================================================= */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Brand */}
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg border border-primary/20 bg-primary/10">
                 <img
@@ -122,7 +132,6 @@ export default function Home() {
               </span>
             </div>
 
-            {/* Actions */}
             <div className="flex items-center gap-4">
               <Link
                 to="/about"
@@ -154,7 +163,7 @@ export default function Home() {
       {/* HERO                                                     */}
       {/* ========================================================= */}
       <section className="relative pt-32 pb-20 overflow-hidden">
-        {/* Background */}
+        {/* Glow effects */}
         <div className="absolute inset-0">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
           <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-500/20 rounded-full blur-3xl" />
@@ -212,7 +221,7 @@ export default function Home() {
             {STATS.map((stat, i) => (
               <div
                 key={i}
-                className="text-center p-6 rounded-xl bg-slate-900/50 border border-slate-800/50"
+                className="text-center p-6 rounded-xl bg-slate-900/60 border border-slate-800/50 backdrop-blur"
               >
                 <div className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent">
                   {stat.value}
@@ -245,7 +254,7 @@ export default function Home() {
             {FEATURES.map((feature, i) => (
               <Card
                 key={i}
-                className="bg-slate-900/50 border-slate-800/50 hover:border-primary/30 transition-all duration-300 group"
+                className="bg-slate-900/60 border-slate-800/50 hover:border-primary/30 transition-all duration-300 group backdrop-blur"
               >
                 <CardContent className="p-6">
                   <div className="p-3 rounded-xl bg-primary/10 w-fit mb-4 group-hover:bg-primary/20 transition-colors">
@@ -269,7 +278,7 @@ export default function Home() {
       {/* ========================================================= */}
       <section className="py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-primary/20 via-cyan-500/20 to-purple-500/20 p-8 md:p-12 border border-primary/20">
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-primary/20 via-cyan-500/20 to-purple-500/20 p-8 md:p-12 border border-primary/20 backdrop-blur">
             <div className="absolute inset-0 bg-slate-900/60" />
             <div className="relative z-10 text-center">
               <Brain className="h-12 w-12 text-primary mx-auto mb-6" />
@@ -297,7 +306,7 @@ export default function Home() {
       {/* ========================================================= */}
       {/* FOOTER                                                   */}
       {/* ========================================================= */}
-      <footer className="py-12 border-t border-slate-800">
+      <footer className="py-12 border-t border-slate-800 bg-slate-950/70 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
