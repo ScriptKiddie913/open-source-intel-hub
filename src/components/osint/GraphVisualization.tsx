@@ -20,6 +20,7 @@ import {
   Grid,
   Move,
   MousePointer,
+  FolderOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,6 +63,13 @@ import {
   createEntity,
   executeTransform,
 } from '@/services/graphService';
+import {
+  saveGraph,
+  getSavedGraphs,
+  getGraph,
+  deleteGraph,
+  type SavedGraph,
+} from '@/services/userDataService';
 
 export function GraphVisualization() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -88,6 +96,15 @@ export function GraphVisualization() {
 
   const [showPropertiesPanel, setShowPropertiesPanel] = useState(false);
   const [transforming, setTransforming] = useState(false);
+
+  // Save/Load state
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [graphName, setGraphName] = useState('');
+  const [graphDescription, setGraphDescription] = useState('');
+  const [savedGraphs, setSavedGraphs] = useState<SavedGraph[]>([]);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [savingGraph, setSavingGraph] = useState(false);
 
   const [contextMenuNode, setContextMenuNode] = useState<GraphNode | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y:  0 });
@@ -464,6 +481,81 @@ export function GraphVisualization() {
     reader.readAsText(file);
   };
 
+  // Save graph to Supabase
+  const handleSaveGraph = async () => {
+    if (!graphName.trim()) {
+      toast.error('Please enter a name for the graph');
+      return;
+    }
+
+    if (graphData.nodes.length === 0) {
+      toast.error('Cannot save an empty graph');
+      return;
+    }
+
+    setSavingGraph(true);
+    try {
+      const result = await saveGraph(graphName.trim(), graphData, graphDescription.trim() || undefined);
+      if (result) {
+        toast.success('Graph saved successfully!');
+        setShowSaveDialog(false);
+        setGraphName('');
+        setGraphDescription('');
+      } else {
+        toast.error('Failed to save graph. Please sign in first.');
+      }
+    } catch (error) {
+      console.error('Save error:', error);
+      toast.error('Failed to save graph');
+    } finally {
+      setSavingGraph(false);
+    }
+  };
+
+  // Load saved graphs list
+  const loadSavedGraphsList = async () => {
+    setLoadingSaved(true);
+    try {
+      const graphs = await getSavedGraphs();
+      setSavedGraphs(graphs);
+    } catch (error) {
+      console.error('Error loading saved graphs:', error);
+      toast.error('Failed to load saved graphs');
+    } finally {
+      setLoadingSaved(false);
+    }
+  };
+
+  // Load a specific graph
+  const handleLoadGraph = async (id: string) => {
+    try {
+      const graph = await getGraph(id);
+      if (graph && graph.graph_data) {
+        setGraphData(graph.graph_data as unknown as GraphData);
+        setShowLoadDialog(false);
+        toast.success(`Loaded: ${graph.name}`);
+      } else {
+        toast.error('Failed to load graph');
+      }
+    } catch (error) {
+      console.error('Load error:', error);
+      toast.error('Failed to load graph');
+    }
+  };
+
+  // Delete a saved graph
+  const handleDeleteSavedGraph = async (id: string, name: string) => {
+    if (!confirm(`Delete "${name}"?`)) return;
+    
+    const success = await deleteGraph(id);
+    if (success) {
+      setSavedGraphs(prev => prev.filter(g => g.id !== id));
+      toast.success('Graph deleted');
+    } else {
+      toast.error('Failed to delete graph');
+    }
+  };
+
   const centerGraph = () => {
     if (graphData.nodes.length === 0) return;
 
@@ -548,6 +640,28 @@ export function GraphVisualization() {
           <Button variant="outline" size="sm" onClick={() => setViewScale(1)}>
             <ZoomIn className="h-4 w-4 mr-2" />
             Reset Zoom
+          </Button>
+
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowSaveDialog(true)}
+            disabled={graphData.nodes.length === 0}
+          >
+            <Save className="h-4 w-4 mr-2" />
+            Save
+          </Button>
+
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => {
+              loadSavedGraphsList();
+              setShowLoadDialog(true);
+            }}
+          >
+            <FolderOpen className="h-4 w-4 mr-2" />
+            Load
           </Button>
 
           <Button variant="outline" size="sm" onClick={exportGraph}>
@@ -828,6 +942,113 @@ export function GraphVisualization() {
           </Card>
         </div>
       )}
+
+      {/* Save Graph Dialog */}
+      <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Graph to Cloud</DialogTitle>
+            <DialogDescription>
+              Save your current graph to your account for later use.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Graph Name *</label>
+              <Input
+                value={graphName}
+                onChange={(e) => setGraphName(e.target.value)}
+                placeholder="My Investigation Graph"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Description (optional)</label>
+              <Input
+                value={graphDescription}
+                onChange={(e) => setGraphDescription(e.target.value)}
+                placeholder="Investigation notes..."
+              />
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {graphData.nodes.length} entities, {graphData.edges.length} connections
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveGraph} disabled={savingGraph}>
+                {savingGraph ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save Graph
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Load Graph Dialog */}
+      <Dialog open={showLoadDialog} onOpenChange={setShowLoadDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Load Saved Graph</DialogTitle>
+            <DialogDescription>
+              Select a previously saved graph to load.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {loadingSaved ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <span className="ml-2">Loading saved graphs...</span>
+              </div>
+            ) : savedGraphs.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <FolderOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No saved graphs found.</p>
+                <p className="text-sm">Save a graph to see it here.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {savedGraphs.map(graph => (
+                  <Card key={graph.id} className="hover:bg-secondary/50 transition-colors">
+                    <CardContent className="p-4 flex items-center justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-medium">{graph.name}</h4>
+                        {graph.description && (
+                          <p className="text-sm text-muted-foreground">{graph.description}</p>
+                        )}
+                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                          <span>{graph.nodes_count} entities</span>
+                          <span>{graph.edges_count} connections</span>
+                          <span>{new Date(graph.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleLoadGraph(graph.id)}
+                        >
+                          Load
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDeleteSavedGraph(graph.id, graph.name)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
