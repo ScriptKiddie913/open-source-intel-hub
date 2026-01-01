@@ -134,7 +134,11 @@ export async function fetchFeodoC2Servers(): Promise<C2Server[]> {
     
     const data = await response.json();
     
-    const servers: C2Server[] = (data || []).map((entry: any, index: number) => ({
+    // API returns { value: [...] } structure - extract the array
+    const entries = Array.isArray(data) ? data : (data?.value || data?.data || []);
+    console.log('[FeodoTracker] Raw entries:', entries.length);
+    
+    const servers: C2Server[] = entries.map((entry: any, index: number) => ({
       id: `feodo-${index}-${entry.ip_address?.replace(/\./g, '-') || index}`,
       ip: entry.ip_address || '',
       port: entry.port || 443,
@@ -179,16 +183,33 @@ export async function fetchURLhausRecent(): Promise<URLhausEntry[]> {
     
     const data = await response.json();
     
-    const entries: URLhausEntry[] = Object.values(data || {}).slice(0, 500).map((entry: any, index: number) => ({
-      id: `urlhaus-${entry.id || index}`,
-      url: entry.url || '',
-      urlStatus: entry.url_status === 'online' ? 'online' : 'offline',
-      host: entry.host || new URL(entry.url || 'http://unknown').hostname,
-      dateAdded: entry.dateadded || new Date().toISOString(),
-      threat: entry.threat || 'malware_download',
-      tags: entry.tags || [],
-      reporter: entry.reporter || 'anonymous',
-    }));
+    // API returns object with numeric keys, each containing an array with one entry
+    // Format: { "3722626": [{ dateadded, url, url_status, ... }], ... }
+    const rawEntries = Object.values(data || {})
+      .flat() // Flatten the arrays
+      .slice(0, 500);
+    
+    console.log('[URLhaus] Raw entries:', rawEntries.length);
+    
+    const entries: URLhausEntry[] = rawEntries.map((entry: any, index: number) => {
+      let host = '';
+      try {
+        host = entry.host || (entry.url ? new URL(entry.url).hostname : 'unknown');
+      } catch {
+        host = 'unknown';
+      }
+      
+      return {
+        id: `urlhaus-${entry.id || index}`,
+        url: entry.url || '',
+        urlStatus: entry.url_status === 'online' ? 'online' : 'offline',
+        host,
+        dateAdded: entry.dateadded || new Date().toISOString(),
+        threat: entry.threat || 'malware_download',
+        tags: Array.isArray(entry.tags) ? entry.tags : (entry.tags ? [entry.tags] : []),
+        reporter: entry.reporter || 'anonymous',
+      };
+    });
     
     await cacheAPIResponse(cacheKey, entries, CACHE_TTL.urlhaus);
     console.log(`[URLhaus] Loaded ${entries.length} malware URLs`);
@@ -213,11 +234,8 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
   try {
     console.log('[ThreatFox] Fetching recent IOCs...');
     
-    const response = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: 'get_iocs', days }),
-    });
+    // Use export endpoint (no auth required) instead of API endpoint
+    const response = await fetch('https://threatfox.abuse.ch/export/json/recent/');
     
     if (!response.ok) {
       throw new Error(`ThreatFox fetch failed: ${response.status}`);
@@ -225,22 +243,27 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
     
     const data = await response.json();
     
-    if (data.query_status !== 'ok' || !data.data) {
-      console.log('[ThreatFox] No data returned');
-      return [];
-    }
+    // Export endpoint returns object with numeric keys, each containing an array
+    // Format: { "1688983": [{ ioc_value, ioc_type, threat_type, ... }], ... }
+    const rawEntries = Object.entries(data || {})
+      .flatMap(([id, entries]: [string, any]) => 
+        (Array.isArray(entries) ? entries : [entries]).map(entry => ({ ...entry, _id: id }))
+      )
+      .slice(0, 500);
     
-    const iocs: ThreatFoxIOC[] = data.data.slice(0, 500).map((entry: any) => ({
-      id: `threatfox-${entry.id}`,
-      ioc: entry.ioc || '',
+    console.log('[ThreatFox] Raw entries:', rawEntries.length);
+    
+    const iocs: ThreatFoxIOC[] = rawEntries.map((entry: any) => ({
+      id: `threatfox-${entry._id || entry.id}`,
+      ioc: entry.ioc_value || entry.ioc || '',
       iocType: entry.ioc_type || 'unknown',
       threatType: entry.threat_type || 'unknown',
       malware: entry.malware,
       malwarePrintable: entry.malware_printable,
       confidenceLevel: entry.confidence_level || 50,
-      firstSeen: entry.first_seen || new Date().toISOString(),
-      lastSeen: entry.last_seen,
-      tags: entry.tags || [],
+      firstSeen: entry.first_seen_utc || entry.first_seen || new Date().toISOString(),
+      lastSeen: entry.last_seen_utc || entry.last_seen,
+      tags: typeof entry.tags === 'string' ? entry.tags.split(',') : (entry.tags || []),
       reference: entry.reference,
     }));
     
@@ -267,38 +290,40 @@ export async function fetchMalwareBazaarRecent(limit: number = 100): Promise<Mal
   try {
     console.log('[MalwareBazaar] Fetching recent samples...');
     
-    const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `query=get_recent&selector=${limit}`,
-    });
+    // Use text export endpoint (no auth required) instead of API
+    // This returns recent SHA256 hashes
+    const response = await fetch('https://bazaar.abuse.ch/export/txt/sha256/recent/');
     
     if (!response.ok) {
       throw new Error(`MalwareBazaar fetch failed: ${response.status}`);
     }
     
-    const data = await response.json();
+    const text = await response.text();
     
-    if (data.query_status !== 'ok' || !data.data) {
-      console.log('[MalwareBazaar] No data returned');
-      return [];
-    }
+    // Parse SHA256 hashes from text (one per line, skip comments starting with #)
+    const hashes = text
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'))
+      .slice(0, limit);
     
-    const samples: MalwareSample[] = data.data.map((entry: any) => ({
-      id: `bazaar-${entry.sha256_hash?.slice(0, 16) || Date.now()}`,
-      sha256: entry.sha256_hash || '',
-      sha1: entry.sha1_hash,
-      md5: entry.md5_hash,
-      fileName: entry.file_name,
-      fileType: entry.file_type,
-      fileSize: entry.file_size,
-      signature: entry.signature,
-      malwareFamily: entry.signature || 'Unknown',
-      tags: entry.tags || [],
-      firstSeen: entry.first_seen || new Date().toISOString(),
-      lastSeen: entry.last_seen || new Date().toISOString(),
-      downloadUrl: entry.urlhaus_download,
-      intelligence: entry.intelligence?.mail || [],
+    console.log('[MalwareBazaar] Raw hashes:', hashes.length);
+    
+    const samples: MalwareSample[] = hashes.map((hash, index) => ({
+      id: `bazaar-${hash.slice(0, 16)}`,
+      sha256: hash,
+      sha1: undefined,
+      md5: undefined,
+      fileName: undefined,
+      fileType: 'unknown',
+      fileSize: undefined,
+      signature: 'Unknown',
+      malwareFamily: 'Unknown',
+      tags: ['malware', 'recent'],
+      firstSeen: new Date().toISOString(),
+      lastSeen: new Date().toISOString(),
+      downloadUrl: `https://bazaar.abuse.ch/sample/${hash}/`,
+      intelligence: [],
     }));
     
     await cacheAPIResponse(cacheKey, samples, CACHE_TTL.malwarebazaar);
