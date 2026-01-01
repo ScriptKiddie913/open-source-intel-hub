@@ -41,40 +41,45 @@ interface NavItem {
   description?: string;
 }
 
+interface OSINTSidebarProps {
+  onSignOut?: () => void;
+  userEmail?: string | null;
+}
+
 const mainNavItems: NavItem[] = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard, description: "Overview & Statistics" },
-  { name: "Threat Pipeline", href: "/malware-pipeline", icon: Workflow, description: "Full Threat Pipeline" },
-  { name: "StealthMole", href: "/stealthmole", icon: Skull, description: "Deep Threat Intel" },
-  { name: "Threat Map", href: "/threat-map", icon: Map, description: "Live Attack Visualization" },
-  { name: "Threat Intel", href: "/threat-intel", icon: Radar, description: "VirusTotal & Threat Analysis" },
-  { name: "Live Threats", href: "/live-threats", icon: Zap, description: "Real-time Threat Feeds" },
-  { name: "CVE Explorer", href: "/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
-  { name: "News Intel", href: "/news", icon: Newspaper, description: "Real-time News & OSINT" },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, description: "Overview & Statistics" },
+  { name: "Threat Pipeline", href: "/dashboard/malware-pipeline", icon: Workflow, description: "Full Threat Pipeline" },
+  { name: "StealthMole", href: "/dashboard/stealthmole", icon: Skull, description: "Deep Threat Intel" },
+  { name: "Threat Map", href: "/dashboard/threat-map", icon: Map, description: "Live Attack Visualization" },
+  { name: "Threat Intel", href: "/dashboard/threat-intel", icon: Radar, description: "VirusTotal & Threat Analysis" },
+  { name: "Live Threats", href: "/dashboard/live-threats", icon: Zap, description: "Real-time Threat Feeds" },
+  { name: "CVE Explorer", href: "/dashboard/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
+  { name: "News Intel", href: "/dashboard/news", icon: Newspaper, description: "Real-time News & OSINT" },
 ];
 
 const toolsNavItems: NavItem[] = [
-  { name: "Domain Intel", href: "/domain", icon: Globe, description: "DNS & Domain Analysis" },
-  { name: "IP Analyzer", href: "/ip", icon: Activity, description: "IP Intelligence" },
-  { name: "Certificates", href: "/certs", icon: Lock, description: "SSL/TLS Certificates" },
-  { name: "Breach Check", href: "/breach", icon: Shield, description: "Email Breach Lookup" },
-  { name: "Username OSINT", href: "/username", icon: User, description: "100+ Platform Enumeration" },
-  { name: "Dark Web", href: "/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
-  { name: "Telegram Intel", href: "/telegram", icon: Send, description: "Telegram Leak & OSINT Monitor" },
-  { name: "Graph Map", href: "/graph", icon: Network, description: "Maltego-style Visualization" },
+  { name: "Domain Intel", href: "/dashboard/domain", icon: Globe, description: "DNS & Domain Analysis" },
+  { name: "IP Analyzer", href: "/dashboard/ip", icon: Activity, description: "IP Intelligence" },
+  { name: "Certificates", href: "/dashboard/certs", icon: Lock, description: "SSL/TLS Certificates" },
+  { name: "Breach Check", href: "/dashboard/breach", icon: Shield, description: "Email Breach Lookup" },
+  { name: "Username OSINT", href: "/dashboard/username", icon: User, description: "100+ Platform Enumeration" },
+  { name: "Dark Web", href: "/dashboard/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
+  { name: "Telegram Intel", href: "/dashboard/telegram", icon: Send, description: "Telegram Leak & OSINT Monitor" },
+  { name: "Graph Map", href: "/dashboard/graph", icon: Network, description: "Maltego-style Visualization" },
 ];
 
 const dataNavItems: NavItem[] = [
-  { name: "Import Data", href: "/import", icon: Upload, description: "Upload Datasets" },
-  { name: "Monitors", href: "/monitors", icon: Bell, description: "Active Monitoring" },
-  { name: "Reports", href: "/reports", icon: FileText, description: "Generated Reports" },
+  { name: "Import Data", href: "/dashboard/import", icon: Upload, description: "Upload Datasets" },
+  { name: "Monitoring", href: "/dashboard/monitoring", icon: Bell, description: "Active Monitoring" },
+  { name: "Search History", href: "/dashboard/history", icon: FileText, description: "Past Searches" },
 ];
 
 const systemNavItems: NavItem[] = [
-  { name: "Database", href: "/database", icon: Database, description: "Local Data Store" },
-  { name: "Settings", href: "/settings", icon: Settings, description: "Configuration" },
+  { name: "Database", href: "/dashboard/database", icon: Database, description: "Local Data Store" },
+  { name: "Settings", href: "/dashboard/settings", icon: Settings, description: "Configuration" },
 ];
 
-export function OSINTSidebar() {
+export function OSINTSidebar({ onSignOut, userEmail }: OSINTSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
 
@@ -210,17 +215,24 @@ export function OSINTSidebar() {
         </div>
       </nav>
 
-      {/* Status Bar */}
+      {/* User & Status Bar */}
       {!collapsed && (
-        <div className="p-3 border-t border-sidebar-border bg-secondary/20">
+        <div className="p-3 border-t border-sidebar-border bg-secondary/20 space-y-2">
+          {userEmail && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground truncate max-w-[140px]">{userEmail}</span>
+              {onSignOut && (
+                <Button variant="ghost" size="sm" onClick={onSignOut} className="text-xs h-6 px-2">
+                  Logout
+                </Button>
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
               <span className="text-muted-foreground">System Online</span>
             </div>
-            <span className="font-mono text-muted-foreground">
-              {new Date().toLocaleTimeString()}
-            </span>
           </div>
         </div>
       )}

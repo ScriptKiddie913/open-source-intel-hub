@@ -1,4 +1,4 @@
-// src/pages/Index.tsx
+// src/pages/Dashboard.tsx
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState, useRef, useCallback } from "react";
 
@@ -23,9 +23,13 @@ import { NewsIntelligence } from "@/components/osint/NewsIntelligence";
 import { TelegramIntelligence } from "@/components/osint/TelegramIntelligence";
 import MalwarePipeline from "@/components/osint/MalwarePipeline";
 import { StealthMoleScanner } from "@/components/osint/StealthMoleScanner";
+import { MonitoringDashboard } from "@/components/osint/MonitoringDashboard";
+import { SearchHistoryPage } from "@/components/osint/SearchHistoryPage";
 
+import { useAuth } from "@/hooks/useAuth";
 import { initDatabase } from "@/lib/database";
 import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 
 import {
   Bot,
@@ -557,14 +561,33 @@ Be direct, precise, and thorough. Never truncate important information.`,
   );
 }
 
-const Index = () => {
+const DashboardPage = () => {
+  const { user, loading, signOut } = useAuth(true);
+
   useEffect(() => {
     initDatabase().catch(console.error);
   }, []);
 
+  // Show loading while checking auth
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If not authenticated, useAuth will redirect to /auth
+  if (!user) {
+    return null;
+  }
+
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      <OSINTSidebar />
+      <OSINTSidebar onSignOut={signOut} userEmail={user.email} />
       <main className="flex-1 overflow-y-auto relative">
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -587,6 +610,8 @@ const Index = () => {
           <Route path="/malware-pipeline" element={<MalwarePipeline />} />
           <Route path="/stealthmole" element={<StealthMoleScanner />} />
           <Route path="/threat-map" element={<LiveThreatMap />} />
+          <Route path="/monitoring" element={<MonitoringDashboard />} />
+          <Route path="/history" element={<SearchHistoryPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -595,4 +620,4 @@ const Index = () => {
   );
 };
 
-export default Index;
+export default DashboardPage;
