@@ -139,8 +139,8 @@ export function SearchHistoryPage() {
     }
   };
 
-  const handleRerun = (item: SearchHistoryItem | EnhancedSearchHistoryItem) => {
-    const searchType = 'search_type' in item ? item.search_type : item.searchType;
+  const handleRerun = (item: SearchHistoryItem | EnhancedSearchHistory) => {
+    const searchType = 'search_type' in item ? item.search_type : (item as any).searchType;
     const config = SEARCH_TYPE_CONFIG[searchType];
     if (config) {
       // Navigate to the search page with query
@@ -173,7 +173,7 @@ export function SearchHistoryPage() {
     if (!acc[date]) acc[date] = [];
     acc[date].push(item);
     return acc;
-  }, {} as Record<string, EnhancedSearchHistoryItem[]>);
+  }, {} as Record<string, EnhancedSearchHistory[]>);
 
   const uniqueTypes = [...new Set(history.map(h => h.search_type))];
 
