@@ -103,9 +103,9 @@ export default function Auth() {
     setLoading(true);
     
     try {
-      const redirectUrl = `${window.location.origin}/dashboard`;
+      const redirectUrl = `${window.location.origin}/auth`;
       
-      const { error } = await supabase.auth.signUp({
+      const { error, data } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -119,6 +119,15 @@ export default function Auth() {
         } else {
           toast.error(error.message);
         }
+        return;
+      }
+
+      // Check if email confirmation is required
+      if (data.user && !data.session) {
+        toast.success('Please check your email to verify your account before signing in.');
+        setActiveTab('signin');
+        setPassword('');
+        setConfirmPassword('');
         return;
       }
 
