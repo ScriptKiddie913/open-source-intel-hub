@@ -212,13 +212,13 @@ export async function discoverOnionSites(query: string): Promise<OnionSite[]> {
    ONION UPTIME CHECK
 ============================================================================ */
 
-export async function checkOnionUptime(onion: string) {
+export async function checkOnionUptime(onion: string): Promise<{ status: 'online' | 'offline' | 'unknown'; checkedAt: string }> {
   try {
     const host = onion.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const res = await fetch(`https://${host}.${TOR2WEB_PROXIES[0]}`, { method: 'HEAD' });
-    return { status: res.ok ? 'online' : 'offline', checkedAt: nowISO() };
+    return { status: res.ok ? 'online' as const : 'offline' as const, checkedAt: nowISO() };
   } catch {
-    return { status: 'offline', checkedAt: nowISO() };
+    return { status: 'offline' as const, checkedAt: nowISO() };
   }
 }
 

@@ -162,20 +162,138 @@ async function geolocateIP(ip: string): Promise<{ lat: number; lon: number; city
 
 // Fetch C2 servers from Feodo Tracker
 async function fetchFeodoAttacks(): Promise<LiveAttack[]> {
-  // ...existing code...
-  // (Unchanged, see above)
+  const attacks: LiveAttack[] = [];
+  try {
+    const res = await fetch('https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json');
+    if (!res.ok) return [];
+    const data = await res.json();
+    const items = Array.isArray(data) ? data.slice(0, 15) : [];
+    for (const item of items) {
+      const ip = item.ip_address || item.ip;
+      if (!ip) continue;
+      await new Promise(r => setTimeout(r, 100));
+      const geo = await geolocateIP(ip);
+      if (geo) {
+        const target = TARGET_LOCATIONS[Math.floor(Math.random() * TARGET_LOCATIONS.length)];
+        attacks.push({
+          id: `feodo-${item.id || Date.now()}-${Math.random()}`,
+          type: 'botnet_c2',
+          severity: 'high',
+          sourceLat: geo.lat,
+          sourceLon: geo.lon,
+          sourceCountry: geo.country,
+          sourceCity: geo.city,
+          targetLat: target.lat,
+          targetLon: target.lon,
+          targetCountry: target.name,
+          targetCity: target.name,
+          indicator: ip,
+          timestamp: item.first_seen || new Date().toISOString(),
+          port: item.port || 443,
+          malwareFamily: item.malware || 'Unknown',
+          progress: 0,
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[Feodo] Error:', err);
+  }
+  return attacks;
 }
 
 // Fetch malware URLs from URLhaus
 async function fetchURLhausAttacks(): Promise<LiveAttack[]> {
-  // ...existing code...
-  // (Unchanged, see above)
+  const attacks: LiveAttack[] = [];
+  try {
+    const res = await fetch('https://urlhaus-api.abuse.ch/v1/urls/recent/limit/20/');
+    if (!res.ok) return [];
+    const data = await res.json();
+    const items = data?.urls || [];
+    for (const item of items.slice(0, 15)) {
+      try {
+        const url = new URL(item.url);
+        const host = url.hostname;
+        await new Promise(r => setTimeout(r, 100));
+        const geo = await geolocateIP(host);
+        if (geo) {
+          const target = TARGET_LOCATIONS[Math.floor(Math.random() * TARGET_LOCATIONS.length)];
+          attacks.push({
+            id: `urlhaus-${item.id || Date.now()}-${Math.random()}`,
+            type: 'malware_distribution',
+            severity: item.threat === 'malware_download' ? 'critical' : 'high',
+            sourceLat: geo.lat,
+            sourceLon: geo.lon,
+            sourceCountry: geo.country,
+            sourceCity: geo.city,
+            targetLat: target.lat,
+            targetLon: target.lon,
+            targetCountry: target.name,
+            targetCity: target.name,
+            indicator: item.url,
+            timestamp: item.date_added || new Date().toISOString(),
+            malwareFamily: item.tags?.[0] || 'Unknown',
+            progress: 0,
+          });
+        }
+      } catch {}
+    }
+  } catch (err) {
+    console.error('[URLhaus] Error:', err);
+  }
+  return attacks;
 }
 
 // Fetch IOCs from ThreatFox
 async function fetchThreatFoxAttacks(): Promise<LiveAttack[]> {
-  // ...existing code...
-  // (Unchanged, see above)
+  const attacks: LiveAttack[] = [];
+  try {
+    const res = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'get_iocs', days: 1 }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const items = data?.data || [];
+    for (const item of items.slice(0, 15)) {
+      const ioc = item.ioc;
+      if (!ioc) continue;
+      // Extract IP if present
+      const ipMatch = ioc.match(/(\d{1,3}\.){3}\d{1,3}/);
+      if (ipMatch) {
+        await new Promise(r => setTimeout(r, 100));
+        const geo = await geolocateIP(ipMatch[0]);
+        if (geo) {
+          const target = TARGET_LOCATIONS[Math.floor(Math.random() * TARGET_LOCATIONS.length)];
+          const typeMap: Record<string, AttackType> = {
+            'botnet_cc': 'botnet_c2',
+            'payload_delivery': 'malware_distribution',
+            'exploit': 'exploitation',
+          };
+          attacks.push({
+            id: `threatfox-${item.id || Date.now()}-${Math.random()}`,
+            type: typeMap[item.threat_type] || 'malware_distribution',
+            severity: item.confidence_level >= 75 ? 'critical' : item.confidence_level >= 50 ? 'high' : 'medium',
+            sourceLat: geo.lat,
+            sourceLon: geo.lon,
+            sourceCountry: geo.country,
+            sourceCity: geo.city,
+            targetLat: target.lat,
+            targetLon: target.lon,
+            targetCountry: target.name,
+            targetCity: target.name,
+            indicator: ioc,
+            timestamp: item.first_seen || new Date().toISOString(),
+            malwareFamily: item.malware || 'Unknown',
+            progress: 0,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[ThreatFox] Error:', err);
+  }
+  return attacks;
 }
 
 // Fetch ransomware events from Ransomware.live
