@@ -37,11 +37,22 @@ import {
 interface ThreatVisualizationProps {
   refreshInterval?: number; // Refresh interval in milliseconds (default: 30 seconds)
   showRealTimeUpdates?: boolean;
+  // Additional props for data injection from MalwarePipeline
+  campaigns?: any[];
+  correlations?: any[];
+  aptGroups?: any[];
+  indicators?: any[];
+  ransomwareVictims?: any[];
 }
 
 export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
   refreshInterval = 30000,
-  showRealTimeUpdates = true
+  showRealTimeUpdates = true,
+  campaigns = [],
+  correlations = [],
+  aptGroups = [],
+  indicators = [],
+  ransomwareVictims = []
 }) => {
   const [threatData, setThreatData] = useState<ThreatIntelligenceRecord[]>([]);
   const [statistics, setStatistics] = useState<any>(null);
@@ -155,17 +166,33 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
     low: d.low
   }));
 
+  // Calculate combined statistics from both database and injected props
+  const combinedStats = {
+    totalThreats: (statistics?.totalThreats || 0) + indicators.length + campaigns.length,
+    critical: (statistics?.bySeverity?.critical || 0) + indicators.filter((i: any) => i.severity === 'critical').length,
+    high: (statistics?.bySeverity?.high || 0) + indicators.filter((i: any) => i.severity === 'high').length,
+    aptGroups: aptGroups.length,
+    ransomwareVictims: ransomwareVictims.length,
+    campaigns: campaigns.length
+  };
+
   const severityData = [
-    { name: 'Critical', value: statistics?.bySeverity?.critical || 0, color: '#dc2626' },
-    { name: 'High', value: statistics?.bySeverity?.high || 0, color: '#ea580c' },
+    { name: 'Critical', value: combinedStats.critical, color: '#dc2626' },
+    { name: 'High', value: combinedStats.high, color: '#ea580c' },
     { name: 'Medium', value: statistics?.bySeverity?.medium || 0, color: '#ca8a04' },
     { name: 'Low', value: statistics?.bySeverity?.low || 0, color: '#16a34a' }
   ];
 
-  const threatTypeData = Object.entries(statistics?.byType || {}).map(([type, count]) => ({
-    name: type.charAt(0).toUpperCase() + type.slice(1),
-    value: count
-  }));
+  // Include injected data in threat type breakdown
+  const threatTypeData = [
+    ...Object.entries(statistics?.byType || {}).map(([type, count]) => ({
+      name: type.charAt(0).toUpperCase() + type.slice(1),
+      value: count as number
+    })),
+    { name: 'APT Groups', value: aptGroups.length },
+    { name: 'Ransomware', value: ransomwareVictims.length },
+    { name: 'Campaigns', value: campaigns.length }
+  ].filter((d: { name: string; value: number }) => d.value > 0);
 
   const sourceData = Object.entries(statistics?.bySource || {}).map(([source, count]) => ({
     name: source,
@@ -216,7 +243,7 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
             <div className="flex items-center gap-3">
               <Shield className="h-8 w-8 text-blue-600" />
               <div>
-                <p className="text-2xl font-bold">{statistics?.totalThreats?.toLocaleString() || 0}</p>
+                <p className="text-2xl font-bold">{combinedStats.totalThreats.toLocaleString()}</p>
                 <p className="text-sm text-gray-600">Total Threats</p>
               </div>
             </div>
@@ -228,7 +255,7 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
             <div className="flex items-center gap-3">
               <AlertTriangle className="h-8 w-8 text-red-600" />
               <div>
-                <p className="text-2xl font-bold">{statistics?.bySeverity?.critical || 0}</p>
+                <p className="text-2xl font-bold">{combinedStats.critical}</p>
                 <p className="text-sm text-gray-600">Critical Threats</p>
               </div>
             </div>
@@ -238,10 +265,10 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <TrendingUp className="h-8 w-8 text-orange-600" />
+              <Target className="h-8 w-8 text-orange-600" />
               <div>
-                <p className="text-2xl font-bold">{statistics?.recentCount || 0}</p>
-                <p className="text-sm text-gray-600">Recent (24h)</p>
+                <p className="text-2xl font-bold">{combinedStats.aptGroups}</p>
+                <p className="text-sm text-gray-600">APT Groups</p>
               </div>
             </div>
           </CardContent>
@@ -250,10 +277,10 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <Globe className="h-8 w-8 text-green-600" />
+              <Globe className="h-8 w-8 text-purple-600" />
               <div>
-                <p className="text-2xl font-bold">{Object.keys(statistics?.bySource || {}).length}</p>
-                <p className="text-sm text-gray-600">Intel Sources</p>
+                <p className="text-2xl font-bold">{combinedStats.ransomwareVictims}</p>
+                <p className="text-sm text-gray-600">Ransomware Victims</p>
               </div>
             </div>
           </CardContent>
