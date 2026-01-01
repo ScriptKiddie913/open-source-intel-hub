@@ -286,7 +286,7 @@ export default function Home() {
                 Ready To Elevate Your Threat Intelligence?
               </h2>
               <p className="text-slate-300 mb-8 max-w-2xl mx-auto">
-                Join security professionals worldwide who trust CIPHER
+                Join security professionals worldwide who trust SoTaNik OSINT HUB
                 for their OSINT needs.
               </p>
               <Link to="/auth">
