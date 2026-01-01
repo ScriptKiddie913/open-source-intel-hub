@@ -128,7 +128,7 @@ export default function Home() {
                 />
               </div>
               <span className="text-xl font-bold bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent">
-                CIPHER OSINT
+                SoTaNik OSINT HUB
               </span>
             </div>
 
@@ -283,7 +283,7 @@ export default function Home() {
             <div className="relative z-10 text-center">
               <Brain className="h-12 w-12 text-primary mx-auto mb-6" />
               <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                Ready to elevate your threat intelligence?
+                Ready To Elevate Your Threat Intelligence?
               </h2>
               <p className="text-slate-300 mb-8 max-w-2xl mx-auto">
                 Join security professionals worldwide who trust CIPHER
@@ -318,7 +318,7 @@ export default function Home() {
                 />
               </div>
               <span className="font-semibold text-slate-300">
-                CIPHER OSINT
+                SoTaNik OSINT HUB
               </span>
             </div>
 
@@ -329,13 +329,10 @@ export default function Home() {
               <a href="#" className="hover:text-white transition-colors">
                 Privacy
               </a>
-              <a href="#" className="hover:text-white transition-colors">
-                Terms
-              </a>
             </div>
 
             <p className="text-sm text-slate-500">
-              © 2026 CIPHER OSINT. All rights reserved.
+              © 2026 SoTaNik OSINT HUB. All rights reserved.
             </p>
           </div>
         </div>
