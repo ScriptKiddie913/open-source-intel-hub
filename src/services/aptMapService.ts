@@ -154,45 +154,192 @@ const CACHE_TTL = 3600000; // 1 hour
    APT DATA FETCH & PARSING
 ============================================================================ */
 
-// Fetch APT data from APTmap
+// Fetch APT data from APTmap with multiple sources fallback
 export async function fetchAPTMapData(): Promise<APTGroup[]> {
   // Check cache first
   const cached = await getCachedData(CACHE_KEY) as APTGroup[] | null;
   if (cached && Array.isArray(cached) && cached.length > 0) {
-    console.log('[APTmap] Using cached data');
+    console.log('[APTmap] Using cached data:', cached.length, 'groups');
     return cached;
   }
   
-  try {
-    console.log('[APTmap] Fetching live APT data...');
-    const response = await fetch('https://andreacristaldi.github.io/APTmap/apt.json', {
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`APTmap fetch failed: ${response.status}`);
+  // Multiple APT data sources for redundancy
+  const aptSources = [
+    'https://andreacristaldi.github.io/APTmap/apt.json',
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/main/apt.json'
+  ];
+  
+  for (const sourceUrl of aptSources) {
+    try {
+      console.log(`[APTmap] Fetching from ${sourceUrl}...`);
+      const response = await fetch(sourceUrl, {
+        headers: {
+          'Accept': 'application/json',
+        },
+        cache: 'no-cache'
+      });
+      
+      if (!response.ok) {
+        console.warn(`[APTmap] Source ${sourceUrl} returned ${response.status}`);
+        continue;
+      }
+      
+      const data: APTMapResponse = await response.json();
+      
+      if (!data.features || !Array.isArray(data.features) || data.features.length === 0) {
+        console.warn(`[APTmap] Invalid/empty data from ${sourceUrl}`);
+        continue;
+      }
+      
+      const groups = parseAPTFeatures(data.features);
+      
+      if (groups.length > 0) {
+        // Cache the results
+        await cacheAPIResponse(CACHE_KEY, groups, CACHE_TTL);
+        console.log(`[APTmap] Loaded ${groups.length} APT groups from ${sourceUrl}`);
+        return groups;
+      }
+    } catch (error) {
+      console.warn(`[APTmap] Source ${sourceUrl} error:`, error);
+      continue;
     }
-    
-    const data: APTMapResponse = await response.json();
-    
-    if (!data.features || !Array.isArray(data.features)) {
-      throw new Error('Invalid APTmap data format');
-    }
-    
-    const groups = parseAPTFeatures(data.features);
-    
-    // Cache the results
-    await cacheAPIResponse(CACHE_KEY, groups, CACHE_TTL);
-    
-    console.log(`[APTmap] Loaded ${groups.length} APT groups`);
-    return groups;
-  } catch (error) {
-    console.error('[APTmap] Fetch error:', error);
-    // Return empty array on error
-    return [];
   }
+  
+  // Fallback to MITRE ATT&CK groups API as backup
+  try {
+    console.log('[APTmap] Trying MITRE ATT&CK fallback...');
+    const mitreResponse = await fetch('https://raw.githubusercontent.com/mitre/cti/master/enterprise-attack/intrusion-set/intrusion-set.json');
+    
+    if (mitreResponse.ok) {
+      const mitreData = await mitreResponse.json();
+      const mitreGroups = parseMitreGroups(mitreData);
+      
+      if (mitreGroups.length > 0) {
+        await cacheAPIResponse(CACHE_KEY, mitreGroups, CACHE_TTL);
+        console.log(`[APTmap] Loaded ${mitreGroups.length} groups from MITRE ATT&CK`);
+        return mitreGroups;
+      }
+    }
+  } catch (error) {
+    console.warn('[APTmap] MITRE fallback failed:', error);
+  }
+  
+  console.error('[APTmap] All sources failed - returning empty array');
+  return [];
+}
+
+// Parse MITRE ATT&CK intrusion sets as fallback
+function parseMitreGroups(data: any): APTGroup[] {
+  if (!data.objects || !Array.isArray(data.objects)) return [];
+  
+  return data.objects
+    .filter((obj: any) => obj.type === 'intrusion-set')
+    .map((group: any, idx: number) => {
+      const aliases = group.aliases || [];
+      const country = extractCountryFromDescription(group.description || '');
+      
+      return {
+        id: `mitre-${idx}-${group.id?.slice(-8) || idx}`,
+        uuid: group.id || `mitre-${idx}`,
+        name: group.name || 'Unknown',
+        aliases,
+        description: group.description || `${group.name} is a threat group.`,
+        country,
+        countryCode: getCountryCode(country),
+        location: country,
+        motivations: extractMotivations(group.description || ''),
+        firstSeen: group.first_seen,
+        active: true,
+        attributionConfidence: 70,
+        targets: extractTargets(group.description || ''),
+        targetCategories: extractTargetCategories(group.description || ''),
+        ttps: [],
+        tools: [],
+        iocs: [],
+        operations: [],
+        sources: [{ name: 'MITRE ATT&CK', description: 'MITRE ATT&CK Framework', url: 'https://attack.mitre.org' }],
+        externalLinks: group.external_references?.map((ref: any) => ({
+          description: ref.description || ref.source_name,
+          url: ref.url || '',
+          type: 'web' as const
+        })) || [],
+        malwareSamples: [],
+        coordinates: getCountryCoordinates(country)
+      };
+    });
+}
+
+// Extract country from description text
+function extractCountryFromDescription(desc: string): string {
+  const countryPatterns = [
+    { pattern: /russia|russian|kremlin|moscow|gru|fsb|svr/i, country: 'Russia' },
+    { pattern: /china|chinese|prc|beijing|pla|mss/i, country: 'China' },
+    { pattern: /iran|iranian|tehran|irgc/i, country: 'Iran' },
+    { pattern: /north korea|dprk|pyongyang|lazarus/i, country: 'North Korea' },
+    { pattern: /israel|israeli|tel aviv|unit 8200/i, country: 'Israel' },
+    { pattern: /vietnam|vietnamese|apt32/i, country: 'Vietnam' },
+    { pattern: /india|indian/i, country: 'India' },
+    { pattern: /pakistan|pakistani/i, country: 'Pakistan' },
+    { pattern: /turkey|turkish/i, country: 'Turkey' },
+  ];
+  
+  for (const { pattern, country } of countryPatterns) {
+    if (pattern.test(desc)) return country;
+  }
+  return 'Unknown';
+}
+
+// Get country code from name
+function getCountryCode(country: string): string {
+  const codes: Record<string, string> = {
+    'Russia': 'RU', 'China': 'CN', 'Iran': 'IR', 'North Korea': 'KP',
+    'Israel': 'IL', 'Vietnam': 'VN', 'India': 'IN', 'Pakistan': 'PK',
+    'Turkey': 'TR', 'United States': 'US'
+  };
+  return codes[country] || '';
+}
+
+// Get approximate coordinates for country
+function getCountryCoordinates(country: string): { lat: number; lon: number } | undefined {
+  const coords: Record<string, { lat: number; lon: number }> = {
+    'Russia': { lat: 55.75, lon: 37.62 },
+    'China': { lat: 39.90, lon: 116.40 },
+    'Iran': { lat: 35.69, lon: 51.39 },
+    'North Korea': { lat: 39.03, lon: 125.75 },
+    'Israel': { lat: 31.77, lon: 35.22 },
+    'Vietnam': { lat: 21.03, lon: 105.85 },
+    'India': { lat: 28.61, lon: 77.21 },
+    'Pakistan': { lat: 33.69, lon: 73.06 },
+    'Turkey': { lat: 39.93, lon: 32.85 },
+    'United States': { lat: 38.90, lon: -77.04 }
+  };
+  return coords[country];
+}
+
+// Extract motivations from description
+function extractMotivations(desc: string): string[] {
+  const motivations: string[] = [];
+  if (/espionage|intelligence|spy/i.test(desc)) motivations.push('Espionage');
+  if (/financial|money|bank/i.test(desc)) motivations.push('Financial');
+  if (/sabotage|disrupt/i.test(desc)) motivations.push('Sabotage');
+  if (/ransomware|extort/i.test(desc)) motivations.push('Financial');
+  return motivations.length > 0 ? motivations : ['Unknown'];
+}
+
+// Extract targets from description
+function extractTargets(desc: string): string[] {
+  const targets: string[] = [];
+  if (/government|military|defense/i.test(desc)) targets.push('Government');
+  if (/financial|bank/i.test(desc)) targets.push('Financial');
+  if (/energy|oil|gas/i.test(desc)) targets.push('Energy');
+  if (/healthcare|medical/i.test(desc)) targets.push('Healthcare');
+  if (/technology|tech/i.test(desc)) targets.push('Technology');
+  return targets;
+}
+
+// Extract target categories
+function extractTargetCategories(desc: string): string[] {
+  return extractTargets(desc);
 }
 
 // Parse APT features into structured groups
