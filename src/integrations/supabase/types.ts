@@ -14,7 +14,224 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      monitoring_alerts: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_read: boolean | null
+          metadata: Json | null
+          monitoring_item_id: string
+          severity: string
+          source: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_read?: boolean | null
+          metadata?: Json | null
+          monitoring_item_id: string
+          severity?: string
+          source?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_read?: boolean | null
+          metadata?: Json | null
+          monitoring_item_id?: string
+          severity?: string
+          source?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monitoring_alerts_monitoring_item_id_fkey"
+            columns: ["monitoring_item_id"]
+            isOneToOne: false
+            referencedRelation: "monitoring_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      monitoring_items: {
+        Row: {
+          alert_threshold: string | null
+          alerts_count: number | null
+          created_at: string
+          id: string
+          last_alert_at: string | null
+          last_checked_at: string | null
+          metadata: Json | null
+          monitor_type: string
+          name: string
+          status: string
+          updated_at: string
+          user_id: string
+          value: string
+        }
+        Insert: {
+          alert_threshold?: string | null
+          alerts_count?: number | null
+          created_at?: string
+          id?: string
+          last_alert_at?: string | null
+          last_checked_at?: string | null
+          metadata?: Json | null
+          monitor_type: string
+          name: string
+          status?: string
+          updated_at?: string
+          user_id: string
+          value: string
+        }
+        Update: {
+          alert_threshold?: string | null
+          alerts_count?: number | null
+          created_at?: string
+          id?: string
+          last_alert_at?: string | null
+          last_checked_at?: string | null
+          metadata?: Json | null
+          monitor_type?: string
+          name?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          value?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string | null
+          email: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      saved_graphs: {
+        Row: {
+          created_at: string
+          description: string | null
+          edges_count: number | null
+          graph_data: Json
+          id: string
+          name: string
+          nodes_count: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          edges_count?: number | null
+          graph_data?: Json
+          id?: string
+          name: string
+          nodes_count?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          edges_count?: number | null
+          graph_data?: Json
+          id?: string
+          name?: string
+          nodes_count?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      search_history: {
+        Row: {
+          created_at: string
+          id: string
+          metadata: Json | null
+          query: string
+          results_count: number | null
+          search_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          query: string
+          results_count?: number | null
+          search_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          query?: string
+          results_count?: number | null
+          search_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          last_active_at: string
+          session_data: Json
+          session_name: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_active_at?: string
+          session_data?: Json
+          session_name?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_active_at?: string
+          session_data?: Json
+          session_name?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
