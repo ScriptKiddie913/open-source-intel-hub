@@ -51,6 +51,30 @@ export default defineConfig(({ mode }) => {
             'Referer': 'https://search.libraryofleaks.org/',
           },
         },
+        // Proxy abuse.ch Feodo Tracker API
+        '/api/feodo': {
+          target: 'https://feodotracker.abuse.ch',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/feodo/, '/downloads'),
+        },
+        // Proxy abuse.ch URLhaus API
+        '/api/urlhaus': {
+          target: 'https://urlhaus.abuse.ch',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/urlhaus/, '/downloads'),
+        },
+        // Proxy abuse.ch ThreatFox API
+        '/api/threatfox': {
+          target: 'https://threatfox.abuse.ch',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/threatfox/, '/export'),
+        },
+        // Proxy abuse.ch MalwareBazaar API
+        '/api/bazaar': {
+          target: 'https://bazaar.abuse.ch',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/bazaar/, '/export'),
+        },
       },
     },
 
