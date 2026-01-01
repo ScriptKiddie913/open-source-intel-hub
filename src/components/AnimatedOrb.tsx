@@ -135,7 +135,7 @@ export function AnimatedOrb({
     window.addEventListener('resize', resizeCanvas);
     
     let lastTime = 0;
-    const cycleDuration = 8000; // 8 seconds per full cycle
+    const cycleDuration = 20000; // 8 seconds per full cycle
     
     const animate = (time: number) => {
       const deltaTime = time - lastTime;
