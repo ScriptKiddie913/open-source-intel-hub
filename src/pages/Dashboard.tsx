@@ -225,7 +225,7 @@ function FloatingPerplexityChat() {
             messages: [
               {
                 role: "system",
-                content: `You are CIPHER, an elite OSINT and threat intelligence AI assistant. You specialize in:
+                content: `You are Phoenix, an elite OSINT and threat intelligence AI assistant. You specialize in:
 - Cyber threat intelligence and APT group analysis
 - CVE vulnerability research and exploitation details
 - Malware analysis and IOC extraction
@@ -275,7 +275,7 @@ Be direct, precise, and thorough. Never truncate important information.`,
       <button
         className="fixed bottom-6 right-6 z-50 group"
         onClick={() => setOpen(true)}
-        title="Open CIPHER Intelligence Assistant"
+        title="Open Phoenix Intelligence Assistant"
       >
         <div className="relative">
           {/* Outer glow ring */}
@@ -288,7 +288,7 @@ Be direct, precise, and thorough. Never truncate important information.`,
               <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
             </div>
             <span className="text-sm font-semibold bg-gradient-to-r from-cyan-400 to-primary bg-clip-text text-transparent">
-              CIPHER
+              PHOENIX
             </span>
             <Sparkles className="h-4 w-4 text-primary animate-pulse" />
           </div>
@@ -341,7 +341,7 @@ Be direct, precise, and thorough. Never truncate important information.`,
             <div>
               <h3 className="text-sm font-bold flex items-center gap-2">
                 <span className="bg-gradient-to-r from-cyan-400 via-primary to-purple-400 bg-clip-text text-transparent">
-                  CIPHER
+                  PHOENIX
                 </span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 font-normal">
                   ONLINE
@@ -392,7 +392,7 @@ Be direct, precise, and thorough. Never truncate important information.`,
               </div>
               
               <h2 className="text-lg font-bold bg-gradient-to-r from-cyan-400 via-primary to-purple-400 bg-clip-text text-transparent mb-2">
-                CIPHER Intelligence Assistant
+                PHOENIX Intelligence Assistant
               </h2>
               <p className="text-xs text-muted-foreground text-center max-w-[280px] mb-6">
                 Powered by Perplexity Sonar Pro with real-time web search for threat intelligence
@@ -461,7 +461,7 @@ Be direct, precise, and thorough. Never truncate important information.`,
                     </div>
                   )}
                   <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                    {m.role === "assistant" ? "CIPHER" : "You"}
+                    {m.role === "assistant" ? "PHOENIX" : "You"}
                   </span>
                   {m.timestamp && (
                     <span className="text-[10px] text-muted-foreground/50">
