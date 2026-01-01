@@ -110,7 +110,7 @@ export default function About() {
                 />
               </div>
               <span className="text-xl font-bold bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent">
-                CIPHER OSINT
+                SoTaNik OSINT HUB
               </span>
             </Link>
 
