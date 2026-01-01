@@ -154,7 +154,7 @@ export default function About() {
           <h1 className="text-4xl md:text-5xl font-bold mb-6">
             About{' '}
             <span className="bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent">
-              CIPHER OSINT
+              SoTaNik OSINT HUB
             </span>
           </h1>
 
@@ -182,7 +182,7 @@ export default function About() {
               </p>
 
               <p className="text-slate-400 mb-4">
-                CIPHER OSINT democratizes threat intelligence by providing
+                SoTaNik OSINT HUB democratizes threat intelligence by providing
                 powerful, easy-to-use tools that aggregate data from
                 hundreds of sources into a single, actionable dashboard.
               </p>
@@ -315,7 +315,7 @@ export default function About() {
           </h2>
           <p className="text-slate-400 mb-8">
             Join thousands of security professionals already using
-            CIPHER OSINT.
+            SoTaNik OSINT HUB.
           </p>
 
           <Link to="/auth">
@@ -345,7 +345,7 @@ export default function About() {
                 />
               </div>
               <span className="font-semibold text-slate-300">
-                CIPHER OSINT
+                SoTaNik OSINT HUB
               </span>
             </div>
 
@@ -362,7 +362,7 @@ export default function About() {
             </div>
 
             <p className="text-sm text-slate-500">
-              © 2026 CIPHER OSINT. All rights reserved.
+              © 2026 SoTaNik OSINT HUB. All rights reserved.
             </p>
           </div>
         </div>
