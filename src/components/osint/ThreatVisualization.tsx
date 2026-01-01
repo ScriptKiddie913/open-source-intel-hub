@@ -59,7 +59,7 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
   const [timeSeriesData, setTimeSeriesData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Real-time data loading
   useEffect(() => {
