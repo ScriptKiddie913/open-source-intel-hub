@@ -1,12 +1,14 @@
 // src/components/osint/LiveThreatFeed.tsx
-// REAL-TIME THREAT INTELLIGENCE VISUALIZATION
+// REAL-TIME THREAT INTELLIGENCE VISUALIZATION WITH LEAFLET MAPS
 // Integrates APTmap, MISP feeds, and LLM processing
 
 import { useState, useEffect, useRef } from 'react';
-import { Activity, RefreshCw, Globe, Zap, AlertTriangle, MapPin, Target, Shield, Users } from 'lucide-react';
+import { Activity, RefreshCw, Globe, Zap, AlertTriangle, MapPin, Target, Shield, Users, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fetchLiveThreatMap, ThreatPoint } from '@/services/realTimeThreatService';
 import { getAPTThreatMapData, fetchAPTMapData, getAPTStats, type APTThreatPoint } from '@/services/aptMapService';
@@ -16,8 +18,360 @@ import { cn } from '@/lib/utils';
 
 type CombinedThreatPoint = ThreatPoint | APTThreatPoint | MalwareThreatPoint;
 
+// Add Leaflet styling to document head
+if (typeof document !== 'undefined') {
+  const leafletStyle = document.createElement('style');
+  leafletStyle.textContent = `
+    .custom-threat-popup .leaflet-popup-content-wrapper {
+      background: #1e293b !important;
+      color: #fff !important;
+      border-radius: 8px !important;
+      padding: 0 !important;
+    }
+    .custom-threat-popup .leaflet-popup-tip {
+      background: #1e293b !important;
+    }
+    .custom-threat-marker {
+      border: none !important;
+      background: transparent !important;
+    }
+    .leaflet-container {
+      background: #0a0e27 !important;
+    }
+    .leaflet-control-zoom {
+      background: rgba(30, 41, 59, 0.9) !important;
+      border: 1px solid rgba(59, 130, 246, 0.3) !important;
+    }
+    .leaflet-control-zoom a {
+      background: transparent !important;
+      color: #fff !important;
+      border-bottom: 1px solid rgba(59, 130, 246, 0.3) !important;
+    }
+    .leaflet-control-zoom a:hover {
+      background: rgba(59, 130, 246, 0.2) !important;
+    }
+  `;
+  if (!document.querySelector('#leaflet-threat-styles')) {
+    leafletStyle.id = 'leaflet-threat-styles';
+    document.head.appendChild(leafletStyle);
+  }
+}
+
+/* ============================================================================
+   LEAFLET MAP COMPONENT FOR THREAT VISUALIZATION
+============================================================================ */
+
+interface LeafletThreatMapProps {
+  threats: CombinedThreatPoint[];
+  activeView: 'all' | 'apt' | 'malware' | 'c2';
+  mapStyle: 'dark' | 'satellite' | 'street';
+  onThreatClick?: (threat: CombinedThreatPoint) => void;
+}
+
+function LeafletThreatMap({ threats, activeView, mapStyle, onThreatClick }: LeafletThreatMapProps) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // Initialize map if not already created
+    if (!mapInstanceRef.current) {
+      mapInstanceRef.current = createLeafletMap(mapRef.current, mapStyle);
+    }
+
+    // Clear existing markers
+    markersRef.current.forEach(marker => marker.remove());
+    markersRef.current = [];
+
+    // Filter threats based on active view
+    const filteredThreats = filterThreatsByView(threats, activeView);
+
+    // Add threat markers
+    filteredThreats.forEach(threat => {
+      const marker = createThreatMarker(threat, onThreatClick);
+      if (marker) {
+        markersRef.current.push(marker);
+        marker.addTo(mapInstanceRef.current);
+      }
+    });
+
+  }, [threats, activeView, mapStyle, onThreatClick]);
+
+  // Update map style when changed
+  useEffect(() => {
+    if (mapInstanceRef.current && typeof window !== 'undefined' && (window as any).L) {
+      const L = (window as any).L;
+      
+      // Remove existing tile layers
+      mapInstanceRef.current.eachLayer((layer: any) => {
+        if (layer instanceof L.TileLayer) {
+          mapInstanceRef.current.removeLayer(layer);
+        }
+      });
+
+      // Add new tile layer based on style
+      let tileLayer;
+      switch (mapStyle) {
+        case 'dark':
+          tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 18
+          });
+          break;
+        case 'satellite':
+          tileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri',
+            maxZoom: 18
+          });
+          break;
+        case 'street':
+          tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 18
+          });
+          break;
+      }
+      
+      tileLayer.addTo(mapInstanceRef.current);
+    }
+  }, [mapStyle]);
+
+  return <div ref={mapRef} style={{ height: '600px', width: '100%' }} className="rounded-lg overflow-hidden" />;
+}
+
+// Leaflet map creation with style support
+function createLeafletMap(container: HTMLElement, mapStyle: 'dark' | 'satellite' | 'street' = 'dark') {
+  // Create script and link elements for Leaflet
+  if (!document.querySelector('link[href*="leaflet.css"]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+  }
+
+  if (!document.querySelector('script[src*="leaflet.js"]')) {
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    document.head.appendChild(script);
+  }
+
+  // Wait for Leaflet to load, then create map
+  const checkLeaflet = () => {
+    if (typeof window !== 'undefined' && (window as any).L) {
+      const L = (window as any).L;
+      const map = L.map(container).setView([20, 0], 2);
+      
+      // Add tile layer based on style
+      let tileLayer;
+      switch (mapStyle) {
+        case 'dark':
+          tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 18
+          });
+          break;
+        case 'satellite':
+          tileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri',
+            maxZoom: 18
+          });
+          break;
+        case 'street':
+          tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 18
+          });
+          break;
+      }
+      
+      tileLayer.addTo(map);
+      return map;
+    } else {
+      setTimeout(checkLeaflet, 100);
+      return null;
+    }
+  };
+
+  return checkLeaflet();
+}
+
+function filterThreatsByView(threats: CombinedThreatPoint[], activeView: 'all' | 'apt' | 'malware' | 'c2'): CombinedThreatPoint[] {
+  if (activeView === 'all') return threats;
+  
+  return threats.filter(threat => {
+    if (activeView === 'apt') return 'aptName' in threat;
+    if (activeView === 'malware') return 'malwareFamily' in threat;
+    if (activeView === 'c2') return 'threatType' in threat;
+    return false;
+  });
+}
+
+function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: CombinedThreatPoint) => void) {
+  if (typeof window === 'undefined' || !(window as any).L) return null;
+  
+  const L = (window as any).L;
+  
+  // Determine threat type and styling
+  const threatType = 'aptName' in threat ? 'apt' : 'malwareFamily' in threat ? 'malware' : 'c2';
+  const severityColors = {
+    critical: '#ef4444',
+    high: '#f97316',
+    medium: '#eab308',
+    low: '#3b82f6',
+  };
+  
+  const color = severityColors[threat.severity];
+  const size = Math.min(12 + (threat.count || 1) * 2, 24);
+  
+  // Create custom icon based on threat type
+  let iconHtml = '';
+  
+  if (threatType === 'apt') {
+    // Triangle for APT groups
+    iconHtml = `
+      <div style="
+        width: 0;
+        height: 0;
+        border-left: ${size/2}px solid transparent;
+        border-right: ${size/2}px solid transparent;
+        border-bottom: ${size}px solid ${color};
+        filter: drop-shadow(0 0 6px ${color});
+        ${threat.severity === 'critical' ? 'animation: pulse 2s infinite;' : ''}
+      "></div>
+    `;
+  } else if (threatType === 'malware') {
+    // Square for malware
+    iconHtml = `
+      <div style="
+        width: ${size}px;
+        height: ${size}px;
+        background: ${color};
+        border: 2px solid rgba(255,255,255,0.8);
+        filter: drop-shadow(0 0 6px ${color});
+        ${threat.severity === 'critical' ? 'animation: pulse 2s infinite;' : ''}
+      "></div>
+    `;
+  } else {
+    // Circle for C2 servers
+    iconHtml = `
+      <div style="
+        width: ${size}px;
+        height: ${size}px;
+        background: ${color};
+        border-radius: 50%;
+        border: 2px solid rgba(255,255,255,0.8);
+        filter: drop-shadow(0 0 6px ${color});
+        ${threat.severity === 'critical' ? 'animation: pulse 2s infinite;' : ''}
+      "></div>
+    `;
+  }
+  
+  // Add count label if > 1
+  if ((threat.count || 0) > 1) {
+    iconHtml += `
+      <div style="
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 10px;
+        font-weight: bold;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+      ">${threat.count}</div>
+    `;
+  }
+  
+  // Add pulsing animation CSS
+  iconHtml += `
+    <style>
+      @keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.3); opacity: 0.7; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+    </style>
+  `;
+
+  const icon = L.divIcon({
+    className: 'custom-threat-marker',
+    html: iconHtml,
+    iconSize: [size + 8, size + 8],
+    iconAnchor: [(size + 8) / 2, (size + 8) / 2],
+  });
+
+  const marker = L.marker([threat.lat, threat.lon], { icon });
+  
+  // Create detailed popup content
+  const threatName = 'aptName' in threat ? threat.aptName : 
+                    'malwareFamily' in threat ? threat.malwareFamily :
+                    'threatType' in threat ? threat.threatType : 'Unknown';
+                    
+  const popupContent = `
+    <div style="color: #fff; background: #1e293b; padding: 12px; border-radius: 8px; min-width: 200px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <span style="
+          background: ${color}; 
+          color: white; 
+          padding: 2px 6px; 
+          border-radius: 4px; 
+          font-size: 10px; 
+          font-weight: bold;
+        ">${threat.severity.toUpperCase()}</span>
+        <h3 style="margin: 0; color: ${color}; font-size: 14px;">${threatName}</h3>
+      </div>
+      
+      <div style="font-size: 12px; line-height: 1.4; color: #cbd5e1;">
+        <div style="margin: 4px 0;"><strong>Location:</strong> ${'city' in threat ? `${threat.city}, ` : ''}${threat.country}</div>
+        
+        ${'indicator' in threat ? `
+          <div style="margin: 4px 0;"><strong>Indicator:</strong><br>
+            <code style="font-family: monospace; background: #334155; padding: 2px 4px; border-radius: 3px; font-size: 11px; word-break: break-all;">${threat.indicator}</code>
+          </div>
+        ` : ''}
+        
+        ${'aptName' in threat ? `
+          <div style="margin: 4px 0;"><strong>APT Group:</strong> ${threat.aptName}</div>
+          <div style="margin: 4px 0;"><strong>Aliases:</strong> ${threat.aliases?.slice(0, 3).join(', ') || 'None'}</div>
+        ` : ''}
+        
+        ${'malwareFamily' in threat ? `
+          <div style="margin: 4px 0;"><strong>Malware:</strong> ${threat.malwareFamily}</div>
+          <div style="margin: 4px 0;"><strong>Type:</strong> ${threat.type || 'Unknown'}</div>
+        ` : ''}
+        
+        ${'source' in threat ? `<div style="margin: 4px 0;"><strong>Source:</strong> ${threat.source}</div>` : ''}
+        
+        <div style="margin: 4px 0;"><strong>Incidents:</strong> ${threat.count || 1}</div>
+        
+        ${'timestamp' in threat ? `
+          <div style="margin: 6px 0 0 0; color: #94a3b8; font-size: 11px;">
+            ${new Date(threat.timestamp).toLocaleString()}
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+
+  marker.bindPopup(popupContent, {
+    maxWidth: 300,
+    className: 'custom-threat-popup'
+  });
+  
+  if (onClick) {
+    marker.on('click', () => onClick(threat));
+  }
+
+  return marker;
+}
+
+// Main LiveThreatFeed component
 export function LiveThreatFeed() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Data state management
   const [threats, setThreats] = useState<ThreatPoint[]>([]);
   const [aptThreats, setAptThreats] = useState<APTThreatPoint[]>([]);
   const [malwareThreats, setMalwareThreats] = useState<MalwareThreatPoint[]>([]);
@@ -25,10 +379,13 @@ export function LiveThreatFeed() {
   const [aptStats, setAptStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [hoveredThreat, setHoveredThreat] = useState<CombinedThreatPoint | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  
+  // Map control state
   const [activeView, setActiveView] = useState<'all' | 'apt' | 'malware' | 'c2'>('all');
+  const [mapStyle, setMapStyle] = useState<'dark' | 'satellite' | 'street'>('dark');
+  const [selectedThreat, setSelectedThreat] = useState<CombinedThreatPoint | null>(null);
+  const [combinedThreats, setCombinedThreats] = useState<CombinedThreatPoint[]>([]);
 
   useEffect(() => {
     loadAllThreats();
@@ -41,9 +398,15 @@ export function LiveThreatFeed() {
     }
   }, [autoRefresh]);
 
+  // Combine all threat data when any source updates
   useEffect(() => {
-    drawMap();
-  }, [threats, aptThreats, malwareThreats, hoveredThreat, activeView]);
+    const combined: CombinedThreatPoint[] = [
+      ...threats,
+      ...aptThreats,
+      ...malwareThreats
+    ];
+    setCombinedThreats(combined);
+  }, [threats, aptThreats, malwareThreats]);
 
   const loadAllThreats = async () => {
     setLoading(true);
@@ -77,168 +440,12 @@ export function LiveThreatFeed() {
 
   const loadThreats = loadAllThreats;
 
-  const drawMap = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-
-    // Dark background with grid
-    ctx.fillStyle = '#0a0e27';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw world map outline (simplified)
-    ctx.strokeStyle = 'rgba(0, 255, 159, 0.1)';
-    ctx.lineWidth = 1;
-    
-    // Grid lines
-    for (let i = 0; i < 18; i++) {
-      ctx.beginPath();
-      ctx.moveTo(0, i * (canvas.height / 18));
-      ctx.lineTo(canvas.width, i * (canvas.height / 18));
-      ctx.stroke();
-    }
-    for (let i = 0; i < 36; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * (canvas.width / 36), 0);
-      ctx.lineTo(i * (canvas.width / 36), canvas.height);
-      ctx.stroke();
-    }
-
-    // Convert lat/lon to canvas coordinates
-    const latToY = (lat: number) => ((90 - lat) / 180) * canvas.height;
-    const lonToX = (lon: number) => ((lon + 180) / 360) * canvas.width;
-
-    const severityColors = {
-      critical: '#ef4444',
-      high: '#f97316',
-      medium: '#eab308',
-      low: '#3b82f6',
-    };
-
-    // Determine which points to draw based on active view
-    const drawThreatPoint = (threat: CombinedThreatPoint, type: 'apt' | 'c2' | 'malware') => {
-      const x = lonToX(threat.lon);
-      const y = latToY(threat.lat);
-      const radius = Math.min(5 + (threat.count || 1) * 2, 25);
-      const color = severityColors[threat.severity];
-
-      // Glow effect
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius + 10);
-      gradient.addColorStop(0, color);
-      gradient.addColorStop(1, 'transparent');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(x, y, radius + 10, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Different shapes for different types
-      ctx.fillStyle = color;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-
-      if (type === 'apt') {
-        // Triangle for APT groups
-        ctx.beginPath();
-        ctx.moveTo(x, y - radius);
-        ctx.lineTo(x + radius, y + radius);
-        ctx.lineTo(x - radius, y + radius);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      } else if (type === 'malware') {
-        // Square for malware
-        ctx.fillRect(x - radius/2, y - radius/2, radius, radius);
-        ctx.strokeRect(x - radius/2, y - radius/2, radius, radius);
-      } else {
-        // Circle for C2
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
-
-      // Pulse for critical
-      if (threat.severity === 'critical') {
-        const time = Date.now() / 1000;
-        const pulseRadius = radius + Math.sin(time * 3) * 5;
-        ctx.beginPath();
-        ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.5 + Math.sin(time * 3) * 0.5;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-
-      // Count label
-      if ((threat.count || 0) > 1) {
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 11px JetBrains Mono';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(threat.count?.toString() || '', x, y);
-      }
-
-      // Highlight on hover
-      if (hoveredThreat?.id === threat.id) {
-        ctx.strokeStyle = '#00FF9F';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(x, y, radius + 15, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    };
-
-    // Draw based on active view
-    if (activeView === 'all' || activeView === 'apt') {
-      aptThreats.forEach((threat) => drawThreatPoint(threat, 'apt'));
-    }
-    if (activeView === 'all' || activeView === 'c2') {
-      threats.forEach((threat) => drawThreatPoint(threat, 'c2'));
-    }
-    if (activeView === 'all' || activeView === 'malware') {
-      malwareThreats.forEach((threat) => drawThreatPoint(threat, 'malware'));
-    }
-  };
-
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const lonToX = (lon: number) => ((lon + 180) / 360) * canvas.width;
-    const latToY = (lat: number) => ((90 - lat) / 180) * canvas.height;
-
-    // Check all threat types
-    const allPoints: CombinedThreatPoint[] = [...threats, ...aptThreats, ...malwareThreats];
-    
-    const clicked = allPoints.find((threat) => {
-      const tx = lonToX(threat.lon);
-      const ty = latToY(threat.lat);
-      const distance = Math.sqrt((x - tx) ** 2 + (y - ty) ** 2);
-      const radius = Math.min(5 + (threat.count || 1) * 2, 25);
-      return distance <= radius + 15;
-    });
-
-    setHoveredThreat(clicked || null);
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (rect) {
-      setMousePos({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      });
-    }
+  const handleThreatClick = (threat: CombinedThreatPoint) => {
+    setSelectedThreat(threat);
+    const threatName = 'aptName' in threat ? threat.aptName : 
+                      'malwareFamily' in threat ? threat.malwareFamily :
+                      threat.threatType || 'Unknown';
+    toast.info(`Selected: ${threatName} - ${threat.severity.toUpperCase()} threat in ${threat.country}`);
   };
 
   const stats = {
@@ -326,69 +533,109 @@ export function LiveThreatFeed() {
         ))}
       </div>
 
-      {/* Map */}
+      {/* Interactive Map */}
       <Card className="bg-card border-border">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-foreground">
             <MapPin className="h-5 w-5 text-primary" />
             Global Threat Distribution
           </CardTitle>
+          
+          {/* Map Style Controls */}
+          <div className="flex items-center gap-2">
+            <div className="text-sm text-muted-foreground flex items-center gap-2">
+              <Layers className="h-4 w-4" />
+              Map Style:
+            </div>
+            <div className="flex gap-1">
+              {(['dark', 'satellite', 'street'] as const).map((style) => (
+                <Button
+                  key={style}
+                  variant={mapStyle === style ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setMapStyle(style)}
+                  className="capitalize px-3 py-1 h-8"
+                >
+                  {style}
+                </Button>
+              ))}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="relative">
-          <canvas
-            ref={canvasRef}
-            className="w-full h-[600px] rounded-lg cursor-pointer"
-            onClick={handleCanvasClick}
-            onMouseMove={handleMouseMove}
+        <CardContent className="relative p-4">
+          <LeafletThreatMap 
+            threats={combinedThreats}
+            activeView={activeView}
+            mapStyle={mapStyle}
+            onThreatClick={handleThreatClick}
           />
 
-          {/* Tooltip */}
-          {hoveredThreat && (
-            <div
-              className="absolute bg-card/95 border border-border rounded-lg p-3 shadow-xl max-w-xs pointer-events-none z-10"
-              style={{
-                left: Math.min(mousePos.x + 10, (canvasRef.current?.width || 0) - 250),
-                top: mousePos.y + 10,
-              }}
-            >
-              <div className="flex items-center gap-2 mb-2">
+          
+          {/* Selected Threat Info Panel */}
+          {selectedThreat && (
+            <div className="mt-4 bg-secondary/50 border border-border rounded-lg p-4">
+              <h3 className="font-semibold text-foreground flex items-center gap-2 mb-3">
                 <Badge className={cn(
-                  hoveredThreat.severity === 'critical' ? 'bg-red-500' :
-                  hoveredThreat.severity === 'high' ? 'bg-orange-500' :
-                  hoveredThreat.severity === 'medium' ? 'bg-yellow-500' : 'bg-blue-500'
+                  selectedThreat.severity === 'critical' ? 'bg-red-500' :
+                  selectedThreat.severity === 'high' ? 'bg-orange-500' :
+                  selectedThreat.severity === 'medium' ? 'bg-yellow-500' : 'bg-blue-500'
                 )}>
-                  {hoveredThreat.severity.toUpperCase()}
+                  {selectedThreat.severity.toUpperCase()}
                 </Badge>
-                <span className="text-sm font-semibold">
-                  {'threatType' in hoveredThreat ? hoveredThreat.threatType : 
-                   'aptName' in hoveredThreat ? hoveredThreat.aptName :
-                   'malwareFamily' in hoveredThreat ? hoveredThreat.malwareFamily : 'Unknown'}
-                </span>
-              </div>
-              <div className="space-y-1 text-xs">
-                <div><strong>Location:</strong> {'city' in hoveredThreat ? `${hoveredThreat.city}, ` : ''}{hoveredThreat.country}</div>
-                {'indicator' in hoveredThreat && (
-                  <div><strong>Indicator:</strong> <code className="font-mono bg-secondary px-1 rounded">{hoveredThreat.indicator}</code></div>
-                )}
-                {'aptName' in hoveredThreat && (
-                  <>
-                    <div><strong>APT Group:</strong> {hoveredThreat.aptName}</div>
-                    <div><strong>Aliases:</strong> {hoveredThreat.aliases?.slice(0, 3).join(', ')}</div>
-                  </>
-                )}
-                {'malwareFamily' in hoveredThreat && (
-                  <>
-                    <div><strong>Malware:</strong> {hoveredThreat.malwareFamily}</div>
-                    <div><strong>Type:</strong> {hoveredThreat.type}</div>
-                  </>
-                )}
-                {'source' in hoveredThreat && <div><strong>Source:</strong> {hoveredThreat.source}</div>}
-                <div><strong>Count:</strong> {hoveredThreat.count || 1}</div>
-                {'timestamp' in hoveredThreat && (
-                  <div className="text-muted-foreground">
-                    {new Date(hoveredThreat.timestamp).toLocaleString()}
+                Selected Threat Details
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedThreat(null)}
+                  className="ml-auto h-6 w-6 p-0"
+                >
+                  ×
+                </Button>
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="font-medium mb-2">Threat Information</div>
+                  <div className="space-y-1 text-muted-foreground">
+                    <div><strong>Type:</strong> 
+                      {'threatType' in selectedThreat ? selectedThreat.threatType : 
+                       'aptName' in selectedThreat ? 'APT Group' :
+                       'malwareFamily' in selectedThreat ? 'Malware' : 'Unknown'}
+                    </div>
+                    <div><strong>Name:</strong> 
+                      {'aptName' in selectedThreat ? selectedThreat.aptName : 
+                       'malwareFamily' in selectedThreat ? selectedThreat.malwareFamily :
+                       selectedThreat.threatType || 'Unknown'}
+                    </div>
+                    <div><strong>Location:</strong> {'city' in selectedThreat ? `${selectedThreat.city}, ` : ''}{selectedThreat.country}</div>
+                    <div><strong>Incidents:</strong> {selectedThreat.count || 1}</div>
                   </div>
-                )}
+                </div>
+                
+                <div>
+                  <div className="font-medium mb-2">Additional Details</div>
+                  <div className="space-y-1 text-muted-foreground">
+                    {'indicator' in selectedThreat && (
+                      <div><strong>Indicator:</strong> 
+                        <code className="ml-2 font-mono bg-background px-2 py-1 rounded text-xs break-all">
+                          {selectedThreat.indicator}
+                        </code>
+                      </div>
+                    )}
+                    {'aptName' in selectedThreat && selectedThreat.aliases && (
+                      <div><strong>Aliases:</strong> {selectedThreat.aliases.slice(0, 3).join(', ')}</div>
+                    )}
+                    {'malwareFamily' in selectedThreat && selectedThreat.type && (
+                      <div><strong>Malware Type:</strong> {selectedThreat.type}</div>
+                    )}
+                    {'source' in selectedThreat && (
+                      <div><strong>Source:</strong> {selectedThreat.source}</div>
+                    )}
+                    {'timestamp' in selectedThreat && (
+                      <div><strong>Last Seen:</strong> {new Date(selectedThreat.timestamp).toLocaleString()}</div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
