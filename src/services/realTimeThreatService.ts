@@ -1,7 +1,7 @@
 // src/services/realTimeThreatService.ts
 // Real-time threat intelligence aggregator with live data sources
 
-interface ThreatPoint {
+export interface ThreatPoint {
   id: string;
   lat: number;
   lon: number;
@@ -16,7 +16,7 @@ interface ThreatPoint {
   metadata?: any;
 }
 
-interface MalwareIntel {
+export interface MalwareIntel {
   id: string;
   family: string;
   hash: string;
