@@ -44,10 +44,8 @@ class OpenCTICorrelationService {
     try {
       // 1. Get MITRE ATT&CK data
       const mitreData = await mitreAttackService.getMalwareByName(family);
-      if (mitreData.length > 0) {
-        mitreData.forEach(malware => {
-          results.push(this.convertMitreToOpenCTI(malware));
-        });
+      if (mitreData) {
+        results.push(this.convertMitreToOpenCTI(mitreData));
       }
 
       // 2. Get MalwareBazaar samples  
