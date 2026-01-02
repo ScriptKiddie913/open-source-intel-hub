@@ -282,42 +282,142 @@ class RealTimeThreatFeedService {
     }
   }
 
-  // Fetch Feodo Tracker C2 Servers
+  // Fetch Feodo Tracker C2 Servers (using text format as fallback)
   private async fetchFeodoTracker(): Promise<FeodoEntry[]> {
-    const response = await fetch('/api/feodo/ipblocklist_recommended.json');
+    try {
+      // Try JSON first
+      const response = await fetch('/api/feodo/ipblocklist_recommended.json', {
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (response.ok) {
+        const text = await response.text();
+        if (text.startsWith('<')) throw new Error('HTML response');
+        const data = JSON.parse(text);
+        const entries: FeodoEntry[] = Array.isArray(data) ? data : (data?.value || []);
+        console.log(`[Feodo] ${entries.length} C2 servers (JSON)`);
+        return entries;
+      }
+    } catch (e) {
+      console.warn('[Feodo] JSON failed, trying text format');
+    }
+
+    // Fallback to text format
+    const response = await fetch('/api/feodo/ipblocklist_recommended.txt');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     
-    const data = await response.json();
-    const entries: FeodoEntry[] = Array.isArray(data) ? data : (data?.value || []);
-    console.log(`[Feodo] ${entries.length} C2 servers`);
+    const text = await response.text();
+    if (text.startsWith('<')) throw new Error('HTML response received');
+    
+    const entries: FeodoEntry[] = text.split('\n')
+      .filter(line => line && !line.startsWith('#'))
+      .map(ip => ({
+        ip_address: ip.trim(),
+        port: 443,
+        status: 'online' as const,
+        hostname: null,
+        as_number: 0,
+        as_name: 'Unknown',
+        country: 'XX',
+        first_seen: new Date().toISOString(),
+        last_online: new Date().toISOString(),
+        malware: 'Unknown'
+      }));
+    
+    console.log(`[Feodo] ${entries.length} C2 servers (TXT)`);
     return entries;
   }
 
-  // Fetch URLhaus malicious URLs
+  // Fetch URLhaus malicious URLs (POST API)
   private async fetchURLhaus(): Promise<URLhausEntry[]> {
-    const response = await fetch('/api/urlhaus/json_recent/');
+    try {
+      // Use POST API which is more reliable
+      const response = await fetch('/api/urlhaus-api/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'query=get_recent&limit=500'
+      });
+      
+      if (response.ok) {
+        const text = await response.text();
+        if (!text.startsWith('<')) {
+          const data = JSON.parse(text);
+          if (data.query_status === 'ok' && data.urls) {
+            console.log(`[URLhaus] ${data.urls.length} URLs (API)`);
+            return data.urls.map((u: any) => ({
+              dateadded: u.dateadded,
+              url: u.url,
+              url_status: u.url_status,
+              last_online: u.last_online,
+              threat: u.threat,
+              tags: u.tags || [],
+              urlhaus_link: u.urlhaus_link,
+              reporter: u.reporter
+            }));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[URLhaus] API failed, trying text format');
+    }
+
+    // Fallback to text format
+    const response = await fetch('/api/urlhaus/text_recent/');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     
-    const data = await response.json();
-    const entries: URLhausEntry[] = [];
+    const text = await response.text();
+    if (text.startsWith('<')) throw new Error('HTML response received');
     
-    if (data && typeof data === 'object') {
-      Object.values(data).forEach((item: any) => {
-        if (Array.isArray(item)) entries.push(...item);
-        else if (item && typeof item === 'object') entries.push(item);
-      });
-    }
+    const entries: URLhausEntry[] = text.split('\n')
+      .filter(line => line && !line.startsWith('#'))
+      .slice(0, 500)
+      .map(url => ({
+        dateadded: new Date().toISOString(),
+        url: url.trim(),
+        url_status: 'online' as const,
+        last_online: null,
+        threat: 'malware_download',
+        tags: [],
+        urlhaus_link: '',
+        reporter: ''
+      }));
     
-    console.log(`[URLhaus] ${entries.length} URLs`);
-    return entries.slice(0, 500);
+    console.log(`[URLhaus] ${entries.length} URLs (TXT)`);
+    return entries;
   }
 
-  // Fetch ThreatFox IOCs
+  // Fetch ThreatFox IOCs (POST API)
   private async fetchThreatFox(): Promise<ThreatFoxEntry[]> {
+    try {
+      // Use POST API
+      const response = await fetch('/api/threatfox-api/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'get_iocs', days: 1 })
+      });
+      
+      if (response.ok) {
+        const text = await response.text();
+        if (!text.startsWith('<')) {
+          const data = JSON.parse(text);
+          if (data.query_status === 'ok' && data.data) {
+            console.log(`[ThreatFox] ${data.data.length} IOCs (API)`);
+            return data.data.slice(0, 500);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[ThreatFox] API failed, trying export format');
+    }
+
+    // Fallback - try JSON export
     const response = await fetch('/api/threatfox/json/recent/');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     
-    const data = await response.json();
+    const text = await response.text();
+    if (text.startsWith('<')) throw new Error('HTML response received');
+    
+    const data = JSON.parse(text);
     const entries: ThreatFoxEntry[] = [];
     
     if (data && typeof data === 'object') {
@@ -331,17 +431,43 @@ class RealTimeThreatFeedService {
     return entries.slice(0, 500);
   }
 
-  // Fetch MalwareBazaar samples
+  // Fetch MalwareBazaar samples (POST API)
   private async fetchMalwareBazaar(): Promise<string[]> {
+    try {
+      // Use POST API
+      const response = await fetch('/api/bazaar-api/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'query=get_recent&selector=time'
+      });
+      
+      if (response.ok) {
+        const text = await response.text();
+        if (!text.startsWith('<')) {
+          const data = JSON.parse(text);
+          if (data.query_status === 'ok' && data.data) {
+            const hashes = data.data.map((s: any) => s.sha256_hash).filter(Boolean);
+            console.log(`[Bazaar] ${hashes.length} hashes (API)`);
+            return hashes.slice(0, 200);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Bazaar] API failed, trying text format');
+    }
+
+    // Fallback to text format
     const response = await fetch('/api/bazaar/txt/sha256/recent/');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     
     const text = await response.text();
+    if (text.startsWith('<')) throw new Error('HTML response received');
+    
     const hashes = text.split('\n')
       .map(line => line.trim())
       .filter(line => line && !line.startsWith('#') && line.length === 64);
     
-    console.log(`[Bazaar] ${hashes.length} hashes`);
+    console.log(`[Bazaar] ${hashes.length} hashes (TXT)`);
     return hashes.slice(0, 200);
   }
 
