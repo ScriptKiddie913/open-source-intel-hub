@@ -301,11 +301,10 @@ export function CVEExplorer() {
 }
 
 function CVECard({ cve, onSelect }: { cve: CVEData; onSelect: (cve: CVEData) => void }) {
-  // Generate source links for the CVE
+  // Generate source links for the CVE - only official sources
   const sourceLinks = {
     nvd: `https://nvd.nist.gov/vuln/detail/${cve.id}`,
     mitre: `https://cve.mitre.org/cgi-bin/cvename.cgi?name=${cve.id}`,
-    github: `https://github.com/search?q=${cve.id}&type=repositories`,
     exploitdb: `https://www.exploit-db.com/search?cve=${cve.id}`,
   };
 
@@ -371,15 +370,6 @@ function CVECard({ cve, onSelect }: { cve: CVEData; onSelect: (cve: CVEData) => 
               <Globe className="h-4 w-4" />
             </a>
             <a
-              href={sourceLinks.github}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1 hover:bg-secondary rounded text-muted-foreground hover:text-primary"
-              title="Search on GitHub"
-            >
-              <Github className="h-4 w-4" />
-            </a>
-            <a
               href={sourceLinks.exploitdb}
               target="_blank"
               rel="noopener noreferrer"
@@ -416,11 +406,10 @@ function CVEDetails({ cve, onBack }: { cve: CVEData; onBack: () => void }) {
     fetchPoCs();
   }, [cve.id]);
 
-  // Generate all source links
+  // Generate all source links - only official sources, no GitHub search (real repos shown separately)
   const sourceLinks = [
     { name: 'NVD (NIST)', url: `https://nvd.nist.gov/vuln/detail/${cve.id}`, icon: Globe },
     { name: 'MITRE', url: `https://cve.mitre.org/cgi-bin/cvename.cgi?name=${cve.id}`, icon: Shield },
-    { name: 'GitHub Search', url: `https://github.com/search?q=${cve.id}&type=repositories`, icon: Github },
     { name: 'Exploit-DB', url: `https://www.exploit-db.com/search?cve=${cve.id}`, icon: Code },
     { name: 'Vulmon', url: `https://vulmon.com/vulnerabilitydetails?qid=${cve.id}`, icon: Link2 },
     { name: 'CIRCL', url: `https://cve.circl.lu/cve/${cve.id}`, icon: Globe },
