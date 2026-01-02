@@ -108,8 +108,8 @@ class OpenCTICorrelationService {
       const [c2Servers, urlEntries, threatfoxIOCs, malwareSamples] = await Promise.all([
         fetchFeodoC2Servers(),
         fetchURLhausRecent(),
-        fetchThreatFoxIOCs(7),
-        fetchMalwareBazaarRecent(100)
+        fetchThreatFoxIOCs(30),
+        fetchMalwareBazaarRecent(500)
       ]);
 
       const landscape = {
