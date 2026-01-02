@@ -56,24 +56,67 @@ export default defineConfig(({ mode }) => {
           target: 'https://feodotracker.abuse.ch',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/feodo/, '/downloads'),
+          headers: {
+            'Accept': '*/*',
+            'User-Agent': 'Mozilla/5.0 OSINT-Hub/1.0',
+          },
         },
-        // Proxy abuse.ch URLhaus API
+        // Proxy abuse.ch URLhaus Download API
         '/api/urlhaus': {
           target: 'https://urlhaus.abuse.ch',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/urlhaus/, '/downloads'),
+          headers: {
+            'Accept': '*/*',
+            'User-Agent': 'Mozilla/5.0 OSINT-Hub/1.0',
+          },
         },
-        // Proxy abuse.ch ThreatFox API
+        // Proxy abuse.ch URLhaus POST API
+        '/api/urlhaus-api': {
+          target: 'https://urlhaus-api.abuse.ch',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/urlhaus-api/, '/v1'),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 OSINT-Hub/1.0',
+          },
+        },
+        // Proxy abuse.ch ThreatFox Export API
         '/api/threatfox': {
           target: 'https://threatfox.abuse.ch',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/threatfox/, '/export'),
+          headers: {
+            'Accept': '*/*',
+            'User-Agent': 'Mozilla/5.0 OSINT-Hub/1.0',
+          },
         },
-        // Proxy abuse.ch MalwareBazaar API
+        // Proxy abuse.ch ThreatFox POST API
+        '/api/threatfox-api': {
+          target: 'https://threatfox-api.abuse.ch',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/threatfox-api/, '/api/v1'),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 OSINT-Hub/1.0',
+          },
+        },
+        // Proxy abuse.ch MalwareBazaar Export API
         '/api/bazaar': {
           target: 'https://bazaar.abuse.ch',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/bazaar/, '/export'),
+          headers: {
+            'Accept': '*/*',
+            'User-Agent': 'Mozilla/5.0 OSINT-Hub/1.0',
+          },
+        },
+        // Proxy abuse.ch MalwareBazaar POST API
+        '/api/bazaar-api': {
+          target: 'https://mb-api.abuse.ch',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/bazaar-api/, '/api/v1'),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 OSINT-Hub/1.0',
+          },
         },
         // Proxy Cisco Talos Intelligence - Reputation Center
         '/api/talos': {
