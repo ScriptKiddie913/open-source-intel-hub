@@ -169,7 +169,7 @@ export function SearchHistoryPage() {
   }, {} as Record<string, SearchHistoryItem[]>);
 
   const groupedEnhancedByDate = filteredEnhancedHistory.reduce((acc, item) => {
-    const date = new Date(item.createdAt).toLocaleDateString();
+    const date = new Date(item.created_at).toLocaleDateString();
     if (!acc[date]) acc[date] = [];
     acc[date].push(item);
     return acc;
@@ -336,18 +336,18 @@ export function SearchHistoryPage() {
                                         {catConfig?.label || item.category}
                                       </Badge>
                                       <Badge variant="outline" className="text-xs">
-                                        {item.searchType}
+                                        {item.search_type}
                                       </Badge>
-                                      {item.resultsCount > 0 && (
+                                      {item.results_count > 0 && (
                                         <span className="text-xs text-muted-foreground">
-                                          {item.resultsCount} results
+                                          {item.results_count} results
                                         </span>
                                       )}
                                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                                         <Clock className="h-3 w-3" />
-                                        {new Date(item.createdAt).toLocaleTimeString()}
+                                        {new Date(item.created_at).toLocaleTimeString()}
                                       </span>
-                                      {item.chatContext && (
+                                      {item.metadata?.chatContext && (
                                         <Badge variant="outline" className="text-xs bg-green-500/20 text-green-400 border-green-500/50">
                                           <MessageSquare className="h-3 w-3 mr-1" />
                                           Has Chat
