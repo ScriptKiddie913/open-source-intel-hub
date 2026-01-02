@@ -442,10 +442,10 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
                       threat.severity_level === 'critical' ? 'destructive' :
                       threat.severity_level === 'high' ? 'secondary' :
                       threat.severity_level === 'medium' ? 'outline' : 'default'
-                    }>
+                    } className="pointer-events-none">
                       {threat.severity_level}
                     </Badge>
-                    <Badge variant="outline">{threat.threat_type}</Badge>
+                    <Badge variant="outline" className="pointer-events-none">{threat.threat_type}</Badge>
                   </div>
                   <p className="text-xs text-gray-600 mt-1">
                     Source: {threat.source_name} | Confidence: {threat.confidence_level}%
