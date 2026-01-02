@@ -189,7 +189,7 @@ export async function fetchURLhausRecent(): Promise<URLhausEntry[]> {
     // Format: { "3722626": [{ dateadded, url, url_status, ... }], ... }
     const rawEntries = Object.values(data || {})
       .flat() // Flatten the arrays
-      .slice(0, 500);
+      .slice(0, 1000);
     
     console.log('[URLhaus] Raw entries:', rawEntries.length);
     
@@ -251,7 +251,7 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
       .flatMap(([id, entries]: [string, any]) => 
         (Array.isArray(entries) ? entries : [entries]).map(entry => ({ ...entry, _id: id }))
       )
-      .slice(0, 500);
+      .slice(0, 1000);
     
     console.log('[ThreatFox] Raw entries:', rawEntries.length);
     
@@ -282,7 +282,7 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
    MALWAREBAZAAR (Samples)
 ============================================================================ */
 
-export async function fetchMalwareBazaarRecent(limit: number = 100): Promise<MalwareSample[]> {
+export async function fetchMalwareBazaarRecent(limit: number = 500): Promise<MalwareSample[]> {
   const cacheKey = `malwarebazaar_recent_${limit}`;
   const cached = await getCachedData(cacheKey) as MalwareSample[] | null;
   if (cached && Array.isArray(cached) && cached.length > 0) {
@@ -347,8 +347,8 @@ export async function fetchAllThreatFeeds(): Promise<ThreatFeedSummary> {
   const [c2Servers, urlhausEntries, threatfoxIOCs, malwareSamples] = await Promise.all([
     fetchFeodoC2Servers(),
     fetchURLhausRecent(),
-    fetchThreatFoxIOCs(7),  // Last 7 days
-    fetchMalwareBazaarRecent(200),
+    fetchThreatFoxIOCs(30),  // Last 30 days for more data
+    fetchMalwareBazaarRecent(500),
   ]);
   
   // Convert to unified indicators
