@@ -75,6 +75,42 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/bazaar/, '/export'),
         },
+        // Proxy Cisco Talos Intelligence - Reputation Center
+        '/api/talos': {
+          target: 'https://talosintelligence.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/talos/, ''),
+        },
+        // Proxy AlienVault OTX - Open Threat Exchange
+        '/api/otx': {
+          target: 'https://otx.alienvault.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/otx/, '/api/v1'),
+        },
+        // Proxy Phishtank API
+        '/api/phishtank': {
+          target: 'https://data.phishtank.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/phishtank/, '/data'),
+        },
+        // Proxy Botvrij.eu blocklists  
+        '/api/botvrij': {
+          target: 'https://www.botvrij.eu',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/botvrij/, '/data'),
+        },
+        // Proxy OpenPhish feed
+        '/api/openphish': {
+          target: 'https://openphish.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/openphish/, ''),
+        },
+        // Proxy SSLBL - SSL Blacklist by abuse.ch
+        '/api/sslbl': {
+          target: 'https://sslbl.abuse.ch',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/sslbl/, '/blacklist'),
+        },
       },
     },
 
