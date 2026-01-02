@@ -338,8 +338,8 @@ class RealTimeThreatFeedService {
   // Fetch URLhaus malicious URLs (POST API)
   private async fetchURLhaus(): Promise<URLhausEntry[]> {
     const urls = [
-      { url: 'https://urlhaus-api.abuse.ch/v1/urls/recent/limit/500/', method: 'GET' },
-      { url: '/api/urlhaus-api/', method: 'POST', body: 'query=get_recent&limit=500' }
+      { url: 'https://urlhaus-api.abuse.ch/v1/urls/recent/limit/1000/', method: 'GET' },
+      { url: '/api/urlhaus-api/', method: 'POST', body: 'query=get_recent&limit=1000' }
     ];
 
     for (const config of urls) {
@@ -357,7 +357,7 @@ class RealTimeThreatFeedService {
             if (data.urls?.length || data.data?.length) {
               const entries = data.urls || data.data || [];
               console.log(`[URLhaus] ${entries.length} URLs`);
-              return entries.slice(0, 500).map((u: any) => ({
+              return entries.slice(0, 1000).map((u: any) => ({
                 dateadded: u.dateadded || u.date_added || new Date().toISOString(),
                 url: u.url,
                 url_status: u.url_status || 'online',
@@ -401,7 +401,7 @@ class RealTimeThreatFeedService {
       const response = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: 'get_iocs', days: 1 })
+        body: JSON.stringify({ query: 'get_iocs', days: 7 })
       });
       
       if (response.ok) {
@@ -410,7 +410,7 @@ class RealTimeThreatFeedService {
           const data = JSON.parse(text);
           if (data.query_status === 'ok' && data.data?.length) {
             console.log(`[ThreatFox] ${data.data.length} IOCs`);
-            return data.data.slice(0, 500);
+            return data.data.slice(0, 1000);
           }
         }
       }
@@ -464,7 +464,7 @@ class RealTimeThreatFeedService {
           if (data.query_status === 'ok' && data.data?.length) {
             const hashes = data.data.map((s: any) => s.sha256_hash).filter(Boolean);
             console.log(`[Bazaar] ${hashes.length} hashes`);
-            return hashes.slice(0, 200);
+            return hashes.slice(0, 500);
           }
         }
       }
