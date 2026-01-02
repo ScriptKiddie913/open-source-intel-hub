@@ -65,8 +65,8 @@ export function CVEExplorer() {
           
           // Save to Supabase search history (for logged-in users)
           await saveSearchHistory(query.toUpperCase(), 'cve', 1, {
-            severity: cve.severity,
-            cvssScore: cve.cvssScore,
+            severity: cve.cvss.severity,
+            cvssScore: cve.cvss.score,
           });
         } else {
           toast.error('CVE not found');

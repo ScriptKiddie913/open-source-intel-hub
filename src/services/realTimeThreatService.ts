@@ -277,5 +277,4 @@ export async function fetchMalwareIntelligence(): Promise<MalwareIntel[]> {
   }
 }
 
-// Export for use in components
-export type { ThreatPoint, MalwareIntel };
+// Types are exported at the top with the interface definitions
