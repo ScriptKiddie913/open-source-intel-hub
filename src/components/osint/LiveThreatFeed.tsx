@@ -16,19 +16,7 @@ import { fetchAllThreatFeeds, getMalwareThreatMapData, type ThreatFeedSummary, t
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-// Extended union type for combined threat points with optional properties
-type CombinedThreatPoint = (ThreatPoint | APTThreatPoint | MalwareThreatPoint) & {
-  aptName?: string;
-  malwareFamily?: string;
-  aliases?: string[];
-  count?: number;
-  threatType?: string;
-  type?: string;
-  city?: string;
-  indicator?: string;
-  source?: string;
-  timestamp?: string;
-};
+type CombinedThreatPoint = ThreatPoint | APTThreatPoint | MalwareThreatPoint;
 
 // Add Leaflet styling to document head
 if (typeof document !== 'undefined') {
@@ -227,11 +215,8 @@ function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: Comb
   
   const L = (window as any).L;
   
-  // Determine threat type and styling - check for name property (APTThreatPoint) or aptName
-  const isAPT = 'name' in threat && 'aliasCount' in threat;
-  const isMalware = 'malwareFamily' in threat && !isAPT;
-  const threatTypeValue = isAPT ? 'apt' : isMalware ? 'malware' : 'c2';
-  
+  // Determine threat type and styling
+  const threatType = 'aptName' in threat ? 'apt' : 'malwareFamily' in threat ? 'malware' : 'c2';
   const severityColors = {
     critical: '#ef4444',
     high: '#f97316',
@@ -240,14 +225,12 @@ function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: Comb
   };
   
   const color = severityColors[threat.severity];
-  // Use count from ThreatPoint, or default to 1
-  const threatCount = 'count' in threat ? (threat.count || 1) : 1;
-  const size = Math.min(12 + threatCount * 2, 24);
+  const size = Math.min(12 + (threat.count || 1) * 2, 24);
   
   // Create custom icon based on threat type
   let iconHtml = '';
   
-  if (threatTypeValue === 'apt') {
+  if (threatType === 'apt') {
     // Triangle for APT groups
     iconHtml = `
       <div style="
@@ -260,7 +243,7 @@ function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: Comb
         ${threat.severity === 'critical' ? 'animation: pulse 2s infinite;' : ''}
       "></div>
     `;
-  } else if (threatTypeValue === 'malware') {
+  } else if (threatType === 'malware') {
     // Square for malware
     iconHtml = `
       <div style="
@@ -288,7 +271,7 @@ function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: Comb
   }
   
   // Add count label if > 1
-  if (threatCount > 1) {
+  if ((threat.count || 0) > 1) {
     iconHtml += `
       <div style="
         position: absolute;
@@ -299,7 +282,7 @@ function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: Comb
         font-size: 10px;
         font-weight: bold;
         text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
-      ">${threatCount}</div>
+      ">${threat.count}</div>
     `;
   }
   

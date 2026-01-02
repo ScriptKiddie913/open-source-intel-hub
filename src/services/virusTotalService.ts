@@ -443,69 +443,80 @@ async function saveToDatabase(
     })),
   ];
   
-  // Batch save to localStorage (threats table not available)
+  // Batch upsert to database
   const batchSize = 100;
-  try {
-    const existingThreats = JSON.parse(localStorage.getItem('virusTotalThreats') || '[]');
-    const threatsMap = new Map(existingThreats.map((t: any) => [t.id, t]));
+  for (let i = 0; i < threats.length; i += batchSize) {
+    const batch = threats.slice(i, i + batchSize);
     
-    for (let i = 0; i < threats.length; i += batchSize) {
-      const batch = threats.slice(i, i + batchSize);
+    try {
+      const { error } = await supabase
+        .from('threats')
+        .upsert(batch, {
+          onConflict: 'id',
+          ignoreDuplicates: false, // Update existing records
+        });
       
-      batch.forEach((threat: any) => {
-        threatsMap.set(threat.id, threat);
-      });
-      
-      saved += batch.length;
+      if (error) {
+        console.error('[VirusTotal] Database upsert error:', error);
+        errors += batch.length;
+      } else {
+        saved += batch.length;
+      }
+    } catch (err) {
+      console.error('[VirusTotal] Database batch error:', err);
+      errors += batch.length;
     }
-    
-    localStorage.setItem('virusTotalThreats', JSON.stringify(Array.from(threatsMap.values())));
-    console.log(`[VirusTotal] Local storage save complete: ${saved} saved, ${errors} errors`);
-  } catch (err) {
-    console.error('[VirusTotal] Local storage save error:', err);
-    errors += threats.length;
   }
   
+  console.log(`[VirusTotal] Database save complete: ${saved} saved, ${errors} errors`);
   return { saved, errors };
 }
 
 /**
- * Get threat by value from localStorage (for graph lookups)
+ * Get threat by value from database (for graph lookups)
  */
 export async function getThreatFromDatabase(value: string): Promise<any | null> {
   try {
-    // Search by indicator value in localStorage
-    const threats = JSON.parse(localStorage.getItem('virusTotalThreats') || '[]');
-    const threat = threats.find((t: any) => 
-      t.indicators && t.indicators.includes(value)
-    );
+    // Search by indicator value
+    const { data, error } = await supabase
+      .from('threats')
+      .select('*')
+      .contains('indicators', [value])
+      .limit(1)
+      .maybeSingle();
     
-    return threat || null;
+    if (error) {
+      console.error('[VirusTotal] Database lookup error:', error);
+      return null;
+    }
+    
+    return data;
   } catch (err) {
-    console.error('[VirusTotal] Local storage lookup failed:', err);
+    console.error('[VirusTotal] Database lookup failed:', err);
     return null;
   }
 }
 
 /**
- * Search threats by name or indicator in localStorage
+ * Search threats by name or indicator
  */
 export async function searchThreatsInDatabase(query: string): Promise<any[]> {
   try {
-    const threats = JSON.parse(localStorage.getItem('virusTotalThreats') || '[]');
-    const lowerQuery = query.toLowerCase();
+    const { data, error } = await supabase
+      .from('threats')
+      .select('*')
+      .or(`name.ilike.%${query}%,indicators.cs.{${query}}`)
+      .order('last_seen', { ascending: false })
+      .limit(50);
     
-    const results = threats
-      .filter((t: any) => 
-        t.name.toLowerCase().includes(lowerQuery) ||
-        (t.indicators && t.indicators.some((ind: string) => ind.toLowerCase().includes(lowerQuery)))
-      )
-      .sort((a: any, b: any) => new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime())
-      .slice(0, 50);
+    if (error) {
+      console.error('[VirusTotal] Database search error:', error);
+      return [];
+    }
     
-    return results;
+    return data || [];
   } catch (err) {
-    console.error('[VirusTotal] Local storage search failed:', err);
+    console.error('[VirusTotal] Database search failed:', err);
     return [];
   }
 }

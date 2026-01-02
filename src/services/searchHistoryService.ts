@@ -32,7 +32,7 @@ export interface EnhancedSearchHistory {
   category: SearchCategory;
   results_count: number;
   metadata: Record<string, any>;
-  search_results?: Record<string, any>;
+  search_results: Record<string, any>;
   session_id?: string;
   created_at: string;
 }
@@ -86,21 +86,20 @@ export async function saveEnhancedSearch(
   try {
     const sessionId = generateSessionId();
     
-    // Store in search_history table with enhanced metadata
     const { data, error } = await supabase
       .from('search_history')
       .insert({
         user_id: user.id,
         query,
         search_type: searchType,
+        category,
         results_count: resultsCount,
         metadata: {
           ...metadata,
-          category,
-          search_results: searchResults,
-          session_id: sessionId,
           timestamp: new Date().toISOString(),
         },
+        search_results: searchResults,
+        session_id: sessionId,
       })
       .select()
       .single();
@@ -111,20 +110,7 @@ export async function saveEnhancedSearch(
     }
 
     console.log(`[SearchHistory] Saved search: ${query} (${category})`);
-    
-    // Transform to EnhancedSearchHistory format
-    return {
-      id: data.id,
-      user_id: data.user_id,
-      query: data.query,
-      search_type: data.search_type,
-      category: (data.metadata as any)?.category || 'general',
-      results_count: data.results_count || 0,
-      metadata: data.metadata as Record<string, any>,
-      search_results: (data.metadata as any)?.search_results,
-      session_id: (data.metadata as any)?.session_id,
-      created_at: data.created_at,
-    };
+    return data as EnhancedSearchHistory;
   } catch (err) {
     console.error('[SearchHistory] Exception:', err);
     return saveToLocalStorage(query, category, searchType, resultsCount, searchResults, metadata);
@@ -195,6 +181,9 @@ export async function getEnhancedSearchHistory(
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
+    if (filters.category) {
+      query = query.eq('category', filters.category);
+    }
     if (filters.searchType) {
       query = query.eq('search_type', filters.searchType);
     }
@@ -214,22 +203,8 @@ export async function getEnhancedSearchHistory(
       return filterLocalEntries(localEntries, filters);
     }
 
-    // Transform database results to EnhancedSearchHistory
-    const dbEntries: EnhancedSearchHistory[] = (data || []).map(item => ({
-      id: item.id,
-      user_id: item.user_id,
-      query: item.query,
-      search_type: item.search_type,
-      category: ((item.metadata as any)?.category || 'general') as SearchCategory,
-      results_count: item.results_count || 0,
-      metadata: item.metadata as Record<string, any>,
-      search_results: (item.metadata as any)?.search_results,
-      session_id: (item.metadata as any)?.session_id,
-      created_at: item.created_at,
-    }));
-
     // Merge with local entries
-    const merged = [...dbEntries, ...localEntries];
+    const merged = [...(data as EnhancedSearchHistory[]), ...localEntries];
     return filterLocalEntries(merged, filters);
   } catch (err) {
     console.error('[SearchHistory] Exception:', err);
@@ -344,31 +319,60 @@ export async function clearAllHistory(): Promise<boolean> {
 }
 
 /* ============================================================================
-   CHAT SESSION OPERATIONS (localStorage-based since no chat_sessions table)
+   CHAT SESSION OPERATIONS
 ============================================================================ */
 
 /**
- * Create new chat session (localStorage only)
+ * Create new chat session
  */
 export async function createChatSession(
   category: SearchCategory,
   contextData: Record<string, any>,
   searchId?: string
 ): Promise<ChatSession | null> {
-  const session: ChatSession = {
-    id: `chat-${Date.now()}`,
-    user_id: 'local',
-    search_id: searchId,
-    category,
-    context_data: contextData,
-    messages: [],
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-  };
-  sessionStorage.setItem(`chat_session_${session.id}`, JSON.stringify(session));
-  return session;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    // Store in session storage for unauthenticated users
+    const session: ChatSession = {
+      id: `chat-${Date.now()}`,
+      user_id: 'local',
+      search_id: searchId,
+      category,
+      context_data: contextData,
+      messages: [],
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    };
+    sessionStorage.setItem(`chat_session_${session.id}`, JSON.stringify(session));
+    return session;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .insert({
+        user_id: user.id,
+        search_id: searchId,
+        category,
+        context_data: contextData,
+        messages: [],
+        is_active: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[ChatSession] Create error:', error);
+      return null;
+    }
+
+    return data as ChatSession;
+  } catch (err) {
+    console.error('[ChatSession] Exception:', err);
+    return null;
+  }
 }
 
 /**
@@ -378,40 +382,72 @@ export async function updateChatMessages(
   sessionId: string,
   messages: ChatSession['messages']
 ): Promise<boolean> {
-  const session = sessionStorage.getItem(`chat_session_${sessionId}`);
-  if (session) {
-    const parsed = JSON.parse(session);
-    parsed.messages = messages;
-    parsed.updated_at = new Date().toISOString();
-    sessionStorage.setItem(`chat_session_${sessionId}`, JSON.stringify(parsed));
-    return true;
+  // Handle local sessions
+  if (sessionId.startsWith('chat-')) {
+    const session = sessionStorage.getItem(`chat_session_${sessionId}`);
+    if (session) {
+      const parsed = JSON.parse(session);
+      parsed.messages = messages;
+      parsed.updated_at = new Date().toISOString();
+      sessionStorage.setItem(`chat_session_${sessionId}`, JSON.stringify(parsed));
+      return true;
+    }
+    return false;
   }
-  return false;
+
+  try {
+    const { error } = await supabase
+      .from('chat_sessions')
+      .update({ messages })
+      .eq('id', sessionId);
+
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Get active chat session for a search
  */
 export async function getChatSessionForSearch(searchId: string): Promise<ChatSession | null> {
-  // Check sessionStorage for matching session
-  for (let i = 0; i < sessionStorage.length; i++) {
-    const key = sessionStorage.key(i);
-    if (key?.startsWith('chat_session_')) {
-      const session = JSON.parse(sessionStorage.getItem(key) || '{}');
-      if (session.search_id === searchId && session.is_active) {
-        return session as ChatSession;
-      }
-    }
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('search_id', searchId)
+      .eq('is_active', true)
+      .single();
+
+    if (error) return null;
+    return data as ChatSession;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 /**
  * Deactivate chat session
  */
 export async function deactivateChatSession(sessionId: string): Promise<boolean> {
-  sessionStorage.removeItem(`chat_session_${sessionId}`);
-  return true;
+  if (sessionId.startsWith('chat-')) {
+    sessionStorage.removeItem(`chat_session_${sessionId}`);
+    return true;
+  }
+
+  try {
+    const { error } = await supabase
+      .from('chat_sessions')
+      .update({ is_active: false })
+      .eq('id', sessionId);
+
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 /* ============================================================================
@@ -462,44 +498,44 @@ export const CATEGORY_CONFIG: Record<SearchCategory, {
   },
   ip: {
     label: 'IP Address',
-    icon: 'Shield',
-    color: 'indigo',
-    description: 'IP threat analysis',
+    icon: 'Server',
+    color: 'yellow',
+    description: 'IP reputation and geolocation',
   },
   breach: {
-    label: 'Breach',
-    icon: 'Mail',
-    color: 'pink',
-    description: 'Data breach lookups',
+    label: 'Breach Check',
+    icon: 'ShieldAlert',
+    color: 'red',
+    description: 'Data breach searches',
   },
   cve: {
     label: 'CVE',
     icon: 'AlertTriangle',
-    color: 'yellow',
+    color: 'amber',
     description: 'Vulnerability database searches',
   },
   threat_intel: {
     label: 'Threat Intel',
     icon: 'Shield',
-    color: 'cyan',
-    description: 'Threat intelligence queries',
+    color: 'indigo',
+    description: 'General threat intelligence',
   },
   telegram: {
     label: 'Telegram',
-    icon: 'Hash',
+    icon: 'MessageSquare',
     color: 'sky',
     description: 'Telegram channel monitoring',
   },
   ransomware: {
     label: 'Ransomware',
-    icon: 'AlertTriangle',
-    color: 'red',
-    description: 'Ransomware tracking',
+    icon: 'Lock',
+    color: 'rose',
+    description: 'Ransomware group tracking',
   },
   general: {
     label: 'General',
     icon: 'Search',
-    color: 'gray',
+    color: 'slate',
     description: 'General searches',
   },
 };
