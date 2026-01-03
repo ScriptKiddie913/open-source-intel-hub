@@ -617,12 +617,10 @@ export async function getAPTStats(): Promise<APTStats> {
   // Sort and get top items
   const topTargetSectors = Object.entries(targetSectorCounts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
     .map(([sector, count]) => ({ sector, count }));
   
   const topTargetCountries = Object.entries(targetCountryCounts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
     .map(([country, count]) => ({ country, count }));
   
   return {
