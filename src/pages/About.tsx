@@ -241,43 +241,6 @@ export default function About() {
           </div>
         </div>
       </section>
-
-      {/* Technology Section */}
-      <section className="py-16 bg-slate-900/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4">Built with Modern Technology</h2>
-            <p className="text-slate-400 max-w-2xl mx-auto">
-              Leveraging cutting-edge technologies to deliver a fast, secure, and reliable platform.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <div className="text-center">
-              <div className="p-4 rounded-2xl bg-slate-800/50 w-fit mx-auto mb-4">
-                <Code className="h-8 w-8 text-cyan-400" />
-              </div>
-              <h3 className="font-semibold mb-2">React & TypeScript</h3>
-              <p className="text-slate-400 text-sm">Type-safe, component-based architecture</p>
-            </div>
-            <div className="text-center">
-              <div className="p-4 rounded-2xl bg-slate-800/50 w-fit mx-auto mb-4">
-                <Database className="h-8 w-8 text-cyan-400" />
-              </div>
-              <h3 className="font-semibold mb-2">Cloud Backend</h3>
-              <p className="text-slate-400 text-sm">Secure, scalable data persistence</p>
-            </div>
-            <div className="text-center">
-              <div className="p-4 rounded-2xl bg-slate-800/50 w-fit mx-auto mb-4">
-                <Zap className="h-8 w-8 text-cyan-400" />
-              </div>
-              <h3 className="font-semibold mb-2">Edge Functions</h3>
-              <p className="text-slate-400 text-sm">Low-latency serverless compute</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* CTA Section */}
       <section className="py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
