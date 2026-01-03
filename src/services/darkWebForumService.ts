@@ -256,7 +256,7 @@ export async function getRansomwareVictims(
     if (response.ok) {
       const data = await response.json();
       
-      for (const post of data.slice(0, 100)) {
+      for (const post of data) {
         // Filter by options
         if (options.group && !post.group_name?.toLowerCase().includes(options.group.toLowerCase())) {
           continue;
@@ -287,7 +287,7 @@ export async function getRansomwareVictims(
     if (response.ok) {
       const data = await response.json();
       
-      for (const item of (data || []).slice(0, 50)) {
+      for (const item of (data || [])) {
         victims.push({
           id: `rl-${item.victim?.replace(/[^a-z0-9]/gi, '-') || Date.now()}`,
           group: item.group_name || 'Unknown',
@@ -335,7 +335,7 @@ async function searchRansomwatch(query: string): Promise<{ leaks: LeakPost[] }> 
       const filtered = data.filter((post: any) =>
         post.post_title?.toLowerCase().includes(queryLower) ||
         post.group_name?.toLowerCase().includes(queryLower)
-      ).slice(0, 30);
+      );
       
       for (const post of filtered) {
         leaks.push({
@@ -379,7 +379,7 @@ async function searchRansomwareLive(query: string): Promise<{ leaks: LeakPost[] 
         item.victim?.toLowerCase().includes(queryLower) ||
         item.group_name?.toLowerCase().includes(queryLower) ||
         item.country?.toLowerCase().includes(queryLower)
-      ).slice(0, 30);
+      );
       
       for (const item of filtered) {
         leaks.push({
@@ -688,7 +688,6 @@ export function getForumStats(posts: ForumPost[], leaks: LeakPost[]): {
   
   const topThreatActors = Object.entries(actorCounts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
     .map(([name, count]) => ({ name, count }));
   
   return {
