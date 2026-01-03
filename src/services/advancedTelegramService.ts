@@ -248,7 +248,7 @@ function extractAffectedEntities(text: string, query: string): string[] {
     entities.unshift(query);
   }
   
-  return entities.slice(0, 10);
+  return entities;
 }
 
 function extractDataTypes(text: string): string[] {
@@ -411,7 +411,7 @@ async function searchPsbdmpTelegram(query: string): Promise<TelegramIntelResult[
     
     const items = Array.isArray(data) ? data : (data.data || data.results || []);
     
-    items.slice(0, 30).forEach((paste: any) => {
+    items.forEach((paste: any) => {
       const text = paste.text || paste.content || '';
       
       if (!isRelevantResult(text, query)) return;
@@ -713,7 +713,7 @@ export async function deepSearchTelegram(query: string): Promise<TelegramSearchR
   const startTime = Date.now();
   
   // Scrape monitored channels
-  const channelPromises = MONITORED_CHANNELS.slice(0, 6).map(ch => 
+  const channelPromises = MONITORED_CHANNELS.map(ch => 
     scrapeTelegramChannel(ch, query)
   );
   
