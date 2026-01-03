@@ -449,7 +449,7 @@ async function saveToDatabase(
     const batch = threats.slice(i, i + batchSize);
     
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('threats')
         .upsert(batch, {
           onConflict: 'id',
@@ -478,7 +478,7 @@ async function saveToDatabase(
 export async function getThreatFromDatabase(value: string): Promise<any | null> {
   try {
     // Search by indicator value
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('threats')
       .select('*')
       .contains('indicators', [value])
@@ -502,7 +502,7 @@ export async function getThreatFromDatabase(value: string): Promise<any | null> 
  */
 export async function searchThreatsInDatabase(query: string): Promise<any[]> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('threats')
       .select('*')
       .or(`name.ilike.%${query}%,indicators.cs.{${query}}`)
@@ -656,7 +656,7 @@ export function getFeedStatus(): { isRefreshing: boolean; cachedCount: number } 
  */
 export async function getAllThreatsForGraph(): Promise<any[]> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('threats')
       .select('*')
       .order('last_seen', { ascending: false })

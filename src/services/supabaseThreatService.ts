@@ -74,7 +74,7 @@ export async function syncAPTGroups(aptGroups: CleanedAPTData[]): Promise<{ succ
         last_seen: new Date().toISOString(),
       };
       
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('threats')
         .upsert(threat, { onConflict: 'id' });
       
@@ -135,7 +135,7 @@ export async function syncMalwareIndicators(indicators: MalwareIndicator[]): Pro
         last_seen: indicator.lastSeen,
       }));
       
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('threats')
         .upsert(threats, { onConflict: 'id' });
       
@@ -187,7 +187,7 @@ export async function syncC2Servers(servers: C2Server[]): Promise<{ success: boo
   }));
   
   try {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('threats')
       .upsert(threats, { onConflict: 'id' });
     
@@ -214,7 +214,7 @@ export async function syncC2Servers(servers: C2Server[]): Promise<{ success: boo
 
 export async function getRecentThreats(limit: number = 100): Promise<StoredThreat[]> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('threats')
       .select('*')
       .order('last_seen', { ascending: false })
@@ -234,7 +234,7 @@ export async function getRecentThreats(limit: number = 100): Promise<StoredThrea
 
 export async function getThreatsBySeverity(severity: string): Promise<StoredThreat[]> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('threats')
       .select('*')
       .eq('severity', severity)
@@ -255,7 +255,7 @@ export async function getThreatsBySeverity(severity: string): Promise<StoredThre
 
 export async function getThreatsByCountry(country: string): Promise<StoredThreat[]> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('threats')
       .select('*')
       .eq('country', country)
@@ -276,7 +276,7 @@ export async function getThreatsByCountry(country: string): Promise<StoredThreat
 
 export async function searchThreats(query: string): Promise<StoredThreat[]> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('threats')
       .select('*')
       .or(`name.ilike.%${query}%,indicators.cs.{${query}}`)
@@ -302,12 +302,12 @@ export async function searchThreats(query: string): Promise<StoredThreat[]> {
 export async function getThreatStats(): Promise<ThreatStats> {
   try {
     // Get total count
-    const { count: totalCount } = await supabase
+    const { count: totalCount } = await (supabase as any)
       .from('threats')
       .select('*', { count: 'exact', head: true });
     
     // Get by severity
-    const { data: severityData } = await supabase
+    const { data: severityData } = await (supabase as any)
       .from('threats')
       .select('severity');
     
@@ -317,7 +317,7 @@ export async function getThreatStats(): Promise<ThreatStats> {
     });
     
     // Get by type
-    const { data: typeData } = await supabase
+    const { data: typeData } = await (supabase as any)
       .from('threats')
       .select('type');
     
@@ -327,7 +327,7 @@ export async function getThreatStats(): Promise<ThreatStats> {
     });
     
     // Get by country (top 10)
-    const { data: countryData } = await supabase
+    const { data: countryData } = await (supabase as any)
       .from('threats')
       .select('country');
     
