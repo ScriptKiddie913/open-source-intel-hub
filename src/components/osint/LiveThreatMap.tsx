@@ -754,20 +754,22 @@ export function LiveThreatMap() {
                   lon: a.sourceLon,
                   type: a.type as any,
                   severity: a.severity,
-                  label: `${a.sourceCity}, ${a.sourceCountry}`,
-                  details: {
+                  name: `${a.sourceCity}, ${a.sourceCountry}`,
+                  description: a.indicator || 'Attack detected',
+                  country: a.sourceCountry,
+                  indicators: [a.indicator].filter(Boolean),
+                  timestamp: a.timestamp,
+                  metadata: {
                     indicator: a.indicator,
                     malwareFamily: a.malwareFamily,
-                    timestamp: a.timestamp,
                     port: a.port,
                   },
                   targetLat: a.targetLat,
                   targetLon: a.targetLon,
-                }))}
-                height={500}
-                onThreatClick={(threat) => {
-                  toast.info(`${ATTACK_LABELS[threat.type as AttackType] || threat.type}: ${threat.label}`, {
-                    description: threat.details?.indicator,
+                })) as any}
+                onThreatClick={(threat: any) => {
+                  toast.info(`${ATTACK_LABELS[threat.type as AttackType] || threat.type}: ${threat.name}`, {
+                    description: threat.metadata?.indicator,
                   });
                 }}
               />
