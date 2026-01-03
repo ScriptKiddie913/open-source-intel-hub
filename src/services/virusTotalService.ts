@@ -157,7 +157,7 @@ async function fetchURLhausData(): Promise<ThreatIndicator[]> {
     const urls = data.urls || data;
     
     if (Array.isArray(urls)) {
-      urls.slice(0, 500).forEach((entry: any) => {
+      urls.forEach((entry: any) => {
         const id = `urlhaus-${entry.id || entry.url_id}`;
         if (!processedIndicators.has(id)) {
           processedIndicators.add(id);
@@ -212,7 +212,7 @@ async function fetchThreatFoxData(): Promise<ThreatIndicator[]> {
     const iocs = data.data || data;
     
     if (Array.isArray(iocs)) {
-      iocs.slice(0, 500).forEach((entry: any) => {
+      iocs.forEach((entry: any) => {
         const id = `threatfox-${entry.id || entry.ioc_id}`;
         if (!processedIndicators.has(id)) {
           processedIndicators.add(id);
@@ -333,7 +333,7 @@ async function fetchSSLBlacklist(): Promise<ThreatIndicator[]> {
     const indicators: ThreatIndicator[] = [];
     
     if (Array.isArray(data)) {
-      data.slice(0, 200).forEach((entry: any) => {
+      data.forEach((entry: any) => {
         const id = `sslbl-${entry.ip_address || entry.ip}`;
         if (!processedIndicators.has(id)) {
           processedIndicators.add(id);
