@@ -156,7 +156,7 @@ class RealTimeThreatFeedService {
     return {
       stats: { ...this.stats },
       trendData: this.getTrendData(),
-      liveFeed: this.liveFeed.slice(0, 100)
+      liveFeed: [...this.liveFeed]
     };
   }
 
@@ -357,7 +357,7 @@ class RealTimeThreatFeedService {
             if (data.urls?.length || data.data?.length) {
               const entries = data.urls || data.data || [];
               console.log(`[URLhaus] ${entries.length} URLs`);
-              return entries.slice(0, 1000).map((u: any) => ({
+              return entries.map((u: any) => ({
                 dateadded: u.dateadded || u.date_added || new Date().toISOString(),
                 url: u.url,
                 url_status: u.url_status || 'online',
@@ -410,7 +410,7 @@ class RealTimeThreatFeedService {
           const data = JSON.parse(text);
           if (data.query_status === 'ok' && data.data?.length) {
             console.log(`[ThreatFox] ${data.data.length} IOCs`);
-            return data.data.slice(0, 1000);
+            return data.data;
           }
         }
       }
@@ -464,7 +464,7 @@ class RealTimeThreatFeedService {
           if (data.query_status === 'ok' && data.data?.length) {
             const hashes = data.data.map((s: any) => s.sha256_hash).filter(Boolean);
             console.log(`[Bazaar] ${hashes.length} hashes`);
-            return hashes.slice(0, 500);
+            return hashes;
           }
         }
       }
@@ -646,7 +646,6 @@ class RealTimeThreatFeedService {
 
     const malwareFamilies = Array.from(this.malwareFamilyCounts.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 15)
       .map(([name, count]) => ({
         name,
         count,
@@ -663,7 +662,7 @@ class RealTimeThreatFeedService {
   }
 
   getStats(): RealTimeThreatStats { return { ...this.stats }; }
-  getLiveFeed(limit = 50): LiveFeedEntry[] { return this.liveFeed.slice(0, limit); }
+  getLiveFeed(): LiveFeedEntry[] { return [...this.liveFeed]; }
   async refresh(): Promise<void> { await this.fetchAllFeeds(); }
 
   destroy() {
