@@ -169,7 +169,7 @@ async function fetchFeodoAttacks(): Promise<LiveAttack[]> {
     const res = await fetch('https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json');
     if (!res.ok) return [];
     const data = await res.json();
-    const items = Array.isArray(data) ? data.slice(0, 15) : [];
+    const items = Array.isArray(data) ? data : [];
     for (const item of items) {
       const ip = item.ip_address || item.ip;
       if (!ip) continue;
@@ -257,7 +257,7 @@ async function fetchThreatFoxAttacks(): Promise<LiveAttack[]> {
     if (!res.ok) return [];
     const data = await res.json();
     const items = data?.data || [];
-    for (const item of items.slice(0, 15)) {
+    for (const item of items) {
       const ioc = item.ioc;
       if (!ioc) continue;
       // Extract IP if present
@@ -305,7 +305,7 @@ async function fetchRansomwareLiveAttacks(): Promise<LiveAttack[]> {
     const res = await fetch('https://api.ransomware.live/v1/attacks');
     if (!res.ok) return [];
     const data = await res.json();
-    const items = Array.isArray(data) ? data.slice(0, 20) : [];
+    const items = Array.isArray(data) ? data : [];
     for (const item of items) {
       const ip = item.ip || item.victim_ip;
       if (!ip) continue;
@@ -435,7 +435,7 @@ export function LiveThreatMap() {
       });
       setStats(newStats);
       setAttacks(allAttacks);
-      setRecentAttacks(allAttacks.slice(0, 20));
+      setRecentAttacks(allAttacks);
       setLastUpdate(new Date());
       if (allAttacks.length > 0) {
         toast.success(`Loaded ${allAttacks.length} live threat indicators`);
