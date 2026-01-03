@@ -206,44 +206,7 @@ export async function scanDarkWebLeaks(query?: string): Promise<DarkWebLeak[]> {
       }
     }
 
-    // Simulated dark web marketplace monitoring
-    const simulatedLeaks: DarkWebLeak[] = [
-      {
-        id: 'leak-1',
-        title: 'Corporate Database Leak',
-        description: 'Employee credentials from Fortune 500 company',
-        leakDate: new Date(Date.now() - 86400000 * 2).toISOString(),
-        affectedEntities: ['Enterprise Corp'],
-        dataTypes: ['credentials', 'personal_data', 'financial'],
-        recordCount: 45000,
-        source: 'Dark Web Forum',
-        severity: 'critical',
-      },
-      {
-        id: 'leak-2',
-        title: 'Healthcare Data Breach',
-        description: 'Patient records and medical histories',
-        leakDate: new Date(Date.now() - 86400000 * 5).toISOString(),
-        affectedEntities: ['Medical Center'],
-        dataTypes: ['medical_records', 'pii', 'insurance'],
-        recordCount: 120000,
-        source: 'Dark Marketplace',
-        severity: 'critical',
-      },
-      {
-        id: 'leak-3',
-        title: 'Social Media Scrape',
-        description: 'Public profile data aggregation',
-        leakDate: new Date(Date.now() - 86400000 * 7).toISOString(),
-        affectedEntities: ['Multiple Platforms'],
-        dataTypes: ['profiles', 'emails', 'phone_numbers'],
-        recordCount: 500000,
-        source: 'Data Broker',
-        severity: 'medium',
-      },
-    ];
-
-    leaks.push(...simulatedLeaks);
+    // NO SIMULATED DATA - Only real breach data from HIBP and other real sources
     await cacheAPIResponse(cacheKey, leaks, 30);
     return leaks;
   } catch (error) {
