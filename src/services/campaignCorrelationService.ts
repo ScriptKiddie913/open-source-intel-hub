@@ -68,6 +68,10 @@ export interface Campaign {
   lastSeen: string;
   confidence: number;
   riskScore: number;
+  sources: { name: string; url: string }[];
+  description?: string;
+  actor?: string;
+  threatLevel?: string;
 }
 
 export interface CampaignEvent {
@@ -596,6 +600,31 @@ function buildCampaignsFromSignals(
     // Calculate risk score
     const riskScore = calculateRiskScore(familySamples, relatedInfra, status);
     
+    // Determine sources from samples
+    const sampleSources = [...new Set(familySamples.map(s => s.source))];
+    const sources: { name: string; url: string }[] = sampleSources.map(src => {
+      switch (src) {
+        case 'ThreatFox': return { name: 'ThreatFox', url: `https://threatfox.abuse.ch/browse/?search=${encodeURIComponent(family)}` };
+        case 'MalwareBazaar': return { name: 'MalwareBazaar', url: `https://bazaar.abuse.ch/browse.php?search=${encodeURIComponent(family)}` };
+        case 'URLhaus': return { name: 'URLhaus', url: `https://urlhaus.abuse.ch/browse.php?search=${encodeURIComponent(family)}` };
+        case 'FeodoTracker': return { name: 'Feodo Tracker', url: 'https://feodotracker.abuse.ch/browse/' };
+        default: return { name: src, url: `https://www.virustotal.com/gui/search/${encodeURIComponent(family)}` };
+      }
+    });
+    
+    // Add MITRE ATT&CK source if TTPs present
+    if (familyInfo?.ttps && familyInfo.ttps.length > 0) {
+      sources.push({ 
+        name: 'MITRE ATT&CK', 
+        url: `https://attack.mitre.org/techniques/${familyInfo.ttps[0]}/` 
+      });
+    }
+    
+    // Generate description
+    const description = familyInfo 
+      ? `${family} is a known ${familyInfo.type} targeting ${inferTargetSectors(family).join(', ')} sectors. Capabilities include ${familyInfo.capabilities.slice(0, 3).join(', ')}.`
+      : `Active campaign leveraging ${family} malware family with ${familySamples.length} detected samples.`;
+
     campaigns.push({
       id: uuidv4(),
       name: `${family} Campaign - ${new Date(firstSeen).toLocaleDateString()}`,
@@ -613,6 +642,10 @@ function buildCampaignsFromSignals(
       lastSeen,
       confidence: Math.round(familySamples.reduce((sum, s) => sum + s.confidence, 0) / familySamples.length),
       riskScore,
+      sources,
+      description,
+      actor: attribution.length > 0 ? attribution[0].value : 'Unknown Actor',
+      threatLevel: riskScore > 70 ? 'critical' : riskScore > 50 ? 'high' : 'medium',
     });
   }
   
