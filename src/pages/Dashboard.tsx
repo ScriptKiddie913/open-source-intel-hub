@@ -31,6 +31,11 @@ import { initDatabase } from "@/lib/database";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
+// OSINT Integration
+import { processOSINTQuery, OSINTResult } from "@/services/osintIntegrationService";
+import { detectEntityType, getEntityLabel } from "@/services/entityDetectionService";
+import { supabase } from "@/integrations/supabase/client";
+
 import {
   Bot,
   Send,
@@ -54,6 +59,11 @@ import {
   Bug,
   Network,
   MessageCircle,
+  Server,
+  Hash,
+  Bitcoin,
+  Mail,
+  AtSign,
 } from "lucide-react";
 
 const PERPLEXITY_API_KEY = "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";
@@ -62,6 +72,8 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   timestamp?: Date;
+  osintResult?: OSINTResult;
+  entityType?: string;
 };
 
 // Quick prompts for common OSINT queries
@@ -212,50 +224,59 @@ function FloatingPerplexityChat() {
     setShowQuickPrompts(false);
 
     try {
-      const res = await fetch(
-        "https://api.perplexity.ai/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "sonar-pro",
-            messages: [
-              {
-                role: "system",
-                content: `You are Phoenix, an elite OSINT and threat intelligence AI assistant. You specialize in:
-- Cyber threat intelligence and APT group analysis
-- CVE vulnerability research and exploitation details
-- Malware analysis and IOC extraction
-- Dark web monitoring and leak detection
-- Network reconnaissance and infrastructure mapping
-- Social engineering and phishing detection
-- Cryptocurrency tracing and fraud investigation
-
-Respond with structured, actionable intelligence. Use technical terminology appropriately.
-Format responses with clear sections, bullet points, and code blocks where relevant.
-Always cite sources when possible and provide confidence levels for assessments.
-Be direct, precise, and thorough. Never truncate important information.`,
-              },
-              ...messages.map(m => ({ role: m.role, content: m.content })),
-              { role: "user", content: messageText },
-            ],
-            temperature: 0.3,
-            max_tokens: 4096,
-          }),
+      // Detect if input is a specific entity (IP, domain, hash, CVE, email, BTC, etc.)
+      const entity = detectEntityType(messageText.trim());
+      
+      let reply = "";
+      let osintResult: OSINTResult | undefined;
+      
+      if (entity.confidence >= 70 && entity.type !== 'unknown') {
+        // Run OSINT query for specific entities
+        console.log(`[Phoenix] Detected ${entity.type}: ${entity.normalized}`);
+        
+        osintResult = await processOSINTQuery({
+          input: entity.normalized,
+          includeAI: true,
+          deepScan: entity.type === 'bitcoin' || entity.type === 'cve',
+        });
+        
+        reply = `## ${getEntityLabel(entity.type)} Analysis\n\n`;
+        reply += `**Query:** \`${entity.normalized}\`\n`;
+        reply += `**Risk Level:** ${osintResult.riskLevel.toUpperCase()}\n\n`;
+        reply += `### Summary\n${osintResult.summary}\n\n`;
+        
+        if (osintResult.recommendations.length > 0) {
+          reply += `### Recommendations\n`;
+          osintResult.recommendations.forEach((rec, i) => {
+            reply += `${i + 1}. ${rec}\n`;
+          });
         }
-      );
-
-      const data = await res.json();
-      const reply = data?.choices?.[0]?.message?.content || "No response received.";
+        
+        if (osintResult.modulesUsed.length > 0) {
+          reply += `\n*Modules: ${osintResult.modulesUsed.join(', ')}*`;
+        }
+      } else {
+        // Use Phoenix AI chat for general queries
+        const { data, error } = await supabase.functions.invoke('phoenix-chat', {
+          body: {
+            messages: [
+              ...messages.map(m => ({ role: m.role, content: m.content })),
+              { role: 'user', content: messageText },
+            ],
+            useWebSearch: true,
+          },
+        });
+        
+        if (error) throw error;
+        reply = data?.choices?.[0]?.message?.content || "No response received.";
+      }
 
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: reply, timestamp: new Date() },
+        { role: "assistant", content: reply, timestamp: new Date(), osintResult },
       ]);
     } catch (err) {
+      console.error('[Phoenix] Error:', err);
       setMessages((m) => [
         ...m,
         {

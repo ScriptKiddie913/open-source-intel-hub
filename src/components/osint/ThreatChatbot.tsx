@@ -1,11 +1,12 @@
 // ============================================================================
 // ThreatChatbot.tsx
-// PERPLEXITY-STYLE AI CHATBOT FOR THREAT INTELLIGENCE
+// AI-POWERED OSINT CHATBOT WITH ENTITY DETECTION & MODULE INTEGRATION
 // ============================================================================
+// ✔ Automatic entity type detection (IP, domain, hash, CVE, email, BTC, etc.)
+// ✔ Routes to appropriate OSINT modules automatically
+// ✔ Lovable AI integration for analysis
 // ✔ Context-aware responses based on search results
-// ✔ Session management - context cleared on page refresh
-// ✔ Integration with search history
-// ✔ Markdown rendering for responses
+// ✔ Firecrawl web search integration
 // ============================================================================
 
 'use client';
@@ -26,6 +27,15 @@ import {
   Copy,
   Check,
   RefreshCw,
+  Search,
+  Zap,
+  Globe,
+  Shield,
+  Hash,
+  Mail,
+  Bitcoin,
+  AtSign,
+  Server,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +44,9 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { processOSINTQuery, OSINTResult } from '@/services/osintIntegrationService';
+import { detectEntityType, getEntityLabel, EntityType } from '@/services/entityDetectionService';
 
 /* ============================================================================
    TYPES
@@ -46,11 +59,13 @@ interface ChatMessage {
   timestamp: string;
   sources?: string[];
   isLoading?: boolean;
+  osintResult?: OSINTResult;
+  entityDetected?: EntityType;
 }
 
 interface ThreatContext {
   searchQuery: string;
-  searchType: 'pipeline' | 'stealthmole' | 'graph' | 'general';
+  searchType: 'pipeline' | 'stealthmole' | 'graph' | 'general' | 'osint';
   results: any;
   metadata?: Record<string, any>;
 }
@@ -62,90 +77,133 @@ interface ThreatChatbotProps {
   position?: 'inline' | 'floating';
 }
 
+// Entity type icons
+const ENTITY_ICONS: Record<string, any> = {
+  ip: Server,
+  ipv6: Server,
+  domain: Globe,
+  url: Globe,
+  email: Mail,
+  md5: Hash,
+  sha1: Hash,
+  sha256: Hash,
+  sha512: Hash,
+  cve: Shield,
+  username: AtSign,
+  bitcoin: Bitcoin,
+  ethereum: Bitcoin,
+  unknown: Search,
+};
+
 /* ============================================================================
-   AI RESPONSE GENERATOR (Using free LLM endpoints)
+   AI RESPONSE GENERATOR (Using Lovable AI + OSINT Integration)
 ============================================================================ */
 
 async function generateAIResponse(
   userMessage: string,
   context: ThreatContext | null,
   chatHistory: ChatMessage[]
-): Promise<string> {
-  // Build context string from search results
-  let contextInfo = '';
+): Promise<{ content: string; osintResult?: OSINTResult; entityType?: EntityType }> {
+  // First, detect if the user message contains a specific entity
+  const entity = detectEntityType(userMessage.trim());
   
-  if (context && context.results) {
-    const results = context.results;
+  // If high-confidence entity detected, run OSINT query
+  if (entity.confidence >= 70 && entity.type !== 'unknown') {
+    console.log(`[Phoenix] Detected ${entity.type}: ${entity.normalized}`);
     
-    // Format context based on search type
-    if (context.searchType === 'pipeline') {
-      contextInfo = `
-THREAT INTELLIGENCE CONTEXT (Pipeline Search for "${context.searchQuery}"):
-${results.malwareIndicators ? `- Malware Indicators Found: ${results.malwareIndicators.length}` : ''}
-${results.aptGroups ? `- APT Groups Identified: ${results.aptGroups.map((g: any) => g.name).join(', ')}` : ''}
-${results.c2Servers ? `- C2 Servers Detected: ${results.c2Servers.length}` : ''}
-${results.correlations ? `- Threat Correlations: ${results.correlations.length}` : ''}
-${results.campaigns ? `- Related Campaigns: ${results.campaigns.length}` : ''}
-
-Key Findings:
-${JSON.stringify(results, null, 2).substring(0, 3000)}
-`;
-    } else if (context.searchType === 'stealthmole') {
-      contextInfo = `
-DARK WEB INTELLIGENCE CONTEXT (Deep Scan for "${context.searchQuery}"):
-${results.darkWebSignals ? `- Dark Web Signals: ${results.darkWebSignals.length}` : ''}
-${results.malwareIndicators ? `- Malware IOCs: ${results.malwareIndicators.length}` : ''}
-${results.ransomwareGroups ? `- Ransomware Groups: ${results.ransomwareGroups.length}` : ''}
-${results.stealerLogs ? `- Stealer Logs: ${results.stealerLogs.length}` : ''}
-${results.c2Servers ? `- C2 Infrastructure: ${results.c2Servers.length}` : ''}
-${results.telegramResults ? `- Telegram Intelligence: ${results.telegramResults.length}` : ''}
-${results.stats ? `
-Statistics:
-- Total Findings: ${results.stats.totalFindings}
-- Critical Threats: ${results.stats.criticalThreats}
-- High Severity: ${results.stats.highThreats}
-` : ''}
-
-Detailed Results:
-${JSON.stringify(results, null, 2).substring(0, 3000)}
-`;
-    } else {
-      contextInfo = `
-SEARCH CONTEXT for "${context.searchQuery}":
-${JSON.stringify(results, null, 2).substring(0, 2000)}
-`;
+    try {
+      // Process through OSINT integration
+      const osintResult = await processOSINTQuery({
+        input: entity.normalized,
+        includeAI: true,
+        deepScan: entity.type === 'bitcoin' || entity.type === 'cve',
+      });
+      
+      // Format the response
+      let response = `## ${getEntityLabel(entity.type)} Analysis\n\n`;
+      response += `**Query:** \`${entity.normalized}\`\n`;
+      response += `**Risk Level:** ${formatRiskLevel(osintResult.riskLevel)}\n\n`;
+      response += `### Summary\n${osintResult.summary}\n\n`;
+      
+      if (osintResult.recommendations.length > 0) {
+        response += `### Recommendations\n`;
+        osintResult.recommendations.forEach((rec, i) => {
+          response += `${i + 1}. ${rec}\n`;
+        });
+        response += '\n';
+      }
+      
+      if (osintResult.modulesUsed.length > 0) {
+        response += `*Modules used: ${osintResult.modulesUsed.join(', ')}*`;
+      }
+      
+      if (osintResult.results.aiAnalysis) {
+        response += `\n\n### AI Analysis\n${osintResult.results.aiAnalysis}`;
+      }
+      
+      return { content: response, osintResult, entityType: entity.type };
+      
+    } catch (error) {
+      console.error('[Phoenix] OSINT query failed:', error);
+      // Fall through to standard AI response
     }
   }
   
-  // Build chat history for context
-  const historyText = chatHistory
-    .slice(-6) // Last 6 messages for context
-    .map(m => `${m.role}: ${m.content}`)
-    .join('\n');
+  // For general queries or when OSINT fails, use Phoenix AI chat
+  try {
+    const response = await callPhoenixChat(userMessage, context, chatHistory);
+    return { content: response };
+  } catch (error) {
+    console.error('[Phoenix] AI chat failed:', error);
+    return { 
+      content: await generateLocalResponse(userMessage, '', context) 
+    };
+  }
+}
 
-  // Create the prompt
-  const systemPrompt = `You are an expert cybersecurity threat intelligence analyst assistant. You help users understand and analyze threat data, malware samples, APT groups, dark web intelligence, and security indicators.
+// Call Phoenix chat edge function
+async function callPhoenixChat(
+  message: string,
+  context: ThreatContext | null,
+  history: ChatMessage[]
+): Promise<string> {
+  const osintContext = context ? {
+    entityType: context.searchType,
+    results: context.results,
+    summary: context.metadata?.summary || '',
+    riskLevel: context.metadata?.riskLevel || 'info',
+  } : undefined;
 
-${contextInfo ? `CURRENT ANALYSIS CONTEXT:\n${contextInfo}` : 'No specific search context is available. You can answer general cybersecurity questions.'}
+  const { data, error } = await supabase.functions.invoke('phoenix-chat', {
+    body: {
+      messages: [
+        ...history.slice(-6).map(m => ({ role: m.role, content: m.content })),
+        { role: 'user', content: message },
+      ],
+      osintContext,
+      useWebSearch: true,
+    },
+  });
 
-GUIDELINES:
-- Provide accurate, technical responses about cybersecurity threats
-- Reference the search results when available
-- Explain technical concepts clearly
-- Suggest actionable next steps when appropriate
-- Use bullet points and structured formatting
-- If you don't have specific data, say so clearly
-- Always prioritize the context data provided over general knowledge
-
-Previous conversation:
-${historyText}`;
-
-  // Use a free LLM API (Hugging Face Inference or similar)
-  // For demo purposes, we'll generate contextual responses locally
-  // In production, you'd call an actual API
+  if (error) throw error;
   
-  const response = await generateLocalResponse(userMessage, contextInfo, context);
-  return response;
+  // Handle streaming response
+  if (data && typeof data === 'object' && 'error' in data) {
+    throw new Error(data.error);
+  }
+  
+  return data?.choices?.[0]?.message?.content || 'No response received.';
+}
+
+function formatRiskLevel(level: string): string {
+  const icons: Record<string, string> = {
+    critical: '🔴 CRITICAL',
+    high: '🟠 HIGH',
+    medium: '🟡 MEDIUM',
+    low: '🟢 LOW',
+    info: '🔵 INFO',
+  };
+  return icons[level] || level.toUpperCase();
 }
 
 /**
@@ -430,12 +488,18 @@ Try asking me:
     }]);
     
     try {
-      const response = await generateAIResponse(userMessage.content, context, messages);
+      const responseData = await generateAIResponse(userMessage.content, context, messages);
       
       // Replace loading message with actual response
       setMessages(prev => prev.map(m => 
         m.id === loadingId
-          ? { ...m, content: response, isLoading: false }
+          ? { 
+              ...m, 
+              content: responseData.content, 
+              isLoading: false,
+              osintResult: responseData.osintResult,
+              entityDetected: responseData.entityType,
+            }
           : m
       ));
     } catch (error) {
