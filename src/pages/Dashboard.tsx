@@ -1,13 +1,9 @@
 // src/pages/Dashboard.tsx
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, MouseEvent } from "react";
 
 import { OSINTSidebar } from "@/components/osint/OSINTSidebar";
-import { Dashboard } from "@/components/osint/Dashboard";
-import { DomainIntelligence } from "@/components/osint/DomainIntelligence";
-import { IPAnalyzer } from "@/components/osint/IPAnalyzer";
-import { CertificateInspector } from "@/components/osint/CertificateInspector";
-import { BreachChecker } from "@/components/osint/BreachChecker";
+import { Dashboard as DashboardHome } from "@/components/osint/Dashboard";
 import { DataImporter } from "@/components/osint/DataImporter";
 import { SettingsPage } from "@/components/osint/SettingsPage";
 import { ThreatIntelSearch } from "@/components/osint/ThreatIntelSearch";
@@ -66,7 +62,7 @@ import {
   AtSign,
 } from "lucide-react";
 
-const PERPLEXITY_API_KEY = "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";
+const PERPLEXITY_API_KEY = import.meta.env.VITE_PERPLEXITY_API_KEY;
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -165,7 +161,7 @@ function FloatingPerplexityChat() {
     }
   }, [open]);
 
-  const onMouseDown = (e: React.MouseEvent) => {
+  const onMouseDown = (e: MouseEvent) => {
     if (expanded) return;
     dragging.current = true;
     offset.current = {
@@ -176,11 +172,12 @@ function FloatingPerplexityChat() {
 
   const onMouseMove = (e: MouseEvent) => {
     if (!dragging.current || expanded) return;
+    e.preventDefault();
     const nextX = e.clientX - offset.current.x;
     const nextY = e.clientY - offset.current.y;
     setPosition({
-      x: Math.max(8, Math.min(nextX, window.innerWidth - 400)),
-      y: Math.max(8, Math.min(nextY, window.innerHeight - 120)),
+      x: Math.max(8, Math.min(nextX, window.innerWidth - 80)),
+      y: Math.max(8, Math.min(nextY, window.innerHeight - 80)),
     });
   };
 
@@ -321,7 +318,7 @@ function FloatingPerplexityChat() {
   return (
     <div
       className={cn(
-        "fixed z-50 transition-all duration-300",
+        "fixed z-[9999] transition-all duration-300",
         expanded
           ? "inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           : ""
@@ -611,12 +608,8 @@ const DashboardPage = () => {
       <OSINTSidebar onSignOut={signOut} userEmail={user.email} />
       <main className="flex-1 overflow-y-auto relative">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<DashboardHome />} />
           <Route path="/threat-intel" element={<ThreatIntelSearch />} />
-          <Route path="/domain" element={<DomainIntelligence />} />
-          <Route path="/ip" element={<IPAnalyzer />} />
-          <Route path="/certs" element={<CertificateInspector />} />
-          <Route path="/breach" element={<BreachChecker />} />
           <Route path="/cve" element={<CVEExplorer />} />
           <Route path="/live-threats" element={<LiveThreatFeed />} />
           <Route path="/import" element={<DataImporter />} />
