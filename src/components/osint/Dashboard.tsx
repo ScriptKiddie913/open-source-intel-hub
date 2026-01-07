@@ -252,61 +252,40 @@ export function Dashboard() {
                 title="Threat Intel Assistant"
                 sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
               />
-              {/* Cyber-themed overlay to cover base44 popup - bottom right corner */}
+              {/* Precise cyber-themed overlay - only covers base44 badge in bottom right corner */}
               <div 
-                className="absolute bottom-0 right-0 w-72 h-24 pointer-events-none z-50"
+                className="absolute bottom-2 right-2 w-32 h-10 pointer-events-none z-50 rounded-lg"
                 style={{
-                  background: 'linear-gradient(to top, hsl(var(--background)) 85%, transparent 100%), linear-gradient(to left, hsl(var(--background)) 80%, transparent 100%)',
-                  borderTop: '1px solid hsl(var(--primary) / 0.2)',
-                  borderLeft: '1px solid hsl(var(--primary) / 0.2)',
+                  background: 'hsl(var(--background))',
+                  border: '1px solid hsl(var(--primary) / 0.3)',
+                  boxShadow: '0 0 10px hsl(var(--primary) / 0.2)',
                 }}
               >
                 {/* Cyber grid pattern */}
-                <div className="absolute inset-0 opacity-10" style={{
+                <div className="absolute inset-0 opacity-15 rounded-lg" style={{
                   backgroundImage: `
                     linear-gradient(hsl(var(--primary)) 1px, transparent 1px),
                     linear-gradient(90deg, hsl(var(--primary)) 1px, transparent 1px)
                   `,
-                  backgroundSize: '20px 20px',
+                  backgroundSize: '10px 10px',
                 }} />
-                {/* Scan line effect */}
-                <div className="absolute inset-0 opacity-20" style={{
-                  background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, hsl(var(--primary) / 0.1) 2px, hsl(var(--primary) / 0.1) 4px)',
-                }} />
-                {/* Glowing corner accent */}
-                <div className="absolute bottom-0 right-0 w-2 h-2 bg-primary/50 blur-sm" />
-                <div className="absolute bottom-1 right-1 w-1 h-1 bg-primary" />
+                {/* Animated scan line */}
+                <div 
+                  className="absolute inset-0 opacity-30 rounded-lg animate-pulse"
+                  style={{
+                    background: 'repeating-linear-gradient(0deg, transparent, transparent 1px, hsl(var(--primary) / 0.15) 1px, hsl(var(--primary) / 0.15) 2px)',
+                  }}
+                />
+                {/* Corner accent dots */}
+                <div className="absolute top-1 left-1 w-1 h-1 bg-primary rounded-full" />
+                <div className="absolute top-1 right-1 w-1 h-1 bg-primary rounded-full" />
+                <div className="absolute bottom-1 left-1 w-1 h-1 bg-primary rounded-full" />
+                <div className="absolute bottom-1 right-1 w-1 h-1 bg-primary rounded-full" />
+                {/* Center glow effect */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-2 h-2 bg-primary/30 rounded-full blur-sm animate-pulse" />
+                </div>
               </div>
-              
-              {/* Cyber-themed overlay - bottom left corner */}
-              <div 
-                className="absolute bottom-0 left-0 w-56 h-20 pointer-events-none z-50"
-                style={{
-                  background: 'linear-gradient(to top, hsl(var(--background)) 85%, transparent 100%), linear-gradient(to right, hsl(var(--background)) 80%, transparent 100%)',
-                  borderTop: '1px solid hsl(var(--primary) / 0.15)',
-                  borderRight: '1px solid hsl(var(--primary) / 0.15)',
-                }}
-              >
-                {/* Cyber grid pattern */}
-                <div className="absolute inset-0 opacity-10" style={{
-                  backgroundImage: `
-                    linear-gradient(hsl(var(--primary)) 1px, transparent 1px),
-                    linear-gradient(90deg, hsl(var(--primary)) 1px, transparent 1px)
-                  `,
-                  backgroundSize: '20px 20px',
-                }} />
-                {/* Glowing corner accent */}
-                <div className="absolute bottom-0 left-0 w-2 h-2 bg-primary/50 blur-sm" />
-                <div className="absolute bottom-1 left-1 w-1 h-1 bg-primary" />
-              </div>
-              
-              {/* Additional full-width bottom barrier for extra security */}
-              <div 
-                className="absolute bottom-0 left-0 right-0 h-12 pointer-events-none z-40"
-                style={{
-                  background: 'linear-gradient(to top, hsl(var(--background)) 60%, transparent 100%)',
-                }}
-              />
             </div>
           </div>
         </CardContent>
