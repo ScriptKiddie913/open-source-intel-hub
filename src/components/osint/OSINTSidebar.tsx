@@ -30,6 +30,8 @@ import {
   Workflow,
   Target,
   Map,
+  DollarSign,
+  DollarSign,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -50,6 +52,7 @@ const mainNavItems: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, description: "Overview & Statistics" },
   { name: "Threat Pipeline", href: "/dashboard/malware-pipeline", icon: Workflow, description: "Full Threat Pipeline" },
   { name: "StealthMole", href: "/dashboard/stealthmole", icon: Skull, description: "Deep Threat Intel" },
+  { name: "Threat Map", href: "/dashboard/threat-map", icon: Map, description: "Live Attack Visualization" },
   { name: "Threat Intel", href: "/dashboard/threat-intel", icon: Radar, description: "VirusTotal & Threat Analysis" },
   { name: "Live Threats", href: "/dashboard/live-threats", icon: Zap, description: "Real-time Threat Feeds" },
   { name: "CVE Explorer", href: "/dashboard/cve", icon: Bug, description: "Vulnerabilities & Exploits" },
@@ -63,7 +66,9 @@ const toolsNavItems: NavItem[] = [
   { name: "Breach Check", href: "/dashboard/breach", icon: Shield, description: "Email Breach Lookup" },
   { name: "Username OSINT", href: "/dashboard/username", icon: User, description: "100+ Platform Enumeration" },
   { name: "Dark Web", href: "/dashboard/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
+  { name: "Crypto Scanner", href: "/dashboard/crypto", icon: DollarSign, description: "Cryptocurrency Intelligence" },
   { name: "Telegram Intel", href: "/dashboard/telegram", icon: Send, description: "Telegram Leak & OSINT Monitor" },
+  { name: "Crypto Scanner", href: "/dashboard/crypto", icon: DollarSign, description: "Cryptocurrency Address Analysis" },
   { name: "Graph Map", href: "/dashboard/graph", icon: Network, description: "Maltego-style Visualization" },
 ];
 
