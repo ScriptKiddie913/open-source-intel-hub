@@ -250,6 +250,7 @@ export async function getHistoryByCategory(): Promise<Record<SearchCategory, Enh
     pipeline: [],
     graph: [],
     stealthmole: [],
+    'crypto-abuse': [],
     darkweb: [],
     malware: [],
     domain: [],
@@ -478,6 +479,12 @@ export const CATEGORY_CONFIG: Record<SearchCategory, {
     icon: 'Radar',
     color: 'cyan',
     description: 'Dark web and threat scanning',
+  },
+  'crypto-abuse': {
+    label: 'Crypto Abuse',
+    icon: 'Bitcoin',
+    color: 'orange',
+    description: 'Cryptocurrency wallet abuse detection',
   },
   darkweb: {
     label: 'Dark Web',
