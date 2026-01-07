@@ -26,6 +26,7 @@ import {
   Bug,
   BarChart3,
   MessageSquare,
+  Bitcoin,
 } from 'lucide-react';
 import {
   getSearchHistory,
