@@ -1,6 +1,6 @@
 // API Response Types
 
-export interface GoogleDNSResponse {
+export interface CloudflareDNSResponse {
   Status: number;
   TC: boolean;
   RD: boolean;
@@ -11,6 +11,9 @@ export interface GoogleDNSResponse {
   Answer?: { name: string; type: number; TTL: number; data: string }[];
   Authority?: { name: string; type: number; TTL: number; data: string }[];
 }
+
+// Legacy alias for backward compatibility
+export interface GoogleDNSResponse extends CloudflareDNSResponse {}
 
 export interface IPAPIResponse {
   status: string;
