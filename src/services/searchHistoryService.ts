@@ -13,6 +13,7 @@ export type SearchCategory =
   | 'pipeline'
   | 'graph'
   | 'stealthmole'
+  | 'crypto-abuse'
   | 'darkweb'
   | 'malware'
   | 'domain'
