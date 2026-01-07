@@ -13,7 +13,7 @@ import { cacheAPIResponse, getCachedData } from '@/lib/database';
 // CORS proxy configuration - used in production, vite proxy used in development
 const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 const ALT_CORS_PROXY = 'https://corsproxy.io/?';
-const IS_DEVELOPMENT = import.meta.env.DEV;
+const IS_DEVELOPMENT = (import.meta as any).env?.DEV ?? false;
 
 // Helper to get the correct URL based on environment
 function getApiUrl(localPath: string, remoteUrl: string): string {
@@ -417,7 +417,7 @@ export async function fetchAllThreatFeeds(): Promise<ThreatFeedSummary> {
     fetchFeodoC2Servers(),
     fetchURLhausRecent(),
     fetchThreatFoxIOCs(30),  // Last 30 days for more data
-    fetchMalwareBazaarRecent(500),
+    fetchMalwareBazaarRecent(),
   ]);
   
   // Convert to unified indicators

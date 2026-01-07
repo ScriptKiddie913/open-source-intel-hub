@@ -100,7 +100,7 @@ export async function getSubdomains(domain: string): Promise<string[]> {
     const certs = await response.json();
     const subdomains = new Set<string>();
     
-    certs.forEach((cert: any) => {
+    certs.forEach((cert: Record<string, unknown>) => {
       const names = cert.name_value?.split('\n') || [];
       names.forEach((name: string) => {
         const cleaned = name.replace(/^\*\./, '').toLowerCase();

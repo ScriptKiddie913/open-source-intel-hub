@@ -246,7 +246,7 @@ const MALWARE_FAMILIES: Record<string, {
  * Main correlation function - takes indicators and builds campaign graph
  */
 export async function correlateCampaigns(query: string): Promise<CorrelationResult> {
-  console.log(`[CampaignCorrelation] Analyzing: ${query}`);
+  // Analyzing query
   
   const result: CorrelationResult = {
     campaigns: [],
@@ -309,7 +309,7 @@ export async function correlateCampaigns(query: string): Promise<CorrelationResu
     correlationStrength: calculateCorrelationStrength(result.newCorrelations),
   };
   
-  console.log(`[CampaignCorrelation] Found ${result.campaigns.length} campaigns, ${allSamples.length} samples`);
+  // Analysis complete
   
   return result;
 }

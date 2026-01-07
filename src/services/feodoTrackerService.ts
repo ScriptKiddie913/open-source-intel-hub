@@ -42,7 +42,7 @@ class FeodoTrackerService {
       console.log('[Feodo] Raw API response received');
 
       // Parse Feodo JSON format
-      const c2Servers: C2Server[] = data.map((item: any, index: number) => ({
+      const c2Servers: C2Server[] = data.map((item: Record<string, unknown>, index: number) => ({
         id: `feodo-${item.ip_address}-${item.port}`,
         ip: item.ip_address,
         port: item.port?.toString() || '80',

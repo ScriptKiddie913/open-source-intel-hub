@@ -1,5 +1,35 @@
-// Cryptocurrency Address Scanner Service
-// Multiple free blockchain APIs for crypto address analysis
+// Threat Intelligence Service
+// Combines cryptocurrency scanning with general threat intelligence
+
+export interface ThreatIntelResult {
+  success: boolean;
+  target: string;
+  type: 'ip' | 'domain' | 'url' | 'hash';
+  riskLevel: 'critical' | 'high' | 'medium' | 'low' | 'clean';
+  riskScore: number;
+  formatted?: {
+    summary: string;
+    riskLevel: 'critical' | 'high' | 'medium' | 'low' | 'clean';
+    riskScore: number;
+    detections?: {
+      malicious: number;
+      suspicious: number;
+      clean: number;
+      undetected: number;
+    };
+    indicators?: Array<{
+      type: string;
+      value: string;
+      source: string;
+      severity: 'critical' | 'high' | 'medium' | 'low';
+    }>;
+    categories?: string[];
+    recommendations?: string[];
+  };
+  sources: Record<string, any>;
+  timestamp: string;
+  errors?: string[];
+}
 
 export interface CryptoScanResult {
   success: boolean;
@@ -517,6 +547,159 @@ export async function scanCryptoAddress(address: string): Promise<CryptoScanResu
       sources,
       timestamp: new Date().toISOString(),
     };
+  }
+}
+
+// General Threat Intelligence Query Function
+export async function queryThreatIntel(
+  type: 'ip' | 'domain' | 'url' | 'hash', 
+  target: string
+): Promise<ThreatIntelResult> {
+  console.log(`[ThreatIntel] Querying ${type}: ${target}`);
+  
+  try {
+    const sources: Record<string, any> = {};
+    let riskScore = 0;
+    let riskLevel: 'critical' | 'high' | 'medium' | 'low' | 'clean' = 'clean';
+    const indicators: any[] = [];
+    const categories: string[] = [];
+    const recommendations: string[] = [];
+    let detections = { malicious: 0, suspicious: 0, clean: 0, undetected: 0 };
+
+    // For cryptocurrency addresses, use existing crypto scanner
+    if (type === 'hash' && target.length >= 26 && detectCryptoType(target) !== 'unknown') {
+      const cryptoResult = await scanCryptoAddress(target);
+      return {
+        success: cryptoResult.success,
+        target,
+        type,
+        riskLevel: cryptoResult.risk,
+        riskScore: cryptoResult.riskScore,
+        formatted: {
+          summary: `Cryptocurrency address analysis completed. Risk level: ${cryptoResult.risk}`,
+          riskLevel: cryptoResult.risk,
+          riskScore: cryptoResult.riskScore,
+          indicators: cryptoResult.flags.map(flag => ({
+            type: 'crypto',
+            value: flag,
+            source: 'Blockchain',
+            severity: cryptoResult.risk as any
+          })),
+          categories: cryptoResult.tags,
+          recommendations: cryptoResult.risk !== 'clean' ? [
+            'Monitor cryptocurrency transactions',
+            'Consider additional blockchain analysis',
+            'Report suspicious activity to relevant authorities'
+          ] : ['Address appears clean']
+        },
+        sources: cryptoResult.sources,
+        timestamp: cryptoResult.timestamp,
+        errors: cryptoResult.success ? [] : ['Crypto scan failed']
+      };
+    }
+
+    // Mock threat intelligence for other types
+    // In a real implementation, this would query VirusTotal, abuse.ch, etc.
+    switch (type) {
+      case 'ip':
+        // Mock IP analysis
+        sources.virustotal = { found: false, detections: 0 };
+        sources.abuseipdb = { found: false, confidence: 0 };
+        riskScore = Math.floor(Math.random() * 20); // Mock low risk for demo
+        break;
+        
+      case 'domain':
+        // Mock domain analysis
+        sources.virustotal = { found: false, detections: 0 };
+        sources.safebrowsing = { found: false };
+        riskScore = Math.floor(Math.random() * 30); // Mock medium risk for demo
+        break;
+        
+      case 'url':
+        // Mock URL analysis
+        sources.virustotal = { found: false, detections: 0 };
+        sources.urlvoid = { found: false };
+        riskScore = Math.floor(Math.random() * 25); // Mock low-medium risk for demo
+        break;
+        
+      case 'hash':
+        // Mock hash analysis
+        sources.virustotal = { found: false, detections: 0 };
+        sources.malwarebazaar = { found: false };
+        riskScore = Math.floor(Math.random() * 40); // Mock medium risk for demo
+        break;
+    }
+
+    // Determine risk level based on score
+    if (riskScore >= 80) riskLevel = 'critical';
+    else if (riskScore >= 60) riskLevel = 'high';
+    else if (riskScore >= 40) riskLevel = 'medium';
+    else if (riskScore >= 20) riskLevel = 'low';
+    else riskLevel = 'clean';
+
+    // Mock some categories and recommendations
+    if (riskScore > 20) {
+      categories.push('suspicious', 'requires-monitoring');
+      recommendations.push('Monitor this target', 'Consider additional analysis');
+    } else {
+      categories.push('clean');
+      recommendations.push('Target appears clean');
+    }
+
+    return {
+      success: true,
+      target,
+      type,
+      riskLevel,
+      riskScore,
+      formatted: {
+        summary: `Threat intelligence analysis for ${type} completed. Risk level: ${riskLevel}`,
+        riskLevel,
+        riskScore,
+        detections,
+        indicators,
+        categories,
+        recommendations
+      },
+      sources,
+      timestamp: new Date().toISOString(),
+      errors: []
+    };
+
+  } catch (error) {
+    console.error('[ThreatIntel] Query failed:', error);
+    return {
+      success: false,
+      target,
+      type,
+      riskLevel: 'clean',
+      riskScore: 0,
+      sources: {},
+      timestamp: new Date().toISOString(),
+      errors: [error instanceof Error ? error.message : 'Unknown error']
+    };
+  }
+}
+
+// Get risk color for UI (general threat intelligence)
+export function getRiskColor(level: string): string {
+  switch (level) {
+    case 'critical': return 'text-red-500';
+    case 'high': return 'text-orange-500';
+    case 'medium': return 'text-yellow-500';
+    case 'low': return 'text-blue-500';
+    default: return 'text-green-500';
+  }
+}
+
+// Get risk background color for UI (general threat intelligence)
+export function getRiskBgColor(level: string): string {
+  switch (level) {
+    case 'critical': return 'bg-red-500/20 border-red-500';
+    case 'high': return 'bg-orange-500/20 border-orange-500';
+    case 'medium': return 'bg-yellow-500/20 border-yellow-500';
+    case 'low': return 'bg-blue-500/20 border-blue-500';
+    default: return 'bg-green-500/20 border-green-500';
   }
 }
 

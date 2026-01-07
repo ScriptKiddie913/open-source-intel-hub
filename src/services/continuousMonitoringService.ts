@@ -300,7 +300,7 @@ export async function startMonitoring(options: {
   rules?: string[];
   refreshIntervalMs?: number;
 }): Promise<{ success: boolean; message: string }> {
-  console.log('[Monitoring] Starting continuous monitoring...');
+  // Starting continuous monitoring
   
   const { refreshIntervalMs = 300000 } = options; // Default 5 minutes
   
@@ -317,7 +317,7 @@ export async function startMonitoring(options: {
  * Run a single monitoring cycle across all enabled rules
  */
 export async function runMonitoringCycle(): Promise<ThreatAlert[]> {
-  console.log('[Monitoring] Running monitoring cycle...');
+  // Running monitoring cycle
   const newAlerts: ThreatAlert[] = [];
   
   const enabledRules = monitoringState.getRules().filter(r => r.enabled);

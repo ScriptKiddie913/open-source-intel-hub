@@ -18,7 +18,7 @@ export interface ThreatIndicator {
   last_seen?: string;
   confidence: number;
   malware_family?: string;
-  raw_data?: any;
+  raw_data?: Record<string, unknown>;
 }
 
 export interface ThreatFeedResult {
@@ -112,7 +112,7 @@ export async function fetchFeodoTrackerData(): Promise<ThreatIndicator[]> {
     // Handle { value: [...] } format
     const entries = Array.isArray(data) ? data : (data?.value || data?.data || []);
     
-    return entries.map((entry: any, index: number) => ({
+    return entries.map((entry: Record<string, unknown>, index: number) => ({
       id: `feodo-${index}-${Date.now()}`,
       indicator_type: 'ip' as const,
       value: entry.ip_address || entry.ip || '',
