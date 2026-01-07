@@ -106,6 +106,9 @@ interface ThreatFoxEntry {
 ============================================================================ */
 
 const SYNC_INTERVAL = 30000; // 30 seconds
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const ALT_CORS_PROXY = 'https://corsproxy.io/?';
+const IS_DEVELOPMENT = typeof import.meta !== 'undefined' && import.meta.env?.DEV;
 
 const COLORS = {
   critical: '#ef4444',
@@ -282,13 +285,13 @@ class RealTimeThreatFeedService {
     }
   }
 
-  // Fetch Feodo Tracker C2 Servers (using text format as fallback)
+  // Fetch Feodo Tracker C2 Servers (using CORS proxy in production)
   private async fetchFeodoTracker(): Promise<FeodoEntry[]> {
-    // Use direct URL with CORS headers - abuse.ch allows this
-    const urls = [
-      'https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json',
-      '/api/feodo/ipblocklist_recommended.json'
-    ];
+    // Use local proxy in dev, CORS proxy in production
+    const remoteUrl = 'https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json';
+    const urls = IS_DEVELOPMENT 
+      ? ['/api/feodo/ipblocklist_recommended.json', remoteUrl]
+      : [`${CORS_PROXY}${encodeURIComponent(remoteUrl)}`, `${ALT_CORS_PROXY}${encodeURIComponent(remoteUrl)}`];
 
     for (const url of urls) {
       try {
@@ -335,12 +338,18 @@ class RealTimeThreatFeedService {
     }));
   }
 
-  // Fetch URLhaus malicious URLs (POST API)
+  // Fetch URLhaus malicious URLs (uses CORS proxy in production)
   private async fetchURLhaus(): Promise<URLhausEntry[]> {
-    const urls = [
-      { url: 'https://urlhaus-api.abuse.ch/v1/urls/recent/limit/1000/', method: 'GET' },
-      { url: '/api/urlhaus-api/', method: 'POST', body: 'query=get_recent&limit=1000' }
-    ];
+    const remoteUrl = 'https://urlhaus-api.abuse.ch/v1/urls/recent/limit/1000/';
+    const urls = IS_DEVELOPMENT 
+      ? [
+          { url: '/api/urlhaus-api/', method: 'POST', body: 'query=get_recent&limit=1000' },
+          { url: remoteUrl, method: 'GET' }
+        ]
+      : [
+          { url: `${CORS_PROXY}${encodeURIComponent(remoteUrl)}`, method: 'GET' },
+          { url: `${ALT_CORS_PROXY}${encodeURIComponent(remoteUrl)}`, method: 'GET' }
+        ];
 
     for (const config of urls) {
       try {
@@ -395,27 +404,34 @@ class RealTimeThreatFeedService {
     }));
   }
 
-  // Fetch ThreatFox IOCs (POST API)
+  // Fetch ThreatFox IOCs (uses CORS proxy in production)
   private async fetchThreatFox(): Promise<ThreatFoxEntry[]> {
-    try {
-      const response = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: 'get_iocs', days: 7 })
-      });
-      
-      if (response.ok) {
-        const text = await response.text();
-        if (!text.startsWith('<') && text.trim()) {
-          const data = JSON.parse(text);
-          if (data.query_status === 'ok' && data.data?.length) {
-            console.log(`[ThreatFox] ${data.data.length} IOCs`);
-            return data.data;
+    const remoteUrl = 'https://threatfox-api.abuse.ch/api/v1/';
+    const urls = IS_DEVELOPMENT 
+      ? [remoteUrl, '/api/threatfox-api/']
+      : [`${CORS_PROXY}${encodeURIComponent(remoteUrl)}`, `${ALT_CORS_PROXY}${encodeURIComponent(remoteUrl)}`];
+
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'get_iocs', days: 7 })
+        });
+        
+        if (response.ok) {
+          const text = await response.text();
+          if (!text.startsWith('<') && text.trim()) {
+            const data = JSON.parse(text);
+            if (data.query_status === 'ok' && data.data?.length) {
+              console.log(`[ThreatFox] ${data.data.length} IOCs`);
+              return data.data;
+            }
           }
         }
+      } catch (e) {
+        console.warn('[ThreatFox] API failed:', e);
       }
-    } catch (e) {
-      console.warn('[ThreatFox] API failed:', e);
     }
 
     console.warn('[ThreatFox] Using sample data');
@@ -448,28 +464,35 @@ class RealTimeThreatFeedService {
     }));
   }
 
-  // Fetch MalwareBazaar samples (POST API)
+  // Fetch MalwareBazaar samples (uses CORS proxy in production)
   private async fetchMalwareBazaar(): Promise<string[]> {
-    try {
-      const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'query=get_recent&selector=time'
-      });
-      
-      if (response.ok) {
-        const text = await response.text();
-        if (!text.startsWith('<') && text.trim()) {
-          const data = JSON.parse(text);
-          if (data.query_status === 'ok' && data.data?.length) {
-            const hashes = data.data.map((s: any) => s.sha256_hash).filter(Boolean);
-            console.log(`[Bazaar] ${hashes.length} hashes`);
-            return hashes;
+    const remoteUrl = 'https://mb-api.abuse.ch/api/v1/';
+    const urls = IS_DEVELOPMENT 
+      ? [remoteUrl, '/api/bazaar-api/']
+      : [`${CORS_PROXY}${encodeURIComponent(remoteUrl)}`, `${ALT_CORS_PROXY}${encodeURIComponent(remoteUrl)}`];
+
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'query=get_recent&selector=time'
+        });
+        
+        if (response.ok) {
+          const text = await response.text();
+          if (!text.startsWith('<') && text.trim()) {
+            const data = JSON.parse(text);
+            if (data.query_status === 'ok' && data.data?.length) {
+              const hashes = data.data.map((s: any) => s.sha256_hash).filter(Boolean);
+              console.log(`[Bazaar] ${hashes.length} hashes`);
+              return hashes;
+            }
           }
         }
+      } catch (e) {
+        console.warn('[Bazaar] API failed:', e);
       }
-    } catch (e) {
-      console.warn('[Bazaar] API failed:', e);
     }
 
     console.warn('[Bazaar] Using sample data');
