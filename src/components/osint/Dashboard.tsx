@@ -14,6 +14,9 @@ import {
   Zap,
   TrendingUp,
   Eye,
+  MessageSquare,
+  Minimize2,
+  Maximize2,
 } from "lucide-react";
 import { StatCard } from "./StatCard";
 import { APIStatusIndicator } from "./APIStatusIndicator";
@@ -72,6 +75,7 @@ export function Dashboard() {
   const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
   const [recentCVEs, setRecentCVEs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [chatExpanded, setChatExpanded] = useState(false);
 
   useEffect(() => {
     loadDashboard();
@@ -209,6 +213,63 @@ export function Dashboard() {
           <span>Last updated: {new Date().toLocaleTimeString()}</span>
         </div>
       </div>
+
+      {/* Threat Intel Assistant Chat */}
+      <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent overflow-hidden">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <MessageSquare className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Threat Intel Assistant</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  AI-powered threat intelligence analysis and investigation
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setChatExpanded(!chatExpanded)}
+              className="p-2 hover:bg-primary/10 rounded-lg transition-colors"
+              title={chatExpanded ? "Minimize" : "Expand"}
+            >
+              {chatExpanded ? (
+                <Minimize2 className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <Maximize2 className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="relative">
+            {/* Iframe container with overlay to hide base44 popup */}
+            <div className="relative w-full" style={{ height: chatExpanded ? '600px' : '400px' }}>
+              <iframe
+                src="https://threat-intel-assistant-8b6ecbcd.base44.app/"
+                className="w-full h-full border-0"
+                title="Threat Intel Assistant"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+              />
+              {/* Overlay to cover base44 popup - positioned at bottom right */}
+              <div 
+                className="absolute bottom-0 right-0 w-64 h-20 bg-background pointer-events-none z-10"
+                style={{
+                  background: 'linear-gradient(to top, hsl(var(--background)) 70%, transparent 100%)',
+                }}
+              />
+              {/* Additional overlay for bottom left if needed */}
+              <div 
+                className="absolute bottom-0 left-0 w-48 h-16 bg-background pointer-events-none z-10"
+                style={{
+                  background: 'linear-gradient(to top, hsl(var(--background)) 60%, transparent 100%)',
+                }}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
