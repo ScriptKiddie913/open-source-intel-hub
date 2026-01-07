@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, Search, Loader2, ExternalLink, AlertTriangle, Clock, Code, FileText } from 'lucide-react';
+import { Shield, Search, Loader2, ExternalLink, AlertTriangle, Clock, Code, FileText, Github, Star, GitFork, Globe, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,22 +10,39 @@ import {
   getCVEDetails, 
   getRecentCVEs, 
   searchExploitDB,
+  searchGitHubPoC,
   getSeverityColor,
   getSeverityBg,
   CVEData,
-  ExploitData 
+  ExploitData,
+  GitHubPoC 
 } from '@/services/cveService';
 import { saveSearchHistory } from '@/services/userDataService';
+import { clearCacheByPrefix } from '@/lib/database';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 export function CVEExplorer() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'search' | 'recent' | 'exploits'>('recent');
+  const [activeTab, setActiveTab] = useState<'search' | 'recent' | 'exploits' | 'github'>('recent');
   const [cveResults, setCveResults] = useState<CVEData[]>([]);
   const [exploitResults, setExploitResults] = useState<ExploitData[]>([]);
+  const [githubResults, setGithubResults] = useState<GitHubPoC[]>([]);
   const [selectedCVE, setSelectedCVE] = useState<CVEData | null>(null);
+
+  // Clear bad CVE cache on mount (one-time cleanup for github- prefixed fake CVEs)
+  useEffect(() => {
+    const cleanupBadCache = async () => {
+      try {
+        await clearCacheByPrefix('cve:');
+        console.log('[CVE] Cleared CVE cache');
+      } catch (e) {
+        console.warn('[CVE] Failed to clear cache:', e);
+      }
+    };
+    cleanupBadCache();
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'recent') {
@@ -65,8 +82,8 @@ export function CVEExplorer() {
           
           // Save to Supabase search history (for logged-in users)
           await saveSearchHistory(query.toUpperCase(), 'cve', 1, {
-            severity: cve.cvss?.severity,
-            cvssScore: cve.cvss?.score,
+            severity: cve.cvss.severity,
+            cvssScore: cve.cvss.score,
           });
         } else {
           toast.error('CVE not found');
@@ -114,6 +131,30 @@ export function CVEExplorer() {
     }
   };
 
+  const handleSearchGitHub = async () => {
+    if (!query.trim()) {
+      toast.error('Please enter a search query');
+      return;
+    }
+
+    setLoading(true);
+    setGithubResults([]);
+
+    try {
+      const results = await searchGitHubPoC(query, 30);
+      setGithubResults(results);
+      toast.success(`Found ${results.length} GitHub repositories`);
+
+      await saveSearchHistory(query, 'github-poc', results.length, {
+        resultsCount: results.length,
+      });
+    } catch (error) {
+      toast.error('GitHub search failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSelectCVE = async (cve: CVEData) => {
     setSelectedCVE(cve);
     if (!cve.exploitAvailable) {
@@ -150,19 +191,23 @@ export function CVEExplorer() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    activeTab === 'exploits' ? handleSearchExploits() : handleSearchCVE();
+                    if (activeTab === 'exploits') handleSearchExploits();
+                    else if (activeTab === 'github') handleSearchGitHub();
+                    else handleSearchCVE();
                   }
                 }}
                 placeholder={
                   activeTab === 'exploits' 
                     ? 'Search exploits (e.g., "wordpress", "CVE-2021-44228")'
+                    : activeTab === 'github'
+                    ? 'Search GitHub PoCs (e.g., "log4j exploit", "CVE-2024")'
                     : 'Search CVEs (e.g., "CVE-2021-44228", "log4j")'
                 }
                 className="pl-10 bg-background"
               />
             </div>
             <Button 
-              onClick={activeTab === 'exploits' ? handleSearchExploits : handleSearchCVE}
+              onClick={activeTab === 'exploits' ? handleSearchExploits : activeTab === 'github' ? handleSearchGitHub : handleSearchCVE}
               disabled={loading}
               className="min-w-[100px]"
             >
@@ -193,6 +238,10 @@ export function CVEExplorer() {
           <TabsTrigger value="exploits" className="flex items-center gap-2">
             <Code className="h-4 w-4" />
             Exploits
+          </TabsTrigger>
+          <TabsTrigger value="github" className="flex items-center gap-2">
+            <Github className="h-4 w-4" />
+            GitHub PoCs
           </TabsTrigger>
         </TabsList>
 
@@ -244,12 +293,35 @@ export function CVEExplorer() {
             )}
           </div>
         </TabsContent>
+
+        {/* GitHub PoCs */}
+        <TabsContent value="github" className="mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {githubResults.map((poc) => (
+              <GitHubPoCCard key={poc.fullName} poc={poc} />
+            ))}
+            {githubResults.length === 0 && !loading && (
+              <div className="col-span-2 text-center py-12 text-muted-foreground">
+                <Github className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                <p>Search for GitHub proof-of-concept repositories</p>
+                <p className="text-xs mt-2">Try searching for CVE IDs or vulnerability names</p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
       </Tabs>
     </div>
   );
 }
 
 function CVECard({ cve, onSelect }: { cve: CVEData; onSelect: (cve: CVEData) => void }) {
+  // Generate source links for the CVE - only official sources
+  const sourceLinks = {
+    nvd: `https://nvd.nist.gov/vuln/detail/${cve.id}`,
+    mitre: `https://cve.mitre.org/cgi-bin/cvename.cgi?name=${cve.id}`,
+    exploitdb: `https://www.exploit-db.com/search?cve=${cve.id}`,
+  };
+
   return (
     <Card 
       className={cn(
@@ -291,12 +363,36 @@ function CVECard({ cve, onSelect }: { cve: CVEData; onSelect: (cve: CVEData) => 
           {cve.description}
         </p>
 
-        <div className="flex flex-wrap gap-2">
-          {cve.cwe.slice(0, 3).map((cwe, i) => (
-            <Badge key={i} variant="outline" className="text-xs">
-              {cwe}
-            </Badge>
-          ))}
+        <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-2">
+            {cve.cwe.slice(0, 3).map((cwe, i) => (
+              <Badge key={i} variant="outline" className="text-xs">
+                {cwe}
+              </Badge>
+            ))}
+          </div>
+          
+          {/* Quick source links */}
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <a
+              href={sourceLinks.nvd}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-1 hover:bg-secondary rounded text-muted-foreground hover:text-primary"
+              title="View on NVD"
+            >
+              <Globe className="h-4 w-4" />
+            </a>
+            <a
+              href={sourceLinks.exploitdb}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-1 hover:bg-secondary rounded text-muted-foreground hover:text-primary"
+              title="Search on Exploit-DB"
+            >
+              <Code className="h-4 w-4" />
+            </a>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -304,6 +400,35 @@ function CVECard({ cve, onSelect }: { cve: CVEData; onSelect: (cve: CVEData) => 
 }
 
 function CVEDetails({ cve, onBack }: { cve: CVEData; onBack: () => void }) {
+  const [githubPoCs, setGithubPoCs] = useState<GitHubPoC[]>([]);
+  const [loadingPoCs, setLoadingPoCs] = useState(false);
+
+  useEffect(() => {
+    const fetchPoCs = async () => {
+      if (cve.id.startsWith('CVE-')) {
+        setLoadingPoCs(true);
+        try {
+          const pocs = await searchGitHubPoC(cve.id, 5);
+          setGithubPoCs(pocs);
+        } catch (e) {
+          console.error('Failed to fetch GitHub PoCs:', e);
+        } finally {
+          setLoadingPoCs(false);
+        }
+      }
+    };
+    fetchPoCs();
+  }, [cve.id]);
+
+  // Generate all source links - only official sources, no GitHub search (real repos shown separately)
+  const sourceLinks = [
+    { name: 'NVD (NIST)', url: `https://nvd.nist.gov/vuln/detail/${cve.id}`, icon: Globe },
+    { name: 'MITRE', url: `https://cve.mitre.org/cgi-bin/cvename.cgi?name=${cve.id}`, icon: Shield },
+    { name: 'Exploit-DB', url: `https://www.exploit-db.com/search?cve=${cve.id}`, icon: Code },
+    { name: 'Vulmon', url: `https://vulmon.com/vulnerabilitydetails?qid=${cve.id}`, icon: Link2 },
+    { name: 'CIRCL', url: `https://cve.circl.lu/cve/${cve.id}`, icon: Globe },
+  ];
+
   return (
     <div className="space-y-4">
       <Button variant="outline" onClick={onBack} size="sm">
@@ -340,6 +465,29 @@ function CVEDetails({ cve, onBack }: { cve: CVEData; onBack: () => void }) {
             <p className="text-sm text-foreground">{cve.description}</p>
           </div>
 
+          {/* Quick Source Links */}
+          <div>
+            <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2">
+              <Link2 className="h-4 w-4" />
+              Source Links
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {sourceLinks.map((link) => (
+                <a
+                  key={link.name}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50 hover:bg-secondary text-sm text-foreground hover:text-primary transition-colors"
+                >
+                  <link.icon className="h-4 w-4" />
+                  {link.name}
+                  <ExternalLink className="h-3 w-3 ml-auto opacity-50" />
+                </a>
+              ))}
+            </div>
+          </div>
+
           <div>
             <h3 className="font-semibold text-foreground mb-2">CVSS Vector</h3>
             <code className="text-xs bg-secondary p-2 rounded block font-mono">
@@ -352,7 +500,18 @@ function CVEDetails({ cve, onBack }: { cve: CVEData; onBack: () => void }) {
               <h3 className="font-semibold text-foreground mb-2">Weakness Types</h3>
               <div className="flex flex-wrap gap-2">
                 {cve.cwe.map((cwe, i) => (
-                  <Badge key={i} variant="secondary">{cwe}</Badge>
+                  <a
+                    key={i}
+                    href={`https://cwe.mitre.org/data/definitions/${cwe.replace('CWE-', '')}.html`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1"
+                  >
+                    <Badge variant="secondary" className="hover:bg-primary/20 cursor-pointer">
+                      {cwe}
+                      <ExternalLink className="h-3 w-3 ml-1" />
+                    </Badge>
+                  </a>
                 ))}
               </div>
             </div>
@@ -361,7 +520,7 @@ function CVEDetails({ cve, onBack }: { cve: CVEData; onBack: () => void }) {
           {cve.references.length > 0 && (
             <div>
               <h3 className="font-semibold text-foreground mb-2">References</h3>
-              <div className="space-y-1">
+              <div className="space-y-1 max-h-40 overflow-y-auto">
                 {cve.references.map((ref, i) => (
                   <a 
                     key={i}
@@ -370,13 +529,65 @@ function CVEDetails({ cve, onBack }: { cve: CVEData; onBack: () => void }) {
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 text-xs text-primary hover:underline"
                   >
-                    <ExternalLink className="h-3 w-3" />
-                    {ref}
+                    <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate">{ref}</span>
                   </a>
                 ))}
               </div>
             </div>
           )}
+
+          {/* GitHub PoC Repositories */}
+          <div>
+            <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2">
+              <Github className="h-4 w-4" />
+              GitHub PoC Repositories
+            </h3>
+            {loadingPoCs ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Searching GitHub...
+              </div>
+            ) : githubPoCs.length > 0 ? (
+              <div className="space-y-2">
+                {githubPoCs.map((poc) => (
+                  <a
+                    key={poc.fullName}
+                    href={poc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-start gap-3 p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
+                  >
+                    <Github className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium text-foreground truncate">{poc.fullName}</span>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                      </div>
+                      {poc.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">{poc.description}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Star className="h-3 w-3" /> {poc.stars}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <GitFork className="h-3 w-3" /> {poc.forks}
+                        </span>
+                        {poc.language && (
+                          <Badge variant="outline" className="text-xs py-0">
+                            {poc.language}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No GitHub repositories found for this CVE</p>
+            )}
+          </div>
 
           {cve.exploitDetails && (
             <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
@@ -439,20 +650,108 @@ function ExploitCard({ exploit }: { exploit: ExploitData }) {
         <div className="flex items-center justify-between">
           <div className="flex flex-wrap gap-2">
             {exploit.cve?.slice(0, 3).map((cve, i) => (
-              <Badge key={i} variant="outline" className="text-xs">
-                {cve}
-              </Badge>
+              <a
+                key={i}
+                href={`https://nvd.nist.gov/vuln/detail/${cve}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Badge variant="outline" className="text-xs hover:bg-primary/20 cursor-pointer">
+                  {cve}
+                  <ExternalLink className="h-3 w-3 ml-1" />
+                </Badge>
+              </a>
             ))}
           </div>
-          <a
-            href={exploit.sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-xs text-primary hover:underline"
-          >
-            <ExternalLink className="h-3 w-3" />
-            View Source
-          </a>
+          <div className="flex items-center gap-2">
+            <a
+              href={exploit.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-3 py-1 rounded bg-primary/10 text-xs text-primary hover:bg-primary/20 transition-colors"
+            >
+              <Code className="h-3 w-3" />
+              View Exploit
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            <a
+              href={`https://github.com/search?q=${exploit.edbId}&type=repositories`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 p-1 rounded hover:bg-secondary text-muted-foreground hover:text-primary"
+              title="Search on GitHub"
+            >
+              <Github className="h-4 w-4" />
+            </a>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function GitHubPoCCard({ poc }: { poc: GitHubPoC }) {
+  return (
+    <Card className="bg-card border hover:border-primary/50 transition-all">
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-secondary">
+            <Github className="h-5 w-5 text-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <a
+                href={poc.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-foreground hover:text-primary transition-colors truncate"
+              >
+                {poc.fullName}
+              </a>
+              <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            </div>
+            
+            {poc.description && (
+              <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                {poc.description}
+              </p>
+            )}
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Star className="h-3 w-3 text-yellow-500" />
+                  {poc.stars.toLocaleString()}
+                </span>
+                <span className="flex items-center gap-1">
+                  <GitFork className="h-3 w-3" />
+                  {poc.forks.toLocaleString()}
+                </span>
+                {poc.language && (
+                  <Badge variant="outline" className="text-xs py-0">
+                    {poc.language}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={poc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1 rounded bg-primary/10 text-xs text-primary hover:bg-primary/20 transition-colors"
+                >
+                  <Github className="h-3 w-3" />
+                  View Repo
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            </div>
+
+            <div className="text-xs text-muted-foreground mt-2">
+              Updated: {new Date(poc.updatedAt).toLocaleDateString()}
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>

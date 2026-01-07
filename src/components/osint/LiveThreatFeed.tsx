@@ -226,8 +226,7 @@ function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: Comb
   };
   
   const color = severityColors[threat.severity];
-  const count = 'count' in threat ? (threat as any).count : 1;
-  const size = Math.min(12 + (count || 1) * 2, 24);
+  const size = Math.min(12 + (threat.count || 1) * 2, 24);
   
   // Create custom icon based on threat type
   let iconHtml = '';
@@ -273,7 +272,7 @@ function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: Comb
   }
   
   // Add count label if > 1
-  if ((count || 0) > 1) {
+  if ((threat.count || 0) > 1) {
     iconHtml += `
       <div style="
         position: absolute;
@@ -284,7 +283,7 @@ function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: Comb
         font-size: 10px;
         font-weight: bold;
         text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
-      ">${count}</div>
+      ">${threat.count}</div>
     `;
   }
   
@@ -338,7 +337,7 @@ function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: Comb
         
         ${'aptName' in threat ? `
           <div style="margin: 4px 0;"><strong>APT Group:</strong> ${threat.aptName}</div>
-          <div style="margin: 4px 0;"><strong>Aliases:</strong> ${'aliasCount' in threat ? threat.aliasCount + ' known' : 'None'}</div>
+          <div style="margin: 4px 0;"><strong>Aliases:</strong> ${threat.aliases?.slice(0, 3).join(', ') || 'None'}</div>
         ` : ''}
         
         ${'malwareFamily' in threat ? `
@@ -348,7 +347,7 @@ function createThreatMarker(threat: CombinedThreatPoint, onClick?: (threat: Comb
         
         ${'source' in threat ? `<div style="margin: 4px 0;"><strong>Source:</strong> ${threat.source}</div>` : ''}
         
-        <div style="margin: 4px 0;"><strong>Incidents:</strong> ${'count' in threat ? (threat as any).count : 1}</div>
+        <div style="margin: 4px 0;"><strong>Incidents:</strong> ${threat.count || 1}</div>
         
         ${'timestamp' in threat ? `
           <div style="margin: 6px 0 0 0; color: #94a3b8; font-size: 11px;">
@@ -1318,10 +1317,10 @@ export function LiveThreatFeed() {
                     <div><strong>Name:</strong> 
                       {'aptName' in selectedThreat ? selectedThreat.aptName : 
                        'malwareFamily' in selectedThreat ? selectedThreat.malwareFamily :
-                       'threatType' in selectedThreat ? (selectedThreat as any).threatType : 'Unknown'}
+                       selectedThreat.threatType || 'Unknown'}
                     </div>
                     <div><strong>Location:</strong> {'city' in selectedThreat ? `${selectedThreat.city}, ` : ''}{selectedThreat.country}</div>
-                    <div><strong>Incidents:</strong> {'count' in selectedThreat ? (selectedThreat as any).count : 1}</div>
+                    <div><strong>Incidents:</strong> {selectedThreat.count || 1}</div>
                   </div>
                 </div>
                 
@@ -1335,8 +1334,8 @@ export function LiveThreatFeed() {
                         </code>
                       </div>
                     )}
-                    {'aptName' in selectedThreat && 'aliasCount' in selectedThreat && (
-                      <div><strong>Aliases:</strong> {(selectedThreat as any).aliasCount} known aliases</div>
+                    {'aptName' in selectedThreat && selectedThreat.aliases && (
+                      <div><strong>Aliases:</strong> {selectedThreat.aliases.slice(0, 3).join(', ')}</div>
                     )}
                     {'malwareFamily' in selectedThreat && selectedThreat.type && (
                       <div><strong>Malware Type:</strong> {selectedThreat.type}</div>

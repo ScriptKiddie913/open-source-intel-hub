@@ -79,7 +79,7 @@ class OpenCTICorrelationService {
       });
       
       // 4. Get MalwareBazaar samples (limited filtering as export is just hashes)
-      const bazaarSamples = await fetchMalwareBazaarRecent();
+      const bazaarSamples = await fetchMalwareBazaarRecent(50);
       bazaarSamples.slice(0, 20).forEach(sample => {
         results.push(this.convertBazaarToOpenCTI(sample));
       });
@@ -109,7 +109,7 @@ class OpenCTICorrelationService {
         fetchFeodoC2Servers(),
         fetchURLhausRecent(),
         fetchThreatFoxIOCs(30),
-        fetchMalwareBazaarRecent()
+        fetchMalwareBazaarRecent(500)
       ]);
 
       const landscape = {

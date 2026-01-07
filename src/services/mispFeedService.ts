@@ -347,7 +347,7 @@ export async function fetchAllThreatFeeds(): Promise<ThreatFeedSummary> {
     fetchFeodoC2Servers(),
     fetchURLhausRecent(),
     fetchThreatFoxIOCs(30),  // Last 30 days for more data
-    fetchMalwareBazaarRecent(),
+    fetchMalwareBazaarRecent(500),
   ]);
   
   // Convert to unified indicators

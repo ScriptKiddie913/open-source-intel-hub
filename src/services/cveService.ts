@@ -167,54 +167,27 @@ export async function searchCVE(query: string, limit = 20): Promise<CVEData[]> {
       return nvdCVEs;
     }
     
-    // If NVD returns nothing, search ExploitDB for related exploits
-    console.log(`[CVE] NVD returned 0 results, searching ExploitDB...`);
-    const exploits = await searchExploitDB(normalizedQuery, limit);
-    
-    if (exploits.length > 0) {
-      // Convert exploits to CVE-like format for display
-      const exploitCVEs: CVEData[] = exploits.map(exp => ({
-        id: exp.id,
-        description: exp.title,
-        published: exp.date,
-        modified: exp.date,
-        cvss: { score: 7.5, severity: 'HIGH', vector: '' },
-        references: [exp.sourceUrl],
-        cwe: [],
-        exploitAvailable: true,
-        exploitDetails: exp,
-        source: 'combined' as const,
-      }));
-      
-      console.log(`[CVE] ✅ ExploitDB found ${exploitCVEs.length} results`);
-      await cacheAPIResponse(cacheKey, exploitCVEs, CVE_CACHE_TTL);
-      return exploitCVEs;
+    // If NVD returns nothing, try CIRCL as backup
+    console.log(`[CVE] NVD returned 0 results, trying CIRCL...`);
+    try {
+      const circlCVEs = await getLatestCVEsFromCIRCL(limit);
+      // Filter CIRCL results by query
+      const filteredCIRCL = circlCVEs.filter(cve => 
+        cve.id.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
+        cve.description.toLowerCase().includes(normalizedQuery.toLowerCase())
+      );
+      if (filteredCIRCL.length > 0) {
+        console.log(`[CVE] ✅ CIRCL found ${filteredCIRCL.length} results`);
+        await cacheAPIResponse(cacheKey, filteredCIRCL, CVE_CACHE_TTL);
+        return filteredCIRCL;
+      }
+    } catch (e) {
+      console.warn('[CVE] CIRCL search failed:', e);
     }
     
-    // Last resort: Search GitHub for PoCs
-    console.log(`[CVE] Searching GitHub for exploits...`);
-    const pocs = await searchGitHubPoC(normalizedQuery);
-    
-    if (pocs.length > 0) {
-      const pocCVEs: CVEData[] = pocs.slice(0, limit).map(poc => ({
-        id: `github-${poc.name}`,
-        description: poc.description || poc.name,
-        published: poc.updatedAt,
-        modified: poc.updatedAt,
-        cvss: { score: 0, severity: 'UNKNOWN', vector: '' },
-        references: [poc.url],
-        cwe: [],
-        exploitAvailable: true,
-        pocRepos: [poc],
-        source: 'combined' as const,
-      }));
-      
-      console.log(`[CVE] ✅ GitHub found ${pocCVEs.length} results`);
-      await cacheAPIResponse(cacheKey, pocCVEs, CVE_CACHE_TTL);
-      return pocCVEs;
-    }
-    
-    console.log(`[CVE] No results found for: ${normalizedQuery}`);
+    // No real CVEs found - return empty array
+    // GitHub PoCs should only appear in the GitHub PoCs tab, not as fake CVEs
+    console.log(`[CVE] No real CVE results found for: ${normalizedQuery}`);
     return [];
   } catch (error) {
     console.error('CVE search error:', error);
@@ -1027,7 +1000,7 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
     if (feodoResponse.ok) {
       const feodoData = await feodoResponse.json();
       
-      for (const item of feodoData.slice(0, 100)) {
+      for (const item of feodoData) {
         const geo = await getGeoLocation(item.ip_address);
         
         feeds.push({
@@ -1050,7 +1023,7 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
     const urlhausResponse = await fetch('https://urlhaus.abuse.ch/downloads/json_recent/');
     if (urlhausResponse.ok) {
       const urlhausData = await urlhausResponse.json();
-      for (const item of urlhausData.slice(0, 50)) {
+      for (const item of urlhausData) {
         feeds.push({
           id: `urlhaus-${item.id}`,
           type: 'malware',
@@ -1070,7 +1043,7 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
     const openphishResponse = await fetch('https://openphish.com/feed.txt');
     if (openphishResponse.ok) {
       const openphishData = await openphishResponse.text();
-      const urls = openphishData.split('\n').filter(Boolean).slice(0, 50);
+      const urls = openphishData.split('\n').filter(Boolean);
       
       const now = new Date().toISOString();
       for (const url of urls) {
@@ -1099,7 +1072,7 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
     if (threatfoxResponse.ok) {
       const threatfoxData = await threatfoxResponse.json();
       
-      for (const item of (threatfoxData.data || []).slice(0, 50)) {
+      for (const item of (threatfoxData.data || [])) {
         const isIp = item.ioc_type === 'ip:port' || item.ioc_type === 'ip';
         let geo = null;
         

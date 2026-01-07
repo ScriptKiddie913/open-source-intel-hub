@@ -100,11 +100,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     malwareFamilies: ['X-Agent', 'X-Tunnel', 'Zebrocy', 'CHOPSTICK'],
     tools: ['Mimikatz', 'Responder', 'Empire'],
     ttps: ['T1566', 'T1053', 'T1059', 'T1071', 'T1078', 'T1027'],
-    references: [
-      'https://attack.mitre.org/groups/G0007/',
-      'https://www.mandiant.com/resources/apt28-a-window-into-russias-cyber-espionage-operations',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/sofacy',
-    ],
   },
   'apt29': {
     name: 'APT29',
@@ -118,11 +113,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     malwareFamilies: ['SUNBURST', 'TEARDROP', 'WellMess', 'WellMail', 'HAMMERTOSS'],
     tools: ['Cobalt Strike', 'Mimikatz'],
     ttps: ['T1195', 'T1078', 'T1059', 'T1071', 'T1082', 'T1016'],
-    references: [
-      'https://attack.mitre.org/groups/G0016/',
-      'https://www.mandiant.com/resources/blog/unc2452-merged-into-apt29',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/apt29',
-    ],
   },
   'sandworm': {
     name: 'Sandworm',
@@ -136,11 +126,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     malwareFamilies: ['BlackEnergy', 'NotPetya', 'Olympic Destroyer', 'Industroyer', 'Exaramel'],
     tools: ['Mimikatz', 'PsExec'],
     ttps: ['T1486', 'T1485', 'T1489', 'T1078', 'T1027', 'T1059'],
-    references: [
-      'https://attack.mitre.org/groups/G0034/',
-      'https://www.welivesecurity.com/2018/10/11/new-telebots-backdoor-linking-industroyer-notpetya/',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/sandworm',
-    ],
   },
   'turla': {
     name: 'Turla',
@@ -153,11 +138,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['USA', 'EU Countries', 'Middle East'],
     malwareFamilies: ['Snake', 'Carbon', 'ComRAT', 'Kazuar', 'Gazer'],
     ttps: ['T1071', 'T1573', 'T1059', 'T1105', 'T1027', 'T1041'],
-    references: [
-      'https://attack.mitre.org/groups/G0010/',
-      'https://www.welivesecurity.com/2020/03/12/tracking-turla-new-backdoor-armenian-watering-holes/',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/turla',
-    ],
   },
   
   // Chinese APTs
@@ -173,11 +153,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     malwareFamilies: ['DUSTPAN', 'DUSTTRAP', 'BEACON', 'KEYPLUG'],
     tools: ['Cobalt Strike', 'Metasploit'],
     ttps: ['T1059', 'T1071', 'T1195', 'T1078', 'T1105', 'T1027'],
-    references: [
-      'https://attack.mitre.org/groups/G0096/',
-      'https://www.mandiant.com/resources/apt41-dual-espionage-and-cyber-crime-operation',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/apt41',
-    ],
   },
   'apt40': {
     name: 'APT40',
@@ -190,11 +165,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['USA', 'UK', 'Australia', 'Asia'],
     malwareFamilies: ['MURKYTOP', 'FRESHAIR', 'BEACON'],
     ttps: ['T1566', 'T1059', 'T1071', 'T1105', 'T1078'],
-    references: [
-      'https://attack.mitre.org/groups/G0065/',
-      'https://www.cisa.gov/news-events/cybersecurity-advisories/aa21-200a',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/leviathan',
-    ],
   },
   'apt10': {
     name: 'APT10',
@@ -207,11 +177,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['USA', 'Japan', 'UK', 'EU Countries'],
     malwareFamilies: ['PlugX', 'Quasar RAT', 'RedLeaves'],
     ttps: ['T1199', 'T1078', 'T1059', 'T1071', 'T1105'],
-    references: [
-      'https://attack.mitre.org/groups/G0045/',
-      'https://www.pwc.co.uk/issues/cyber-security-services/insights/operation-cloud-hopper.html',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/stone_panda',
-    ],
   },
   'volt_typhoon': {
     name: 'Volt Typhoon',
@@ -225,11 +190,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     malwareFamilies: ['Living-off-the-land'],
     tools: ['WMIC', 'PowerShell', 'ntdsutil'],
     ttps: ['T1078', 'T1059', 'T1218', 'T1003', 'T1071'],
-    references: [
-      'https://www.microsoft.com/en-us/security/blog/2023/05/24/volt-typhoon-targets-us-critical-infrastructure-with-living-off-the-land-techniques/',
-      'https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-144a',
-      'https://attack.mitre.org/groups/G1017/',
-    ],
   },
   
   // North Korean APTs
@@ -244,11 +204,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['USA', 'South Korea', 'Japan', 'Global'],
     malwareFamilies: ['FALLCHILL', 'HOPLIGHT', 'ELECTRICFISH', 'AppleJeus'],
     ttps: ['T1566', 'T1059', 'T1071', 'T1486', 'T1485'],
-    references: [
-      'https://attack.mitre.org/groups/G0032/',
-      'https://www.cisa.gov/news-events/analysis-reports/ar20-133a',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/lazarus_group',
-    ],
   },
   'kimsuky': {
     name: 'Kimsuky',
@@ -261,11 +216,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['South Korea', 'USA', 'Japan'],
     malwareFamilies: ['BabyShark', 'GREASE', 'AppleSeed'],
     ttps: ['T1566', 'T1059', 'T1071', 'T1056', 'T1539'],
-    references: [
-      'https://attack.mitre.org/groups/G0094/',
-      'https://www.cisa.gov/news-events/cybersecurity-advisories/aa20-301a',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/kimsuky',
-    ],
   },
   
   // Iranian APTs
@@ -280,11 +230,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['USA', 'Saudi Arabia', 'South Korea'],
     malwareFamilies: ['SHAMOON', 'STONEDRILL', 'TURNEDUP'],
     ttps: ['T1566', 'T1059', 'T1071', 'T1486', 'T1078'],
-    references: [
-      'https://attack.mitre.org/groups/G0064/',
-      'https://www.mandiant.com/resources/apt33-insights-into-iranian-cyber-espionage',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/apt33',
-    ],
   },
   'apt34': {
     name: 'APT34',
@@ -297,11 +242,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['Middle East', 'USA'],
     malwareFamilies: ['QUADAGENT', 'BONDUPDATER', 'POWRUNER', 'Helminth'],
     ttps: ['T1566', 'T1059', 'T1071', 'T1078', 'T1003'],
-    references: [
-      'https://attack.mitre.org/groups/G0049/',
-      'https://unit42.paloaltonetworks.com/unit42-oilrig-group-steps-attacks-new-delivery-documents-new-injector-trojan/',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/apt34',
-    ],
   },
   'muddywater': {
     name: 'MuddyWater',
@@ -314,11 +254,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['Middle East', 'South Asia', 'EU Countries'],
     malwareFamilies: ['POWERSTATS', 'SHARPSTATS', 'PowGoop'],
     ttps: ['T1566', 'T1059', 'T1218', 'T1071', 'T1078'],
-    references: [
-      'https://attack.mitre.org/groups/G0069/',
-      'https://www.cisa.gov/news-events/cybersecurity-advisories/aa22-055a',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/muddywater',
-    ],
   },
   
   // Cybercrime Groups
@@ -333,11 +268,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['USA', 'UK', 'Australia'],
     malwareFamilies: ['Carbanak', 'GRIFFON', 'BATELEUR', 'BOOSTWRITE'],
     ttps: ['T1566', 'T1059', 'T1071', 'T1486', 'T1555'],
-    references: [
-      'https://attack.mitre.org/groups/G0046/',
-      'https://www.mandiant.com/resources/fin7-pursuing-an-enigmatic-and-evasive-global-criminal-operation',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/fin7',
-    ],
   },
   'fin11': {
     name: 'FIN11',
@@ -349,11 +279,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['USA', 'EU Countries'],
     malwareFamilies: ['CLOP', 'Get2', 'SDBOT', 'FlawedAmmyy'],
     ttps: ['T1190', 'T1486', 'T1489', 'T1071', 'T1566'],
-    references: [
-      'https://attack.mitre.org/groups/G0092/',
-      'https://www.mandiant.com/resources/fin11-email-campaigns-precursor-for-ransomware-data-theft',
-      'https://malpedia.caad.fkie.fraunhofer.de/actor/ta505',
-    ],
   },
   
   // Ransomware Groups (as threat actors)
@@ -367,11 +292,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['Global'],
     malwareFamilies: ['LockBit', 'LockBit 2.0', 'LockBit 3.0', 'LockBit Green'],
     ttps: ['T1486', 'T1490', 'T1489', 'T1059', 'T1078', 'T1071'],
-    references: [
-      'https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-165a',
-      'https://www.ic3.gov/Media/News/2022/220204.pdf',
-      'https://malpedia.caad.fkie.fraunhofer.de/details/win.lockbit',
-    ],
   },
   'blackcat_gang': {
     name: 'ALPHV/BlackCat',
@@ -383,11 +303,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['USA', 'EU Countries'],
     malwareFamilies: ['BlackCat', 'ALPHV', 'Sphynx'],
     ttps: ['T1486', 'T1490', 'T1489', 'T1059', 'T1078'],
-    references: [
-      'https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-353a',
-      'https://www.ic3.gov/Media/News/2022/220420.pdf',
-      'https://malpedia.caad.fkie.fraunhofer.de/details/win.blackcat',
-    ],
   },
   
   // Hacktivists
@@ -401,10 +316,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['Global'],
     malwareFamilies: ['LOIC', 'HOIC'],
     ttps: ['T1498', 'T1499', 'T1530', 'T1565'],
-    references: [
-      'https://en.wikipedia.org/wiki/Anonymous_(hacker_group)',
-      'https://www.recordedfuture.com/threat-actor/anonymous',
-    ],
   },
   'killnet': {
     name: 'KillNet',
@@ -417,10 +328,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['USA', 'EU Countries', 'Ukraine'],
     malwareFamilies: ['DDoS tools'],
     ttps: ['T1498', 'T1499'],
-    references: [
-      'https://www.cisa.gov/news-events/cybersecurity-advisories/aa22-110a',
-      'https://www.mandiant.com/resources/blog/killnet-new-capabilities',
-    ],
   },
   
   // Initial Access Brokers
@@ -434,10 +341,6 @@ const KNOWN_APT_GROUPS: Record<string, Partial<ThreatActor>> = {
     targetCountries: ['Global'],
     malwareFamilies: ['BumbleBee', 'IcedID'],
     ttps: ['T1566', 'T1078', 'T1059', 'T1105'],
-    references: [
-      'https://blog.google/threat-analysis-group/exposing-initial-access-broker-ties-conti/',
-      'https://malpedia.caad.fkie.fraunhofer.de/details/win.bumblebee',
-    ],
   },
 };
 

@@ -209,7 +209,7 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
     medium: d.medium,
     low: d.low
   })) : (realTimeTrends?.trends || []).map(d => ({
-    date: new Date(d.timestamp).toLocaleDateString(),
+    date: new Date(d.date).toLocaleDateString(),
     total: d.total,
     critical: d.critical,
     high: d.high,

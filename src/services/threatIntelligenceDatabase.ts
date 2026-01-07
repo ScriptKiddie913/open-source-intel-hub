@@ -169,7 +169,7 @@ export class ThreatIntelligenceDatabase {
       }
 
       // Insert new record
-      const { data: insertedRecord, error } = await (supabase as any)
+      const { data: insertedRecord, error } = await supabase
         .from('threat_intelligence')
         .insert([record])
         .select()
@@ -195,7 +195,7 @@ export class ThreatIntelligenceDatabase {
     try {
       updates.updated_at = new Date().toISOString();
 
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('threat_intelligence')
         .update(updates)
         .eq('id', id)
@@ -216,7 +216,7 @@ export class ThreatIntelligenceDatabase {
   // Find existing record to prevent duplicates
   private async findExistingRecord(sourceId: string, sourceName: string): Promise<any> {
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('threat_intelligence')
         .select('*')
         .eq('source_id', sourceId)
@@ -283,7 +283,7 @@ export class ThreatIntelligenceDatabase {
     offset?: number;
   } = {}): Promise<ThreatIntelligenceRecord[]> {
     try {
-      let query = (supabase as any).from('threat_intelligence').select('*');
+      let query = supabase.from('threat_intelligence').select('*');
 
       // Apply filters
       if (filters.threatType) {
@@ -337,7 +337,7 @@ export class ThreatIntelligenceDatabase {
     recentCount: number;
   }> {
     try {
-      const { data: totalData, error: totalError } = await (supabase as any)
+      const { data: totalData, error: totalError } = await supabase
         .from('threat_intelligence')
         .select('threat_type, severity_level, source_name, created_at');
 
@@ -398,7 +398,7 @@ export class ThreatIntelligenceDatabase {
   // Search threat intelligence
   async searchThreatIntelligence(query: string): Promise<ThreatIntelligenceRecord[]> {
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('threat_intelligence')
         .select('*')
         .or(`title.ilike.%${query}%,description.ilike.%${query}%,tags.cs.{${query}}`)
