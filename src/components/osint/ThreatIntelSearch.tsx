@@ -1,5 +1,6 @@
+
 import { useState } from 'react';
-import { Search, Shield, AlertTriangle, Globe, Hash, Mail, Loader2, Bitcoin, Activity, DollarSign, Eye, Clock, Target, Database } from 'lucide-react';
+import { Search, Shield, AlertTriangle, Globe, Hash, Mail, Loader2, Bitcoin, Activity, DollarSign, Eye, Clock, Target, Database, Camera, Upload, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -95,10 +96,15 @@ async function checkCryptoAbuse(
 
 export function ThreatIntelSearch() {
   const [query, setQuery] = useState('');
-  const [searchType, setSearchType] = useState<'ip' | 'domain' | 'url' | 'hash' | 'crypto'>('ip');
+  const [searchType, setSearchType] = useState<'ip' | 'domain' | 'url' | 'hash' | 'crypto' | 'crimewall'>('ip');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ThreatIntelResult | null>(null);
   const [cryptoResult, setCryptoResult] = useState<CryptoAbuseResult | null>(null);
+  
+  // CrimeWall state
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [crimeWallResult, setCrimeWallResult] = useState<string | null>(null);
 
   const handleSearch = async () => {
     if (!query.trim()) {
@@ -160,8 +166,78 @@ export function ThreatIntelSearch() {
       case 'url': return <Globe className="h-4 w-4" />;
       case 'hash': return <Hash className="h-4 w-4" />;
       case 'crypto': return <Bitcoin className="h-4 w-4" />;
+      case 'crimewall': return <Camera className="h-4 w-4" />;
       default: return <Search className="h-4 w-4" />;
     }
+  };
+
+  // CrimeWall handlers
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select an image file');
+        return;
+      }
+
+      setSelectedFile(file);
+      setCrimeWallResult(null);
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const analyzeCrimeWallImage = async () => {
+    if (!selectedFile) {
+      toast.error('Please select an image to analyze');
+      return;
+    }
+
+    setLoading(true);
+    setCrimeWallResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('query', 'Analyze this image for scam usage, criminal risk indicators from interpol fbi,indian and world wide criminal databases, image reuse, and manipulation and return the exact identity in cases of criminals');
+
+      const response = await fetch('https://souvik76.app.n8n.cloud/webhook-test/osint-threat-intel', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data && typeof data === 'object') {
+        setCrimeWallResult(JSON.stringify(data, null, 2));
+      } else if (typeof data === 'string') {
+        setCrimeWallResult(data);
+      } else {
+        setCrimeWallResult('Analysis completed but no detailed results returned');
+      }
+
+      toast.success('Image analysis finished successfully');
+
+    } catch (error) {
+      console.error('CrimeWall Analysis Error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to analyze image');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearCrimeWallImage = () => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setCrimeWallResult(null);
   };
 
   return (
@@ -175,7 +251,7 @@ export function ThreatIntelSearch() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Tabs value={searchType} onValueChange={(v) => setSearchType(v as any)}>
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="ip" className="flex items-center gap-2">
                 <Globe className="h-4 w-4" /> IP
               </TabsTrigger>
@@ -191,39 +267,114 @@ export function ThreatIntelSearch() {
               <TabsTrigger value="crypto" className="flex items-center gap-2">
                 <Bitcoin className="h-4 w-4" /> Crypto
               </TabsTrigger>
+              <TabsTrigger value="crimewall" className="flex items-center gap-2">
+                <Camera className="h-4 w-4" /> CrimeWall
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
-          <div className="flex gap-2">
-            <Input
-              placeholder={
-                searchType === 'crypto' 
-                  ? 'Enter Bitcoin/Ethereum/Tron wallet address...'
-                  : `Enter ${searchType} to analyze...`
-              }
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="flex-1 bg-background border-border"
-            />
-            <Button onClick={handleSearch} disabled={loading} className="min-w-[120px]">
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  {getTypeIcon(searchType)}
-                  <span className="ml-2">{searchType === 'crypto' ? 'Check' : 'Analyze'}</span>
-                </>
-              )}
-            </Button>
-          </div>
+          {searchType !== 'crimewall' ? (
+            <>
+              <div className="flex gap-2">
+                <Input
+                  placeholder={
+                    searchType === 'crypto' 
+                      ? 'Enter Bitcoin/Ethereum/Tron wallet address...'
+                      : `Enter ${searchType} to analyze...`
+                  }
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  className="flex-1 bg-background border-border"
+                />
+                <Button onClick={handleSearch} disabled={loading} className="min-w-[120px]">
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      {getTypeIcon(searchType)}
+                      <span className="ml-2">{searchType === 'crypto' ? 'Check' : 'Analyze'}</span>
+                    </>
+                  )}
+                </Button>
+              </div>
 
-          <div className="text-xs text-muted-foreground">
-            {searchType === 'crypto' 
-              ? 'AI-powered blockchain intelligence analysis | Example: 1BoatSLRHtKNngkdXEeobR76b53LETtpyT' 
-              : 'Sources: VirusTotal, Abuse.ch (Feodo, SSL Blacklist), CIRCL Hashlookup, Spamhaus DROP'
-            }
-          </div>
+              <div className="text-xs text-muted-foreground">
+                {searchType === 'crypto' 
+                  ? 'AI-powered blockchain intelligence analysis | Example: 1BoatSLRHtKNngkdXEeobR76b53LETtpyT' 
+                  : 'Sources: VirusTotal, Abuse.ch (Feodo, SSL Blacklist), CIRCL Hashlookup, Spamhaus DROP'
+                }
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Upload an image to check against criminal databases and detect scam usage, manipulation, and reuse
+              </p>
+              
+              {!previewUrl ? (
+                <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-border rounded-lg cursor-pointer bg-secondary/20 hover:bg-secondary/30 transition-colors">
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <Upload className="w-12 h-12 mb-3 text-muted-foreground" />
+                    <p className="mb-2 text-sm text-muted-foreground">
+                      <span className="font-semibold">Click to upload</span> or drag and drop
+                    </p>
+                    <p className="text-xs text-muted-foreground">PNG, JPG, JPEG, GIF (MAX. 10MB)</p>
+                  </div>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                  />
+                </label>
+              ) : (
+                <div className="space-y-4">
+                  <div className="relative rounded-lg overflow-hidden border border-border bg-secondary/20">
+                    <img
+                      src={previewUrl}
+                      alt="Preview"
+                      className="w-full h-auto max-h-96 object-contain"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-medium">{selectedFile?.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {selectedFile?.size ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={clearCrimeWallImage}>
+                      Remove
+                    </Button>
+                  </div>
+
+                  <Button
+                    onClick={analyzeCrimeWallImage}
+                    disabled={loading}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Analyzing Image...
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="mr-2 h-4 w-4" />
+                        Analyze Against Criminal Databases
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -442,6 +593,28 @@ export function ThreatIntelSearch() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* CrimeWall Results */}
+      {crimeWallResult && (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5 text-destructive" />
+              Criminal Database Analysis Results
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Image checked against Interpol, FBI, Indian, and worldwide criminal databases
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-secondary/20 rounded-lg p-4">
+              <pre className="text-sm whitespace-pre-wrap break-words font-mono">
+                {crimeWallResult}
+              </pre>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
