@@ -9,8 +9,15 @@ const CryptoScanner: React.FC = () => {
   const [error, setError] = useState('');
 
   const handleScan = async () => {
-    if (!input.trim()) {
+    const trimmedInput = input.trim();
+    if (!trimmedInput) {
       setError('Please enter a cryptocurrency address');
+      return;
+    }
+
+    // Basic format validation
+    if (trimmedInput.length < 20) {
+      setError('Invalid address format - too short');
       return;
     }
 
@@ -19,14 +26,20 @@ const CryptoScanner: React.FC = () => {
     setResult(null);
 
     try {
-      const scanResult = await scanCryptoAddress(input.trim());
+      const scanResult = await scanCryptoAddress(trimmedInput);
       setResult(scanResult);
       
-      if (!scanResult.success && scanResult.flags.length > 0) {
-        setError(scanResult.flags.join(', '));
+      if (!scanResult.success) {
+        if (scanResult.flags.length > 0) {
+          setError(scanResult.flags.join(', '));
+        } else {
+          setError('Unable to analyze address - may be unsupported format or network issues');
+        }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Scan failed');
+      console.error('Crypto scan error:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Scan failed due to network or API issues';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -293,11 +306,13 @@ const CryptoScanner: React.FC = () => {
         <h3 className="text-lg font-semibold text-blue-400 mb-2">Supported Cryptocurrencies</h3>
         <p className="text-gray-300 text-sm mb-3">
           This scanner supports Bitcoin (BTC), Ethereum (ETH), Litecoin (LTC), Bitcoin Cash (BCH), 
-          Dogecoin (DOGE), and Monero (XMR) addresses.
+          Dogecoin (DOGE), and Monero (XMR) addresses. Analysis may take 15-30 seconds.
         </p>
         <div className="text-xs text-gray-400">
           <strong>Data Sources:</strong> BlockCypher, Blockchain.info, Etherscan, Crystal Blockchain, 
           OFAC Sanctions List, and Known Exchange databases.
+          <br />
+          <strong>Note:</strong> Some APIs may have rate limits. If scan fails, please try again in a few minutes.
         </div>
       </div>
     </div>
