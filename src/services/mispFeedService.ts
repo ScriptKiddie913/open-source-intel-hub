@@ -10,6 +10,60 @@
 
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
 
+// CORS proxy configuration - used in production, vite proxy used in development
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const ALT_CORS_PROXY = 'https://corsproxy.io/?';
+const IS_DEVELOPMENT = import.meta.env.DEV;
+
+// Helper to get the correct URL based on environment
+function getApiUrl(localPath: string, remoteUrl: string): string {
+  return IS_DEVELOPMENT ? localPath : `${CORS_PROXY}${encodeURIComponent(remoteUrl)}`;
+}
+
+// Fetch with fallback to alternative proxy
+async function fetchWithFallback(url: string, options: RequestInit = {}, timeout = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        ...options.headers,
+      },
+    });
+    clearTimeout(id);
+    
+    if (!response.ok && !IS_DEVELOPMENT && url.includes('allorigins')) {
+      // Try alternative proxy
+      const originalUrl = decodeURIComponent(url.replace(CORS_PROXY, ''));
+      console.log('[MISP] Primary proxy failed, trying alternative...');
+      const altUrl = `${ALT_CORS_PROXY}${encodeURIComponent(originalUrl)}`;
+      return fetch(altUrl, options);
+    }
+    
+    return response;
+  } catch (error: any) {
+    clearTimeout(id);
+    
+    // Try alternative proxy on network failure
+    if (!IS_DEVELOPMENT && url.includes('allorigins')) {
+      try {
+        const originalUrl = decodeURIComponent(url.replace(CORS_PROXY, ''));
+        console.log('[MISP] Primary proxy failed on error, trying alternative...');
+        const altUrl = `${ALT_CORS_PROXY}${encodeURIComponent(originalUrl)}`;
+        return fetch(altUrl, options);
+      } catch (altError) {
+        console.error('[MISP] Alternative proxy also failed');
+      }
+    }
+    
+    throw error;
+  }
+}
+
 /* ============================================================================
    TYPES
 ============================================================================ */
@@ -126,8 +180,12 @@ export async function fetchFeodoC2Servers(): Promise<C2Server[]> {
   try {
     console.log('[FeodoTracker] Fetching C2 server data...');
     
-    // Use local proxy to avoid CORS (proxied via vite.config.ts)
-    const response = await fetch('/api/feodo/ipblocklist_recommended.json');
+    // Use local proxy in dev, CORS proxy in production
+    const url = getApiUrl(
+      '/api/feodo/ipblocklist_recommended.json',
+      'https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json'
+    );
+    const response = await fetchWithFallback(url);
     
     if (!response.ok) {
       throw new Error(`Feodo fetch failed: ${response.status}`);
@@ -176,8 +234,12 @@ export async function fetchURLhausRecent(): Promise<URLhausEntry[]> {
   try {
     console.log('[URLhaus] Fetching recent malware URLs...');
     
-    // Use local proxy to avoid CORS (proxied via vite.config.ts)
-    const response = await fetch('/api/urlhaus/json_recent/');
+    // Use local proxy in dev, CORS proxy in production
+    const url = getApiUrl(
+      '/api/urlhaus/json_recent/',
+      'https://urlhaus.abuse.ch/downloads/json_recent/'
+    );
+    const response = await fetchWithFallback(url);
     
     if (!response.ok) {
       throw new Error(`URLhaus fetch failed: ${response.status}`);
@@ -236,8 +298,12 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
   try {
     console.log('[ThreatFox] Fetching recent IOCs...');
     
-    // Use local proxy to avoid CORS (proxied via vite.config.ts)
-    const response = await fetch('/api/threatfox/json/recent/');
+    // Use local proxy in dev, CORS proxy in production
+    const url = getApiUrl(
+      '/api/threatfox/json/recent/',
+      'https://threatfox.abuse.ch/export/json/recent/'
+    );
+    const response = await fetchWithFallback(url);
     
     if (!response.ok) {
       throw new Error(`ThreatFox fetch failed: ${response.status}`);
@@ -292,8 +358,12 @@ export async function fetchMalwareBazaarRecent(): Promise<MalwareSample[]> {
   try {
     console.log('[MalwareBazaar] Fetching recent samples...');
     
-    // Use local proxy to avoid CORS (proxied via vite.config.ts)
-    const response = await fetch('/api/bazaar/txt/sha256/recent/');
+    // Use local proxy in dev, CORS proxy in production
+    const url = getApiUrl(
+      '/api/bazaar/txt/sha256/recent/',
+      'https://bazaar.abuse.ch/export/txt/sha256/recent/'
+    );
+    const response = await fetchWithFallback(url);
     
     if (!response.ok) {
       throw new Error(`MalwareBazaar fetch failed: ${response.status}`);
@@ -347,7 +417,7 @@ export async function fetchAllThreatFeeds(): Promise<ThreatFeedSummary> {
     fetchFeodoC2Servers(),
     fetchURLhausRecent(),
     fetchThreatFoxIOCs(30),  // Last 30 days for more data
-    fetchMalwareBazaarRecent(),
+    fetchMalwareBazaarRecent(500),
   ]);
   
   // Convert to unified indicators
