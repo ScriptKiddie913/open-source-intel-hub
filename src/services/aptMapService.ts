@@ -617,12 +617,10 @@ export async function getAPTStats(): Promise<APTStats> {
   // Sort and get top items
   const topTargetSectors = Object.entries(targetSectorCounts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
     .map(([sector, count]) => ({ sector, count }));
   
   const topTargetCountries = Object.entries(targetCountryCounts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
     .map(([country, count]) => ({ country, count }));
   
   return {
@@ -693,6 +691,194 @@ export async function getAPTThreatMapData(): Promise<APTThreatPoint[]> {
 }
 
 /* ============================================================================
+   MALWARE DATA FROM APTMAP
+============================================================================ */
+
+export interface MalwareHash {
+  id: number;
+  MD5: string;
+  SHA1: string;
+  SHA256: string;
+  SHA512: string;
+  docs: string[];
+}
+
+export interface MalwareFileType {
+  id: number;
+  filetype: string;
+  count: number;
+}
+
+export interface MalwareImport {
+  id: number;
+  import_name: string;
+  count: number;
+}
+
+export interface MalwareCertificate {
+  id: number;
+  certificate: string;
+  count: number;
+}
+
+export interface MalwareDataSummary {
+  hashes: MalwareHash[];
+  fileTypes: MalwareFileType[];
+  imports: MalwareImport[];
+  certificates: MalwareCertificate[];
+  totalSamples: number;
+  lastUpdated: Date;
+}
+
+let malwareDataCache: MalwareDataSummary | null = null;
+let malwareDataCacheTime: number = 0;
+const MALWARE_CACHE_DURATION = 1800000; // 30 minutes
+
+const APTMAP_MALWARE_ENDPOINTS = {
+  hashes: [
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/master/hashes.json',
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/main/hashes.json',
+  ],
+  fileTypes: [
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/master/filetypes_count.json',
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/main/filetypes_count.json',
+  ],
+  imports: [
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/master/imports_count.json',
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/main/imports_count.json',
+  ],
+  functions: [
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/master/functions_count.json',
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/main/functions_count.json',
+  ],
+  certificates: [
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/master/certificates_count.json',
+    'https://raw.githubusercontent.com/andreacristaldi/APTmap/main/certificates_count.json',
+  ],
+};
+
+async function fetchMalwareEndpoint<T>(endpoints: string[]): Promise<T[]> {
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return Array.isArray(data) ? data : [];
+      }
+    } catch (error) {
+      console.warn(`Failed to fetch from ${endpoint}:`, error);
+    }
+  }
+  return [];
+}
+
+export async function fetchMalwareData(): Promise<MalwareDataSummary> {
+  // Check cache
+  if (malwareDataCache && Date.now() - malwareDataCacheTime < MALWARE_CACHE_DURATION) {
+    return malwareDataCache;
+  }
+
+  console.log('Fetching APTmap malware data...');
+
+  try {
+    const [hashes, fileTypes, imports, certificates] = await Promise.all([
+      fetchMalwareEndpoint<MalwareHash>(APTMAP_MALWARE_ENDPOINTS.hashes),
+      fetchMalwareEndpoint<MalwareFileType>(APTMAP_MALWARE_ENDPOINTS.fileTypes),
+      fetchMalwareEndpoint<MalwareImport>(APTMAP_MALWARE_ENDPOINTS.imports),
+      fetchMalwareEndpoint<MalwareCertificate>(APTMAP_MALWARE_ENDPOINTS.certificates),
+    ]);
+
+    malwareDataCache = {
+      hashes,
+      fileTypes,
+      imports,
+      certificates,
+      totalSamples: hashes.length,
+      lastUpdated: new Date(),
+    };
+    malwareDataCacheTime = Date.now();
+
+    console.log(`Loaded ${hashes.length} malware hashes, ${fileTypes.length} file types, ${imports.length} imports`);
+    return malwareDataCache;
+  } catch (error) {
+    console.error('Failed to fetch malware data:', error);
+    return {
+      hashes: [],
+      fileTypes: [],
+      imports: [],
+      certificates: [],
+      totalSamples: 0,
+      lastUpdated: new Date(),
+    };
+  }
+}
+
+export interface MalwareSearchResult {
+  hashes: MalwareHash[];
+  fileTypes: MalwareFileType[];
+  imports: MalwareImport[];
+  certificates: MalwareCertificate[];
+  totalMatches: number;
+  query: string;
+}
+
+export async function searchMalwareData(query: string): Promise<MalwareSearchResult> {
+  const data = await fetchMalwareData();
+  const lowerQuery = query.toLowerCase();
+
+  // Search hashes (MD5, SHA1, SHA256, SHA512)
+  const matchingHashes = data.hashes.filter(h =>
+    h.MD5?.toLowerCase().includes(lowerQuery) ||
+    h.SHA1?.toLowerCase().includes(lowerQuery) ||
+    h.SHA256?.toLowerCase().includes(lowerQuery) ||
+    h.SHA512?.toLowerCase().includes(lowerQuery)
+  );
+
+  // Search file types
+  const matchingFileTypes = data.fileTypes.filter(ft =>
+    ft.filetype?.toLowerCase().includes(lowerQuery)
+  );
+
+  // Search imports
+  const matchingImports = data.imports.filter(imp =>
+    imp.import_name?.toLowerCase().includes(lowerQuery)
+  );
+
+  // Search certificates
+  const matchingCertificates = data.certificates.filter(cert =>
+    cert.certificate?.toLowerCase().includes(lowerQuery)
+  );
+
+  return {
+    hashes: matchingHashes,
+    fileTypes: matchingFileTypes,
+    imports: matchingImports,
+    certificates: matchingCertificates,
+    totalMatches: matchingHashes.length + matchingFileTypes.length + 
+                  matchingImports.length + matchingCertificates.length,
+    query,
+  };
+}
+
+export async function getMalwareStats(): Promise<{
+  totalHashes: number;
+  topFileTypes: MalwareFileType[];
+  topImports: MalwareImport[];
+  topCertificates: MalwareCertificate[];
+}> {
+  const data = await fetchMalwareData();
+
+  return {
+    totalHashes: data.hashes.length,
+    topFileTypes: data.fileTypes.sort((a, b) => b.count - a.count).slice(0, 20),
+    topImports: data.imports.sort((a, b) => b.count - a.count).slice(0, 20),
+    topCertificates: data.certificates.sort((a, b) => b.count - a.count).slice(0, 20),
+  };
+}
+
+/* ============================================================================
    EXPORTS
 ============================================================================ */
 
@@ -704,4 +890,7 @@ export default {
   getAPTGroupsByTargetSector,
   getAPTStats,
   getAPTThreatMapData,
+  fetchMalwareData,
+  searchMalwareData,
+  getMalwareStats,
 };

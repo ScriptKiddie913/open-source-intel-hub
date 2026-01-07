@@ -282,8 +282,8 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
    MALWAREBAZAAR (Samples)
 ============================================================================ */
 
-export async function fetchMalwareBazaarRecent(limit: number = 500): Promise<MalwareSample[]> {
-  const cacheKey = `malwarebazaar_recent_${limit}`;
+export async function fetchMalwareBazaarRecent(): Promise<MalwareSample[]> {
+  const cacheKey = `malwarebazaar_recent`;
   const cached = await getCachedData(cacheKey) as MalwareSample[] | null;
   if (cached && Array.isArray(cached) && cached.length > 0) {
     return cached;
@@ -305,8 +305,7 @@ export async function fetchMalwareBazaarRecent(limit: number = 500): Promise<Mal
     const hashes = text
       .split('\n')
       .map(line => line.trim())
-      .filter(line => line && !line.startsWith('#'))
-      .slice(0, limit);
+      .filter(line => line && !line.startsWith('#'));
     
     console.log('[MalwareBazaar] Raw hashes:', hashes.length);
     
@@ -348,7 +347,7 @@ export async function fetchAllThreatFeeds(): Promise<ThreatFeedSummary> {
     fetchFeodoC2Servers(),
     fetchURLhausRecent(),
     fetchThreatFoxIOCs(30),  // Last 30 days for more data
-    fetchMalwareBazaarRecent(500),
+    fetchMalwareBazaarRecent(),
   ]);
   
   // Convert to unified indicators

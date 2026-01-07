@@ -527,7 +527,7 @@ export function getMonitoringDashboard(): MonitoringDashboard {
     sourcesHealthy: healthySources,
     sourcesTotal: sources.length,
     lastUpdate: new Date().toISOString(),
-    recentAlerts: alerts.slice(0, 10),
+    recentAlerts: alerts,
     rulePerformance,
     threatTrends,
   };

@@ -175,7 +175,7 @@ export async function getEnhancedSearchHistory(
   }
 
   try {
-    let query = supabase
+    let query = (supabase as any)
       .from('search_history')
       .select('*')
       .eq('user_id', user.id)
@@ -350,7 +350,7 @@ export async function createChatSession(
   }
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('chat_sessions')
       .insert({
         user_id: user.id,
@@ -396,7 +396,7 @@ export async function updateChatMessages(
   }
 
   try {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('chat_sessions')
       .update({ messages })
       .eq('id', sessionId);
@@ -415,7 +415,7 @@ export async function getChatSessionForSearch(searchId: string): Promise<ChatSes
   if (!user) return null;
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('chat_sessions')
       .select('*')
       .eq('search_id', searchId)
@@ -439,7 +439,7 @@ export async function deactivateChatSession(sessionId: string): Promise<boolean>
   }
 
   try {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('chat_sessions')
       .update({ is_active: false })
       .eq('id', sessionId);
