@@ -116,6 +116,11 @@ import {
   type ExtractedEntity,
 } from '@/services/llmAnalysisService';
 
+import {
+  queryThreatIntel,
+  type ThreatIntelResult,
+} from '@/services/threatIntelService';
+
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -145,6 +150,9 @@ interface UnifiedSearchResult {
   stealerLogs: StealerLog[];
   c2Servers: C2Server[];
   malwareSamples: MalwareSample[];
+  
+  // Hash verification results
+  hashAnalysis: ThreatIntelResult | null;
   
   // Telegram intelligence
   telegramResults: TelegramIntelResult[];
@@ -209,6 +217,34 @@ const MITRE_DESCRIPTIONS: Record<string, string> = {
 };
 
 /* ============================================================================
+   UTILITY FUNCTIONS
+============================================================================ */
+
+// Detect if input is a hash and return its type
+function detectHashType(input: string): 'md5' | 'sha1' | 'sha256' | 'sha512' | null {
+  const trimmed = input.trim().replace(/[^a-fA-F0-9]/g, '');
+  
+  // Only consider it a hash if the entire trimmed input matches hash pattern
+  // and original input doesn't contain spaces or other non-hex characters (except case)
+  const originalClean = input.trim().replace(/[^a-fA-F0-9]/gi, '');
+  if (trimmed !== originalClean.toLowerCase()) {
+    return null; // Contains invalid characters for a hash
+  }
+  
+  if (/^[a-fA-F0-9]{32}$/.test(trimmed)) {
+    return 'md5';
+  } else if (/^[a-fA-F0-9]{40}$/.test(trimmed)) {
+    return 'sha1';
+  } else if (/^[a-fA-F0-9]{64}$/.test(trimmed)) {
+    return 'sha256';
+  } else if (/^[a-fA-F0-9]{128}$/.test(trimmed)) {
+    return 'sha512';
+  }
+  
+  return null;
+}
+
+/* ============================================================================
    MAIN COMPONENT
 ============================================================================ */
 
@@ -245,6 +281,10 @@ export function StealthMoleScanner() {
     
     console.log(`\n${'='.repeat(60)}`);
     console.log(`[StealthMole] UNIFIED DEEP SCAN: "${query}"`);
+    const hashType = detectHashType(query);
+    if (hashType) {
+      console.log(`[StealthMole] 🔍 HASH DETECTED: ${hashType.toUpperCase()} - Enhanced malware analysis enabled`);
+    }
     console.log(`${'='.repeat(60)}\n`);
     
     try {
@@ -257,6 +297,7 @@ export function StealthMoleScanner() {
         stealerLogs: [],
         c2Servers: [],
         malwareSamples: [],
+        hashAnalysis: null,
         telegramResults: [],
         telegramStealerLogs: [],
         telegramRansomware: [],
@@ -312,18 +353,56 @@ export function StealthMoleScanner() {
         );
       }
       
-      // 2. Malware Tracking
+      // 2. Malware Tracking with Enhanced Hash Checking
       if (enableMalwareTracking) {
         searchPromises.push(
           (async () => {
             try {
+              // Check if input is a hash and run dedicated hash analysis
+              const hashType = detectHashType(query);
+              if (hashType) {
+                console.log(`[Hash] Detected ${hashType.toUpperCase()} hash, running threat intel check`);
+                try {
+                  const hashResult = await queryThreatIntel('hash', query.trim(), ['virustotal', 'abuse', 'circl']);
+                  unifiedResult.hashAnalysis = hashResult;
+                  
+                  if (hashResult.success && hashResult.formatted) {
+                    console.log(`[Hash] ✅ Hash analysis complete - Risk: ${hashResult.formatted.riskLevel}, Score: ${hashResult.formatted.riskScore}`);
+                    
+                    // Convert hash analysis to malware indicators if malicious
+                    if (hashResult.formatted.riskLevel === 'critical' || hashResult.formatted.riskLevel === 'high') {
+                      unifiedResult.malwareIndicators.push({
+                        id: `hash_${Date.now()}`,
+                        type: 'hash',
+                        value: query.trim(),
+                        malwareFamily: hashResult.formatted.categories[0] || 'Unknown',
+                        category: 'unknown',
+                        severity: hashResult.formatted.riskLevel as 'critical' | 'high',
+                        firstSeen: new Date().toISOString(),
+                        lastSeen: new Date().toISOString(),
+                        source: 'Threat Intelligence',
+                        sourceUrl: '',
+                        confidence: hashResult.formatted.riskScore,
+                        tags: hashResult.formatted.categories,
+                        mitreAttack: [],
+                        description: hashResult.formatted.summary,
+                      });
+                    }
+                  }
+                } catch (hashError) {
+                  console.error('[Hash] ❌ Hash analysis failed:', hashError);
+                }
+              }
+              
+              // Run standard malware activity search
               const malwareResult = await searchMalwareActivity(query);
-              unifiedResult.malwareIndicators = malwareResult.indicators;
+              unifiedResult.malwareIndicators.push(...malwareResult.indicators);
               unifiedResult.ransomwareGroups = malwareResult.ransomwareGroups;
               unifiedResult.stealerLogs = malwareResult.stealerLogs;
               unifiedResult.c2Servers = malwareResult.c2Servers;
               unifiedResult.malwareSamples = malwareResult.malwareSamples;
-              console.log(`[Malware] ✅ ${malwareResult.stats.totalIndicators} IOCs`);
+              
+              console.log(`[Malware] ✅ ${unifiedResult.malwareIndicators.length} total IOCs (${hashType ? 'including hash analysis' : 'standard search'})`);
             } catch (err) {
               console.error('[Malware] ❌ Error:', err);
             }
@@ -397,20 +476,26 @@ export function StealthMoleScanner() {
       }
       
       // Calculate stats
+      const hashThreatCount = unifiedResult.hashAnalysis?.formatted?.riskLevel === 'critical' || 
+                             unifiedResult.hashAnalysis?.formatted?.riskLevel === 'high' ? 1 : 0;
+      
       unifiedResult.stats = {
         totalFindings: 
           unifiedResult.darkWebSignals.length +
           unifiedResult.malwareIndicators.length +
-          unifiedResult.telegramResults.length,
+          unifiedResult.telegramResults.length +
+          hashThreatCount,
         criticalThreats: 
           unifiedResult.darkWebSignals.filter(s => s.severity === 'critical').length +
           unifiedResult.malwareIndicators.filter(i => i.severity === 'critical').length +
-          unifiedResult.telegramResults.filter(t => t.severity === 'critical').length,
+          unifiedResult.telegramResults.filter(t => t.severity === 'critical').length +
+          (unifiedResult.hashAnalysis?.formatted?.riskLevel === 'critical' ? 1 : 0),
         highThreats:
           unifiedResult.darkWebSignals.filter(s => s.severity === 'high').length +
           unifiedResult.malwareIndicators.filter(i => i.severity === 'high').length +
-          unifiedResult.telegramResults.filter(t => t.severity === 'high').length,
-        malwareIOCs: unifiedResult.malwareIndicators.length,
+          unifiedResult.telegramResults.filter(t => t.severity === 'high').length +
+          (unifiedResult.hashAnalysis?.formatted?.riskLevel === 'high' ? 1 : 0),
+        malwareIOCs: unifiedResult.malwareIndicators.length + hashThreatCount,
         ransomwareHits: unifiedResult.ransomwareGroups.length + unifiedResult.telegramRansomware.length,
         stealerLogHits: unifiedResult.stealerLogs.length + unifiedResult.telegramStealerLogs.length,
         activeC2s: unifiedResult.c2Servers.filter(c => c.status === 'active').length,
@@ -425,10 +510,17 @@ export function StealthMoleScanner() {
       
       // Show toast
       if (unifiedResult.stats.totalFindings === 0) {
-        toast.info('No threats found. The indicator appears clean.');
+        const hashType = detectHashType(query);
+        if (hashType && unifiedResult.hashAnalysis?.formatted?.riskLevel === 'info') {
+          toast.info(`Hash ${hashType.toUpperCase()} analyzed - appears clean from threat databases.`);
+        } else {
+          toast.info('No threats found. The indicator appears clean.');
+        }
       } else {
+        const hashType = detectHashType(query);
+        const hashNote = hashType && unifiedResult.hashAnalysis ? ' (including hash analysis)' : '';
         toast.success(
-          `Found ${unifiedResult.stats.totalFindings} findings (${unifiedResult.stats.criticalThreats} critical) in ${(unifiedResult.searchTime / 1000).toFixed(1)}s`
+          `Found ${unifiedResult.stats.totalFindings} findings (${unifiedResult.stats.criticalThreats} critical) in ${(unifiedResult.searchTime / 1000).toFixed(1)}s${hashNote}`
         );
       }
       
@@ -540,7 +632,7 @@ export function StealthMoleScanner() {
           <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
             <Info className="h-3 w-3" />
             <span>
-              Examples: "lockbit", "redline stealer", "example.com", "user@email.com", "192.168.1.1", "CVE-2024-*"
+              Examples: "lockbit", "redline stealer", "example.com", "user@email.com", "192.168.1.1", "CVE-2024-*", "a1b2c3d4..."
             </span>
           </div>
         </CardContent>
@@ -712,7 +804,122 @@ export function StealthMoleScanner() {
         {/* MALWARE TAB */}
         <TabsContent value="malware" className="mt-6 space-y-3">
           {loading && <LoadingState />}
-          {!loading && results?.malwareIndicators.length === 0 && (
+          
+          {/* Hash Analysis Section */}
+          {!loading && results?.hashAnalysis && (
+            <Card className={cn(
+              'border-2',
+              results.hashAnalysis.formatted?.riskLevel === 'critical' ? 'border-red-500/50 bg-red-500/5' :
+              results.hashAnalysis.formatted?.riskLevel === 'high' ? 'border-orange-500/50 bg-orange-500/5' :
+              results.hashAnalysis.formatted?.riskLevel === 'medium' ? 'border-yellow-500/50 bg-yellow-500/5' :
+              'border-green-500/50 bg-green-500/5'
+            )}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Hash className="h-5 w-5" />
+                    Hash Analysis Results
+                    <Badge className={cn(
+                      'ml-2',
+                      results.hashAnalysis.formatted?.riskLevel === 'critical' ? 'bg-red-500' :
+                      results.hashAnalysis.formatted?.riskLevel === 'high' ? 'bg-orange-500' :
+                      results.hashAnalysis.formatted?.riskLevel === 'medium' ? 'bg-yellow-500' :
+                      'bg-green-500'
+                    )}>
+                      {results.hashAnalysis.formatted?.riskLevel?.toUpperCase()}
+                    </Badge>
+                  </CardTitle>
+                  <Badge variant="outline">
+                    Score: {results.hashAnalysis.formatted?.riskScore || 0}/100
+                  </Badge>
+                </div>
+                <CardDescription>
+                  {detectHashType(results.searchQuery)?.toUpperCase()} Hash: {results.searchQuery}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <h4 className="font-semibold mb-2">Analysis Summary</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {results.hashAnalysis.formatted?.summary || 'Hash analysis completed'}
+                  </p>
+                </div>
+                
+                {results.hashAnalysis.formatted?.indicators && results.hashAnalysis.formatted.indicators.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Threat Indicators</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {results.hashAnalysis.formatted.indicators.map((indicator, i) => (
+                        <div key={i} className="p-2 bg-muted rounded border">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">{indicator.type}</span>
+                            <Badge variant="outline" className={cn(
+                              indicator.severity === 'critical' ? 'border-red-500 text-red-500' :
+                              indicator.severity === 'high' ? 'border-orange-500 text-orange-500' :
+                              indicator.severity === 'medium' ? 'border-yellow-500 text-yellow-500' :
+                              'border-blue-500 text-blue-500'
+                            )}>
+                              {indicator.severity}
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">{indicator.value}</div>
+                          <div className="text-xs text-muted-foreground">{indicator.source}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {results.hashAnalysis.formatted?.detections && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Detection Results</h4>
+                    <div className="grid grid-cols-4 gap-4 text-center">
+                      <div>
+                        <div className="text-2xl font-bold text-red-500">
+                          {results.hashAnalysis.formatted.detections.malicious}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Malicious</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-orange-500">
+                          {results.hashAnalysis.formatted.detections.suspicious}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Suspicious</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-green-500">
+                          {results.hashAnalysis.formatted.detections.clean}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Clean</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-gray-500">
+                          {results.hashAnalysis.formatted.detections.undetected}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Undetected</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {results.hashAnalysis.formatted?.recommendations && results.hashAnalysis.formatted.recommendations.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Recommendations</h4>
+                    <ul className="space-y-1">
+                      {results.hashAnalysis.formatted.recommendations.map((rec, i) => (
+                        <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                          <AlertTriangle className="h-3 w-3 mt-0.5 text-yellow-500" />
+                          {rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+          
+          {!loading && results?.malwareIndicators.length === 0 && !results?.hashAnalysis && (
             <EmptyState icon={Bug} title="No Malware IOCs" description="No malware indicators found" />
           )}
           {!loading && results?.malwareIndicators.map(ioc => (
