@@ -14,35 +14,13 @@ import { cn } from '@/lib/utils';
 // CRYPTO ABUSE TYPES & FUNCTIONS
 // ============================================================================
 
-interface CryptoAbuseReport {
-  source: string;
-  category: string;
-  description: string;
-  date: string;
-  amount?: number;
-  family?: string;
-  confidence?: number;
-  url?: string;
-}
-
 interface CryptoAbuseResult {
   address: string;
   network: 'bitcoin' | 'ethereum' | 'tron' | 'unknown';
-  isAbuse: boolean;
-  abuseType: string;
+  summary: string;
+  threatLevel: string;
   confidence: number;
-  reports: CryptoAbuseReport[];
-  totalReports: number;
-  riskLevel: 'critical' | 'high' | 'medium' | 'low' | 'info';
-  metadata: {
-    balance?: number;
-    totalReceived?: number;
-    totalSent?: number;
-    transactionCount?: number;
-    firstSeen?: string;
-    lastSeen?: string;
-    labels?: string[];
-  };
+  timestamp?: string;
 }
 
 // Detect cryptocurrency wallet address and return its type
@@ -73,179 +51,46 @@ async function checkCryptoAbuse(
   address: string, 
   network: 'bitcoin' | 'ethereum' | 'tron'
 ): Promise<CryptoAbuseResult> {
-  console.log(`[CryptoAbuse] Checking ${network} address: ${address}`);
+  console.log(`[CryptoAbuse] Analyzing ${network} address: ${address}`);
   
-  const result: CryptoAbuseResult = {
-    address,
-    network,
-    isAbuse: false,
-    abuseType: '',
-    confidence: 0,
-    reports: [],
-    totalReports: 0,
-    riskLevel: 'info',
-    metadata: {},
-  };
-  
-  const promises: Promise<void>[] = [];
-  
-  // BitcoinAbuse API check
-  if (network === 'bitcoin') {
-    promises.push(
-      (async () => {
-        try {
-          console.log('[BitcoinAbuse] Checking abuse reports...');
-          const response = await fetch(`https://www.bitcoinabuse.com/api/reports/check?address=${address}`, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.count > 0 && data.reports) {
-              result.isAbuse = true;
-              result.totalReports += data.count;
-              const reportsToAdd = Array.isArray(data.reports) ? data.reports.slice(0, 10) : [];
-              reportsToAdd.forEach((report: any) => {
-                result.reports.push({
-                  source: 'BitcoinAbuse',
-                  category: report.abuse_type || 'Unknown',
-                  description: report.description || 'No description provided',
-                  date: report.date || new Date().toISOString().split('T')[0],
-                  url: 'https://www.bitcoinabuse.com',
-                });
-              });
-              console.log(`[BitcoinAbuse] ✅ Found ${data.count} abuse reports`);
-            } else {
-              console.log('[BitcoinAbuse] ✅ No abuse reports found');
-            }
-          } else {
-            console.warn(`[BitcoinAbuse] ⚠️ API returned status ${response.status}`);
-          }
-        } catch (err) {
-          console.warn('[BitcoinAbuse] ❌ API error:', err instanceof Error ? err.message : 'Unknown error');
-        }
-      })()
-    );
-  }
-  
-  // Ransomwhere check
-  if (network === 'bitcoin') {
-    promises.push(
-      (async () => {
-        try {
-          console.log('[Ransomwhere] Checking ransomware database...');
-          const response = await fetch('https://ransomwhe.re/export.json', {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
-          });
-          if (response.ok) {
-            const data = await response.json();
-            const match = Array.isArray(data) ? data.find((item: any) => item.address === address) : null;
-            if (match) {
-              result.isAbuse = true;
-              result.totalReports += 1;
-              result.reports.push({
-                source: 'Ransomwhere',
-                category: 'Ransomware',
-                description: `Ransomware family: ${match.family || 'Unknown'}`,
-                date: match.date || new Date().toISOString().split('T')[0],
-                amount: match.amount,
-                family: match.family,
-                url: 'https://ransomwhe.re',
-              });
-              console.log(`[Ransomwhere] ✅ Found ransomware wallet: ${match.family}`);
-            } else {
-              console.log('[Ransomwhere] ✅ Address not in ransomware database');
-            }
-          } else {
-            console.warn(`[Ransomwhere] ⚠️ API returned status ${response.status}`);
-          }
-        } catch (err) {
-          console.warn('[Ransomwhere] ❌ API error:', err instanceof Error ? err.message : 'Unknown error');
-        }
-      })()
-    );
-  }
-  
-  // Blockchain analysis
-  promises.push(
-    (async () => {
-      try {
-        if (network === 'bitcoin') {
-          console.log('[Blockchain] Fetching Bitcoin address info...');
-          const response = await fetch(`https://blockchain.info/rawaddr/${address}`, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
-          });
-          if (response.ok) {
-            const data = await response.json();
-            result.metadata = {
-              balance: data.final_balance / 100000000, // Convert satoshis to BTC
-              totalReceived: data.total_received / 100000000,
-              totalSent: data.total_sent / 100000000,
-              transactionCount: data.n_tx,
-            };
-            console.log('[Blockchain] ✅ Address metadata retrieved');
-          } else {
-            console.warn(`[Blockchain] ⚠️ API returned status ${response.status}`);
-          }
-        } else if (network === 'ethereum') {
-          console.log('[Ethereum] Basic validation - address format correct');
-          // Ethereum balance checking would require API key (e.g., Etherscan)
-          result.metadata = {
-            labels: ['Ethereum address - balance check requires API key']
-          };
-        } else if (network === 'tron') {
-          console.log('[Tron] Basic validation - address format correct');
-          // Tron balance checking
-          result.metadata = {
-            labels: ['Tron address - balance check available via Tronscan']
-          };
-        }
-      } catch (err) {
-        console.warn('[Blockchain] ❌ Analysis error:', err instanceof Error ? err.message : 'Unknown error');
-      }
-    })()
-  );
-  
-  // Wait for all checks to complete
-  await Promise.allSettled(promises);
-  
-  // Determine abuse type and risk level
-  if (result.reports.length > 0) {
-    const categories = result.reports.map(r => r.category.toLowerCase());
-    
-    if (categories.some(c => c.includes('ransomware'))) {
-      result.abuseType = 'Ransomware';
-      result.riskLevel = 'critical';
-      result.confidence = 95;
-    } else if (categories.some(c => c.includes('scam') || c.includes('fraud'))) {
-      result.abuseType = 'Scam/Fraud';
-      result.riskLevel = 'high';
-      result.confidence = 85;
-    } else if (categories.some(c => c.includes('phishing'))) {
-      result.abuseType = 'Phishing';
-      result.riskLevel = 'high';
-      result.confidence = 80;
-    } else {
-      result.abuseType = 'Suspicious Activity';
-      result.riskLevel = 'medium';
-      result.confidence = 60;
+  try {
+    const response = await fetch('https://greasshostte.app.n8n.cloud/webhook/soc-osint-analysis', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chatInput: `Bitcoin details ${address}`
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned status ${response.status}`);
     }
-    
-    // Increase confidence based on number of reports
-    result.confidence = Math.min(99, result.confidence + (result.totalReports * 5));
-    console.log(`[CryptoAbuse] ⚠️ ABUSE DETECTED - ${result.abuseType} (${result.totalReports} reports, ${result.confidence}% confidence)`);
-  } else {
-    // Clean address - set appropriate values
-    result.abuseType = 'Clean';
-    result.riskLevel = 'low';
-    result.confidence = 85;
-    console.log('[CryptoAbuse] ✅ Address appears clean - No abuse reports found');
+
+    const data = await response.json();
+    console.log('[CryptoAbuse] API Response:', data);
+
+    if (!data.output || !data.output.summary) {
+      throw new Error('Invalid response format from API');
+    }
+
+    const result: CryptoAbuseResult = {
+      address,
+      network,
+      summary: data.output.summary,
+      threatLevel: data.output.threatLevel || 'unknown',
+      confidence: data.output.confidence || 0,
+      timestamp: data.output.timestamp,
+    };
+
+    console.log(`[CryptoAbuse] ✅ Analysis complete - Threat Level: ${result.threatLevel}, Confidence: ${result.confidence}%`);
+    return result;
+
+  } catch (err) {
+    console.error('[CryptoAbuse] ❌ Analysis failed:', err);
+    throw new Error(err instanceof Error ? err.message : 'Failed to analyze cryptocurrency address');
   }
-  
-  console.log(`[CryptoAbuse] Analysis complete: ${result.isAbuse ? '⚠️ ABUSE DETECTED' : '✅ Clean'} (${result.totalReports} reports)\n`);
-  return result;
 }
 
 export function ThreatIntelSearch() {
@@ -286,15 +131,9 @@ export function ThreatIntelSearch() {
         
         const searchTime = Date.now() - startTime;
         
-        if (abuseResult.isAbuse) {
-          toast.error(
-            `⚠️ ABUSE DETECTED: ${abuseResult.abuseType} (${abuseResult.totalReports} reports) - ${(searchTime / 1000).toFixed(1)}s`
-          );
-        } else {
-          toast.success(
-            `✅ Address appears clean - No abuse reports found in ${(searchTime / 1000).toFixed(1)}s`
-          );
-        }
+        toast.success(
+          `✅ Analysis complete - ${abuseResult.threatLevel.toUpperCase()} threat level (${abuseResult.confidence}% confidence) - ${(searchTime / 1000).toFixed(1)}s`
+        );
       } else {
         // Handle regular threat intel search
         const data = await queryThreatIntel(searchType, query.trim());
@@ -381,7 +220,7 @@ export function ThreatIntelSearch() {
 
           <div className="text-xs text-muted-foreground">
             {searchType === 'crypto' 
-              ? 'Sources: BitcoinAbuse, Ransomwhere, Blockchain.info | Example: 1BoatSLRHtKNngkdXEeobR76b53LETtpyT' 
+              ? 'AI-powered blockchain intelligence analysis | Example: 1BoatSLRHtKNngkdXEeobR76b53LETtpyT' 
               : 'Sources: VirusTotal, Abuse.ch (Feodo, SSL Blacklist), CIRCL Hashlookup, Spamhaus DROP'
             }
           </div>
@@ -543,173 +382,65 @@ export function ThreatIntelSearch() {
       {/* Crypto Abuse Results */}
       {cryptoResult && (
         <div className="space-y-4">
-          {/* Crypto Overview Card */}
+          {/* Crypto Analysis Summary Card */}
           <Card className={cn(
             'border-2',
-            cryptoResult.riskLevel === 'critical' ? 'border-red-500/50 bg-red-500/5' :
-            cryptoResult.riskLevel === 'high' ? 'border-orange-500/50 bg-orange-500/5' :
-            cryptoResult.riskLevel === 'medium' ? 'border-yellow-500/50 bg-yellow-500/5' :
+            cryptoResult.threatLevel === 'critical' ? 'border-red-500/50 bg-red-500/5' :
+            cryptoResult.threatLevel === 'high' ? 'border-orange-500/50 bg-orange-500/5' :
+            cryptoResult.threatLevel === 'medium' ? 'border-yellow-500/50 bg-yellow-500/5' :
             'border-green-500/50 bg-green-500/5'
           )}>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-3">
                 <CardTitle className="flex items-center gap-2">
                   <Bitcoin className="h-5 w-5" />
-                  Cryptocurrency Abuse Analysis
+                  Cryptocurrency Intelligence Analysis
                   <Badge className={cn(
                     'ml-2',
-                    cryptoResult.riskLevel === 'critical' ? 'bg-red-500' :
-                    cryptoResult.riskLevel === 'high' ? 'bg-orange-500' :
-                    cryptoResult.riskLevel === 'medium' ? 'bg-yellow-500' :
+                    cryptoResult.threatLevel === 'critical' ? 'bg-red-500' :
+                    cryptoResult.threatLevel === 'high' ? 'bg-orange-500' :
+                    cryptoResult.threatLevel === 'medium' ? 'bg-yellow-500' :
                     'bg-green-500'
                   )}>
-                    {cryptoResult.isAbuse ? `${cryptoResult.abuseType} - ${cryptoResult.riskLevel.toUpperCase()}` : 'CLEAN'}
+                    {cryptoResult.threatLevel.toUpperCase()}
                   </Badge>
                 </CardTitle>
-                <Badge variant="outline">
+                <Badge variant="outline" className="text-sm">
                   Confidence: {cryptoResult.confidence}%
                 </Badge>
               </div>
-              <div className="text-sm text-muted-foreground">
-                <span className="font-medium">{cryptoResult.network.toUpperCase()}</span> Address: {cryptoResult.address}
+              <div className="text-sm text-muted-foreground mt-2">
+                <span className="font-medium">{cryptoResult.network.toUpperCase()}</span> Address: 
+                <span className="font-mono ml-1">{cryptoResult.address}</span>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-3 border rounded text-center">
-                  <div className={cn(
-                    "text-2xl font-bold",
-                    cryptoResult.totalReports > 0 ? "text-red-500" : "text-green-500"
-                  )}>{cryptoResult.totalReports}</div>
-                  <div className="text-xs text-muted-foreground">Abuse Reports</div>
-                </div>
-                <div className="p-3 border rounded text-center">
-                  <div className={cn(
-                    "text-2xl font-bold",
-                    cryptoResult.confidence >= 80 ? "text-orange-500" :
-                    cryptoResult.confidence >= 60 ? "text-yellow-500" : "text-green-500"
-                  )}>{cryptoResult.confidence}%</div>
-                  <div className="text-xs text-muted-foreground">Confidence</div>
-                </div>
-                <div className="p-3 border rounded text-center">
-                  <div className="text-2xl font-bold text-blue-500">
-                    {cryptoResult.metadata?.transactionCount !== undefined ? cryptoResult.metadata.transactionCount : '—'}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Transactions</div>
-                </div>
-                <div className="p-3 border rounded text-center">
-                  <div className="text-2xl font-bold text-green-500">
-                    {cryptoResult.metadata?.balance !== undefined ? cryptoResult.metadata.balance.toFixed(6) : '—'}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Balance ({cryptoResult.network.toUpperCase()})</div>
-                </div>
+              {/* AI Analysis Summary */}
+              <div className="p-4 bg-muted/50 rounded-lg border">
+                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Intelligence Summary
+                </h3>
+                <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+                  {cryptoResult.summary}
+                </p>
               </div>
+
+              {/* Metadata Footer */}
+              {cryptoResult.timestamp && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t">
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    <span>Analysis timestamp: {cryptoResult.timestamp}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Target className="h-3 w-3" />
+                    <span>Powered by AI Intelligence</span>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
-
-          {/* Abuse Reports */}
-          {cryptoResult.reports.length > 0 ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-red-500" />
-                  Abuse Reports ({cryptoResult.reports.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {cryptoResult.reports.map((report, i) => (
-                    <div key={i} className="p-4 border rounded bg-muted/50">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{report.source}</Badge>
-                          <Badge className={cn(
-                            report.category.toLowerCase().includes('ransomware') ? 'bg-red-500' :
-                            report.category.toLowerCase().includes('scam') ? 'bg-orange-500' :
-                            'bg-yellow-500'
-                          )}>
-                            {report.category}
-                          </Badge>
-                        </div>
-                        <div className="text-xs text-muted-foreground">{report.date}</div>
-                      </div>
-                      <div className="text-sm mb-2">{report.description}</div>
-                      {report.amount && (
-                        <div className="text-xs text-muted-foreground">
-                          Amount: {report.amount} BTC
-                        </div>
-                      )}
-                      {report.family && (
-                        <div className="text-xs text-muted-foreground">
-                          Family: {report.family}
-                        </div>
-                      )}
-                      {report.url && (
-                        <a href={report.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-1">
-                          View Source <Database className="h-3 w-3" />
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="border-green-500/30 bg-green-500/5">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-green-500/10 rounded-full">
-                    <Shield className="h-6 w-6 text-green-500" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-green-500">No Abuse Reports Found</h3>
-                    <p className="text-sm text-muted-foreground">
-                      This address has not been reported for abuse in BitcoinAbuse or Ransomwhere databases.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Blockchain Metadata */}
-          {cryptoResult.metadata && Object.keys(cryptoResult.metadata).length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-5 w-5" />
-                  Blockchain Analysis
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {cryptoResult.metadata.totalReceived && (
-                    <div className="p-3 border rounded">
-                      <div className="text-sm font-medium">Total Received</div>
-                      <div className="text-lg font-bold">{cryptoResult.metadata.totalReceived.toFixed(6)} {cryptoResult.network.toUpperCase()}</div>
-                    </div>
-                  )}
-                  {cryptoResult.metadata.totalSent && (
-                    <div className="p-3 border rounded">
-                      <div className="text-sm font-medium">Total Sent</div>
-                      <div className="text-lg font-bold">{cryptoResult.metadata.totalSent.toFixed(6)} {cryptoResult.network.toUpperCase()}</div>
-                    </div>
-                  )}
-                  {cryptoResult.metadata.labels && cryptoResult.metadata.labels.length > 0 && (
-                    <div className="p-3 border rounded col-span-full">
-                      <div className="text-sm font-medium mb-2">Labels</div>
-                      <div className="flex flex-wrap gap-2">
-                        {cryptoResult.metadata.labels.map((label, i) => (
-                          <Badge key={i} variant="outline">{label}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
       )}
     </div>
