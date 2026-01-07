@@ -25,7 +25,6 @@ import {
   Skull,
   Workflow,
   Map,
-  Camera,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -54,7 +53,6 @@ const mainNavItems: NavItem[] = [
 ];
 
 const toolsNavItems: NavItem[] = [
-  { name: "CrimeWall", href: "/dashboard/crimewall", icon: Camera, description: "Criminal Database Image Lookup" },
   { name: "Username OSINT", href: "/dashboard/username", icon: User, description: "100+ Platform Enumeration" },
   { name: "Dark Web", href: "/dashboard/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
   { name: "Telegram Intel", href: "/dashboard/telegram", icon: Send, description: "Telegram Leak & OSINT Monitor" },
