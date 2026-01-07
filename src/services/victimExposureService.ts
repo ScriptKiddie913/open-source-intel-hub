@@ -191,7 +191,7 @@ export async function analyzeMultipleExposures(indicators: string[]): Promise<Ex
     aggregateRisk: calculateAggregateRisk(allAssessments),
     malwareFamiliesInvolved: Array.from(allFamilies),
     activeCampaigns: Array.from(allCampaigns),
-    timeline: allTimeline,
+    timeline: allTimeline.slice(0, 100),
   };
 }
 
@@ -211,7 +211,7 @@ async function checkPsbdmp(indicator: string, type: string): Promise<ExposureSig
     if (response.ok) {
       const data = await response.json();
       if (data.data && Array.isArray(data.data)) {
-        for (const paste of data.data) {
+        for (const paste of data.data.slice(0, 20)) {
           signals.push({
             id: `psbdmp-${paste.id}`,
             indicator,
@@ -374,7 +374,7 @@ async function checkPasteSites(indicator: string, type: string): Promise<Exposur
     if (response.ok) {
       const data = await response.json();
       if (data.pastes && Array.isArray(data.pastes)) {
-        for (const paste of data.pastes) {
+        for (const paste of data.pastes.slice(0, 10)) {
           signals.push({
             id: `pasteee-${paste.id}`,
             indicator,

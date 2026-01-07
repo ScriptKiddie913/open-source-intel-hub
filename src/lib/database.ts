@@ -372,23 +372,3 @@ export async function clearAllData(): Promise<void> {
     transaction.onerror = () => reject(transaction.error);
   });
 }
-
-// Clear cache by prefix (e.g., 'cve:' to clear all CVE cache)
-export async function clearCacheByPrefix(prefix: string): Promise<void> {
-  const store = await getStore('cache', 'readwrite');
-  return new Promise((resolve, reject) => {
-    const request = store.openCursor();
-    request.onsuccess = (event) => {
-      const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
-      if (cursor) {
-        if (cursor.value.key && cursor.value.key.startsWith(prefix)) {
-          cursor.delete();
-        }
-        cursor.continue();
-      } else {
-        resolve();
-      }
-    };
-    request.onerror = () => reject(request.error);
-  });
-}

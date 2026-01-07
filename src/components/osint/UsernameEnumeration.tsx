@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { enumerateUsername, summarizeUsernameResults, UsernameResult } from '@/services/enhancedThreatService';
-import { saveSearchHistory } from '@/services/userDataService';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -44,12 +43,6 @@ export function UsernameEnumeration() {
       
       setResults(foundResults);
       toast.success(`Found ${foundResults.length} platforms`);
-
-      // Save to Supabase search history (for logged-in users)
-      await saveSearchHistory(username.trim(), 'username', foundResults.length, {
-        platformsFound: foundResults.length,
-        platforms: foundResults.slice(0, 10).map(r => r.platform),
-      });
 
       // Generate AI summary
       if (foundResults.length > 0) {

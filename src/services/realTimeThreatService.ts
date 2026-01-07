@@ -1,7 +1,7 @@
 // src/services/realTimeThreatService.ts
 // Real-time threat intelligence aggregator with live data sources
 
-export interface ThreatPoint {
+interface ThreatPoint {
   id: string;
   lat: number;
   lon: number;
@@ -16,7 +16,7 @@ export interface ThreatPoint {
   metadata?: any;
 }
 
-export interface MalwareIntel {
+interface MalwareIntel {
   id: string;
   family: string;
   hash: string;
@@ -74,11 +74,11 @@ async function fetchFeodoC2(): Promise<ThreatPoint[]> {
     if (!response.ok) return [];
     
     const data = await response.json();
-    const ips = data.map((item: any) => item.ip_address);
+    const ips = data.slice(0, 100).map((item: any) => item.ip_address);
     
     await batchGeolocate(ips);
     
-    return data.map((item: any) => {
+    return data.slice(0, 100).map((item: any) => {
       const geo = geoCache.get(item.ip_address);
       return geo ? {
         id: `feodo-${item.ip_address}`,
@@ -111,7 +111,7 @@ async function fetchURLhausMalware(): Promise<ThreatPoint[]> {
     
     const points: ThreatPoint[] = [];
     
-    for (const item of data) {
+    for (const item of data.slice(0, 50)) {
       // Try to extract IP from URL
       const urlMatch = item.url.match(/https?:\/\/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
       
@@ -161,12 +161,14 @@ async function fetchThreatFoxIOCs(): Promise<ThreatPoint[]> {
     
     const ips = (data.data || [])
       .filter((item: any) => item.ioc_type === 'ip:port' || item.ioc_type === 'ip')
-      .map((item: any) => item.ioc.split(':')[0]);
+      .map((item: any) => item.ioc.split(':')[0])
+      .slice(0, 50);
     
     await batchGeolocate(ips);
     
     return (data.data || [])
       .filter((item: any) => item.ioc_type === 'ip:port' || item.ioc_type === 'ip')
+      .slice(0, 50)
       .map((item: any) => {
         const ip = item.ioc.split(':')[0];
         const geo = geoCache.get(ip);
@@ -267,7 +269,8 @@ export async function fetchMalwareIntelligence(): Promise<MalwareIntel[]> {
     });
     
     return Array.from(familyMap.values())
-      .sort((a, b) => b.samples - a.samples);
+      .sort((a, b) => b.samples - a.samples)
+      .slice(0, 20);
   } catch (error) {
     console.error('Malware intel error:', error);
     return [];

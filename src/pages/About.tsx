@@ -19,7 +19,6 @@ import {
   Code,
   Database,
 } from 'lucide-react';
-import AnimatedOrb from '@/components/AnimatedOrb';
 
 const CAPABILITIES = [
   'Real-time threat monitoring across 150+ data sources',
@@ -79,13 +78,6 @@ export default function About() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
-      {/* Animated Orb Background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px]">
-          <AnimatedOrb size={280} particleCount={1000} cycleSpeed={0.0006} />
-        </div>
-      </div>
-      
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -95,7 +87,7 @@ export default function About() {
                 <Shield className="h-6 w-6 text-primary" />
               </div>
               <span className="text-xl font-bold bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent">
-                SoTaNik OSINT HUB
+                CIPHER OSINT
               </span>
             </Link>
             <div className="flex items-center gap-4">
@@ -128,7 +120,7 @@ export default function About() {
           <h1 className="text-4xl md:text-5xl font-bold mb-6">
             About{' '}
             <span className="bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent">
-               SoTaNik OSINT HUB
+              CIPHER OSINT
             </span>
           </h1>
           <p className="text-xl text-slate-400 max-w-3xl mx-auto">
@@ -149,7 +141,7 @@ export default function About() {
                 threat intelligence shouldn't be limited to large enterprises with deep pockets.
               </p>
               <p className="text-slate-400 mb-4">
-                SoTaNik OSINT HUB democratizes threat intelligence by providing powerful, 
+                CIPHER OSINT democratizes threat intelligence by providing powerful, 
                 easy-to-use tools that aggregate data from hundreds of sources into a 
                 single, actionable dashboard.
               </p>
@@ -285,7 +277,7 @@ export default function About() {
             Ready to get started?
           </h2>
           <p className="text-slate-400 mb-8">
-            Join thousands of security professionals already using SoTaNik OSINT HUB.
+            Join thousands of security professionals already using CIPHER OSINT.
           </p>
           <Link to="/auth">
             <Button size="lg" className="bg-gradient-to-r from-primary to-cyan-500 text-slate-900 font-semibold text-lg px-8">
@@ -304,7 +296,7 @@ export default function About() {
               <div className="p-2 bg-primary/10 rounded-lg border border-primary/20">
                 <Shield className="h-5 w-5 text-primary" />
               </div>
-              <span className="font-semibold text-slate-300">SoTaNik OSINT HUB</span>
+              <span className="font-semibold text-slate-300">CIPHER OSINT</span>
             </div>
             <div className="flex items-center gap-6 text-sm text-slate-400">
               <Link to="/" className="hover:text-white transition-colors">Home</Link>
@@ -312,7 +304,7 @@ export default function About() {
               <a href="#" className="hover:text-white transition-colors">Terms</a>
             </div>
             <p className="text-sm text-slate-500">
-              © 2026 SoTaNik OSINT HUB. All rights reserved.
+              © 2026 CIPHER OSINT. All rights reserved.
             </p>
           </div>
         </div>

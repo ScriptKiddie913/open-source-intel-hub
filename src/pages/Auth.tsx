@@ -164,7 +164,7 @@ export default function Auth() {
             </div>
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-cyan-400 to-purple-400 bg-clip-text text-transparent">
-            SoTaNik OSINT HUB
+            CIPHER OSINT
           </h1>
           <p className="text-muted-foreground mt-2 text-center">
             Advanced Threat Intelligence Platform

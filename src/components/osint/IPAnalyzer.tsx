@@ -10,7 +10,6 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { saveSearchHistory } from "@/services/userDataService";
 
 /* =====================================================
    SHODAN CONFIG (CLIENT-SIDE – EXPOSED AS REQUESTED)
@@ -105,17 +104,7 @@ export function IPAnalyzer() {
 
       const json: ShodanResponse = await res.json();
       setData(json);
-      const threatLevel = calculateThreat(json.ports, json.vulns);
-      setThreat(threatLevel);
-
-      // Save to Supabase search history (for logged-in users)
-      await saveSearchHistory(clean, 'ip', json.ports?.length || 0, {
-        location: `${json.city || 'Unknown'}, ${json.country_name || 'Unknown'}`,
-        org: json.org,
-        isp: json.isp,
-        portsCount: json.ports?.length || 0,
-        threatLevel,
-      });
+      setThreat(calculateThreat(json.ports, json.vulns));
     } catch (err) {
       console.error("Shodan fetch failed", err);
     } finally {

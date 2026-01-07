@@ -332,7 +332,7 @@ async function fetchThreatFoxCampaigns(query: string): Promise<{
     if (response.ok) {
       const data = await response.json();
       if (data.data && Array.isArray(data.data)) {
-        for (const ioc of data.data) {
+        for (const ioc of data.data.slice(0, 50)) {
           // Add infrastructure
           if (ioc.ioc_type?.includes('ip') || ioc.ioc_type?.includes('domain') || ioc.ioc_type?.includes('url')) {
             infrastructure.push({
@@ -400,7 +400,7 @@ async function fetchURLhausCampaigns(query: string): Promise<{
     if (response.ok) {
       const data = await response.json();
       if (data.urls && Array.isArray(data.urls)) {
-        for (const url of data.urls) {
+        for (const url of data.urls.slice(0, 30)) {
           infrastructure.push({
             id: `uh-${url.id}`,
             type: 'dropper',
@@ -502,7 +502,7 @@ async function fetchFeodoCampaigns(query: string): Promise<{
         const filtered = data.filter((item: any) => 
           item.ip_address?.includes(query) || 
           item.malware?.toLowerCase().includes(query.toLowerCase())
-        );
+        ).slice(0, 30);
         
         for (const c2 of filtered) {
           infrastructure.push({
@@ -573,7 +573,7 @@ function buildCampaignsFromSignals(
     const status = daysSinceLastSeen < 7 ? 'active' : daysSinceLastSeen < 30 ? 'dormant' : 'concluded';
     
     // Build timeline events
-    const timeline: CampaignEvent[] = familySamples.map(s => ({
+    const timeline: CampaignEvent[] = familySamples.slice(0, 10).map(s => ({
       id: uuidv4(),
       timestamp: s.firstSeen,
       type: 'sample_detected' as const,
@@ -795,7 +795,7 @@ function inferTargetRegions(infrastructure: InfrastructureNode[]): string[] {
       regions.add(infra.country);
     }
   }
-  return Array.from(regions);
+  return Array.from(regions).slice(0, 5);
 }
 
 export { MALWARE_FAMILIES };

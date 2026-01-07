@@ -87,9 +87,8 @@ export async function getEnhancedLiveThreatMap(): Promise<LiveThreatPoint[]> {
       const feodoResponse = await fetch('https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json');
       if (feodoResponse.ok) {
         const feodoData = await feodoResponse.json();
-        const entries = Array.isArray(feodoData) ? feodoData : (feodoData.value || []);
         
-        for (const item of entries) {
+        for (const item of feodoData.slice(0, 50)) {
           const geo = await getGeo(item.ip_address);
           if (geo) {
             points.push({
@@ -123,7 +122,7 @@ export async function getEnhancedLiveThreatMap(): Promise<LiveThreatPoint[]> {
       if (threatfoxResponse.ok) {
         const threatfoxData = await threatfoxResponse.json();
         
-        for (const item of (threatfoxData.data || [])) {
+        for (const item of (threatfoxData.data || []).slice(0, 30)) {
           if (item.ioc_type === 'ip:port' || item.ioc_type === 'ip') {
             const ip = item.ioc.split(':')[0];
             const geo = await getGeo(ip);
@@ -190,7 +189,7 @@ export async function scanDarkWebLeaks(query?: string): Promise<DarkWebLeak[]> {
       
       if (response.ok) {
         const pastes = await response.json();
-        pastes.forEach((paste: any) => {
+        pastes.slice(0, 10).forEach((paste: any) => {
           leaks.push({
             id: paste.Id,
             title: paste.Title || 'Untitled Paste',
