@@ -117,7 +117,7 @@ export function Dashboard() {
   };
 
   const checkAPIStatus = async () => {
-    // Check DNS API
+    // Check DNS API (Cloudflare)
     try {
       await resolveDNS("google.com", "A");
       setApiStatus(prev => ({ ...prev, dns: "online" }));
@@ -125,18 +125,28 @@ export function Dashboard() {
       setApiStatus(prev => ({ ...prev, dns: "offline" }));
     }
 
-    // Check IP API
+    // Check IP Geolocation API  
     try {
-      await getIPGeolocation("8.8.8.8");
-      setApiStatus(prev => ({ ...prev, ipGeo: "online" }));
+      const response = await fetch('https://ipapi.co/8.8.8.8/json/', {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (response.ok) {
+        setApiStatus(prev => ({ ...prev, ipGeo: "online" }));
+      } else {
+        setApiStatus(prev => ({ ...prev, ipGeo: "offline" }));
+      }
     } catch {
       setApiStatus(prev => ({ ...prev, ipGeo: "offline" }));
     }
 
     // Check NVD API
     try {
-      await fetch('https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=1');
-      setApiStatus(prev => ({ ...prev, nvd: "online" }));
+      const response = await fetch('https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=1');
+      if (response.ok) {
+        setApiStatus(prev => ({ ...prev, nvd: "online" }));
+      } else {
+        setApiStatus(prev => ({ ...prev, nvd: "offline" }));
+      }
     } catch {
       setApiStatus(prev => ({ ...prev, nvd: "offline" }));
     }
