@@ -10,7 +10,7 @@ export const API_ENDPOINTS = {
 
   // IP-API - Free tier, no key needed
   ipGeo: {
-    base: 'http://ip-api.com/json',
+    base: 'https://ip-api.com/json',
     description: 'IP Geolocation API',
     rateLimit: 45, // per minute
   },
