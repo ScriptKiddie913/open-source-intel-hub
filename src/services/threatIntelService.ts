@@ -37,6 +37,7 @@ export interface ThreatIndicator {
 }
 
 const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const VIRUSTOTAL_API_KEY = (import.meta as any)?.env?.VITE_VIRUSTOTAL_API_KEY || '5b1f66e34505cb0985f4954a22751ea024db382e6ab8d7522c3652a51aaf2ce0';
 
 // Helper to fetch with timeout
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 10000): Promise<Response> {
@@ -121,55 +122,115 @@ async function queryShodanInternetDB(ip: string): Promise<any> {
   }
 }
 
-// Query AbuseIPDB (FREE check via proxy)
-async function queryAbuseIPDB(ip: string): Promise<any> {
+// Query VirusTotal for any type of indicator
+async function queryVirusTotal(type: string, target: string): Promise<any> {
+  if (!VIRUSTOTAL_API_KEY) {
+    return { error: 'VirusTotal API key not configured' };
+  }
+
   try {
-    console.log(`[AbuseIPDB] Checking: ${ip}`);
-    // Use the check endpoint which has some free quota
-    const url = `https://api.abuseipdb.com/api/v2/check?ipAddress=${encodeURIComponent(ip)}`;
+    console.log(`[VirusTotal] Querying ${type}: ${target}`);
     
-    // Try via CORS proxy
-    const response = await fetchWithTimeout(`${CORS_PROXY}${encodeURIComponent(url)}`, {
+    let endpoint = '';
+    let urlPath = '';
+    
+    if (type === 'ip') {
+      endpoint = 'ip_addresses';
+      urlPath = target;
+    } else if (type === 'domain') {
+      endpoint = 'domains';
+      urlPath = target;
+    } else if (type === 'url') {
+      // URL needs to be base64 encoded without padding
+      const urlId = btoa(target).replace(/=/g, '');
+      endpoint = 'urls';
+      urlPath = urlId;
+    } else if (type === 'hash') {
+      endpoint = 'files';
+      urlPath = target;
+    } else {
+      return { error: `Unsupported type: ${type}` };
+    }
+    
+    const url = `https://www.virustotal.com/vtapi/v2/${endpoint}/${urlPath}`;
+    const response = await fetchWithTimeout(url, {
       headers: {
-        'Accept': 'application/json',
+        'apikey': VIRUSTOTAL_API_KEY,
       },
-    }, 8000);
+    }, 15000);
+    
+    if (response.status === 204) {
+      return { found: false, message: 'Rate limit exceeded' };
+    }
     
     if (!response.ok) {
-      return { found: false, message: 'AbuseIPDB check unavailable' };
+      return { error: `API error: ${response.status}` };
     }
     
-    const text = await response.text();
-    try {
-      const data = JSON.parse(text);
-      if (data.data) {
-        return {
-          found: true,
-          abuseScore: data.data.abuseConfidenceScore || 0,
-          totalReports: data.data.totalReports || 0,
-          country: data.data.countryCode,
-          isp: data.data.isp,
-          domain: data.data.domain,
-          isTor: data.data.isTor || false,
-          isPublic: data.data.isPublic || true,
-        };
-      }
-    } catch {
-      // Response wasn't JSON, skip
+    const data = await response.json();
+    
+    if (data.response_code === 0) {
+      return { found: false, message: 'Not found in VirusTotal' };
     }
-    return { found: false };
+    
+    return {
+      found: true,
+      scans: data.scans || {},
+      positives: data.positives || 0,
+      total: data.total || 0,
+      scanDate: data.scan_date,
+      permalink: data.permalink,
+      resource: data.resource,
+      md5: data.md5,
+      sha1: data.sha1,
+      sha256: data.sha256,
+      country: data.country,
+      asn: data.asn,
+      detectedUrls: data.detected_urls?.slice(0, 5) || [],
+      detectedCommunicatingSamples: data.detected_communicating_samples?.slice(0, 5) || [],
+    };
   } catch (error) {
-    console.error('[AbuseIPDB] Error:', error);
+    console.error('[VirusTotal] Error:', error);
     return { error: error instanceof Error ? error.message : 'Query failed' };
   }
 }
 
-// Query ThreatFox for IOCs (FREE API)
+// Alternative DNS using Cloudflare (more reliable than Google)
+async function queryCloudflareDNS(domain: string): Promise<any> {
+  try {
+    console.log(`[Cloudflare DNS] Resolving: ${domain}`);
+    
+    const response = await fetchWithTimeout(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=A`, {
+      headers: {
+        'Accept': 'application/dns-json',
+      },
+    }, 5000);
+    
+    if (!response.ok) {
+      return { found: false };
+    }
+    
+    const data = await response.json();
+    
+    return {
+      found: data.Status === 0,
+      resolves: data.Status === 0,
+      answers: data.Answer?.map((a: any) => a.data) || [],
+      authority: data.Authority || [],
+    };
+  } catch (error) {
+    console.error('[Cloudflare DNS] Error:', error);
+    return { error: error instanceof Error ? error.message : 'DNS query failed' };
+  }
+}
+
+// Query ThreatFox for IOCs (with fallback to local mirror)
 async function queryThreatFox(type: string, target: string): Promise<any> {
   try {
     console.log(`[ThreatFox] Searching for: ${target}`);
     
-    const response = await fetchWithTimeout('https://threatfox-api.abuse.ch/api/v1/', {
+    // Try direct API first
+    let response = await fetchWithTimeout('https://threatfox-api.abuse.ch/api/v1/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -178,10 +239,26 @@ async function queryThreatFox(type: string, target: string): Promise<any> {
         query: 'search_ioc',
         search_term: target,
       }),
-    }, 15000);
+    }, 10000);
+    
+    // If 503, try via CORS proxy
+    if (!response.ok && response.status === 503) {
+      console.log('[ThreatFox] Direct API failed, trying via proxy...');
+      const proxyUrl = `${CORS_PROXY}${encodeURIComponent('https://threatfox-api.abuse.ch/api/v1/')}`;
+      response = await fetchWithTimeout(proxyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: 'search_ioc',
+          search_term: target,
+        }),
+      }, 10000);
+    }
     
     if (!response.ok) {
-      return { error: `API error: ${response.status}` };
+      return { found: false, message: 'ThreatFox unavailable' };
     }
     
     const data = await response.json();
@@ -209,7 +286,7 @@ async function queryThreatFox(type: string, target: string): Promise<any> {
   }
 }
 
-// Query URLhaus for URLs and hosts (FREE API)
+// Query URLhaus for URLs and hosts (with fallback)
 async function queryURLhaus(type: string, target: string): Promise<any> {
   try {
     console.log(`[URLhaus] Searching for: ${target}`);
@@ -234,16 +311,30 @@ async function queryURLhaus(type: string, target: string): Promise<any> {
       return { found: false };
     }
     
-    const response = await fetchWithTimeout(endpoint, {
+    // Try direct API first
+    let response = await fetchWithTimeout(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body,
-    }, 15000);
+    }, 10000);
+    
+    // If failed, try via proxy
+    if (!response.ok) {
+      console.log('[URLhaus] Direct API failed, trying via proxy...');
+      const proxyUrl = `${CORS_PROXY}${encodeURIComponent(endpoint)}`;
+      response = await fetchWithTimeout(proxyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body,
+      }, 10000);
+    }
     
     if (!response.ok) {
-      return { error: `API error: ${response.status}` };
+      return { found: false, message: 'URLhaus unavailable' };
     }
     
     const data = await response.json();
@@ -292,21 +383,37 @@ async function queryURLhaus(type: string, target: string): Promise<any> {
   }
 }
 
-// Query MalwareBazaar for hashes (FREE API)
+// Query MalwareBazaar for hashes (with fallback)
 async function queryMalwareBazaar(hash: string): Promise<any> {
   try {
     console.log(`[MalwareBazaar] Searching for hash: ${hash}`);
     
-    const response = await fetchWithTimeout('https://mb-api.abuse.ch/api/v1/', {
+    const body = `query=get_info&hash=${encodeURIComponent(hash)}`;
+    
+    // Try direct API first
+    let response = await fetchWithTimeout('https://mb-api.abuse.ch/api/v1/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: `query=get_info&hash=${encodeURIComponent(hash)}`,
-    }, 15000);
+      body,
+    }, 10000);
+    
+    // If failed, try via proxy
+    if (!response.ok && response.status === 503) {
+      console.log('[MalwareBazaar] Direct API failed, trying via proxy...');
+      const proxyUrl = `${CORS_PROXY}${encodeURIComponent('https://mb-api.abuse.ch/api/v1/')}`;
+      response = await fetchWithTimeout(proxyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body,
+      }, 10000);
+    }
     
     if (!response.ok) {
-      return { error: `API error: ${response.status}` };
+      return { found: false, message: 'MalwareBazaar unavailable' };
     }
     
     const data = await response.json();
@@ -338,7 +445,7 @@ async function queryMalwareBazaar(hash: string): Promise<any> {
   }
 }
 
-// Query CIRCL Hashlookup (FREE, no API key)
+// Query CIRCL Hashlookup (with fallback)
 async function queryCirclHashlookup(hash: string): Promise<any> {
   try {
     console.log(`[CIRCL] Searching for hash: ${hash}`);
@@ -347,18 +454,30 @@ async function queryCirclHashlookup(hash: string): Promise<any> {
     if (hash.length === 32) hashType = 'md5';
     else if (hash.length === 40) hashType = 'sha1';
     
-    const response = await fetchWithTimeout(`https://hashlookup.circl.lu/lookup/${hashType}/${hash}`, {
+    // Try direct API first
+    let response = await fetchWithTimeout(`https://hashlookup.circl.lu/lookup/${hashType}/${hash}`, {
       headers: {
         'Accept': 'application/json',
       },
-    }, 10000);
+    }, 8000);
+    
+    // If failed, try via proxy
+    if (!response.ok && response.status !== 404) {
+      console.log('[CIRCL] Direct API failed, trying via proxy...');
+      const proxyUrl = `${CORS_PROXY}${encodeURIComponent(`https://hashlookup.circl.lu/lookup/${hashType}/${hash}`)}`;
+      response = await fetchWithTimeout(proxyUrl, {
+        headers: {
+          'Accept': 'application/json',
+        },
+      }, 8000);
+    }
     
     if (response.status === 404) {
       return { found: false, message: 'Hash not found in CIRCL database' };
     }
     
     if (!response.ok) {
-      return { error: `API error: ${response.status}` };
+      return { found: false, message: 'CIRCL unavailable' };
     }
     
     const data = await response.json();
@@ -454,20 +573,10 @@ async function checkDomainReputation(domain: string): Promise<any> {
   try {
     console.log(`[DomainCheck] Checking: ${domain}`);
     
-    // Check if domain resolves (basic check)
-    const dnsResponse = await fetchWithTimeout(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=A`, {}, 5000);
+    // Use Cloudflare DNS instead of Google
+    const dnsResponse = await queryCloudflareDNS(domain);
     
-    if (!dnsResponse.ok) {
-      return { found: false };
-    }
-    
-    const dnsData = await dnsResponse.json();
-    
-    return {
-      found: true,
-      resolves: dnsData.Status === 0,
-      answers: dnsData.Answer?.map((a: any) => a.data) || [],
-    };
+    return dnsResponse;
   } catch (error) {
     console.error('[DomainCheck] Error:', error);
     return { error: error instanceof Error ? error.message : 'Query failed' };
@@ -489,6 +598,52 @@ function formatThreatData(type: string, target: string, results: Record<string, 
   // Process IP-API geolocation
   if (results.ipapi?.found) {
     clean++;
+    indicators.push({
+      type: 'Geolocation',
+      value: `${results.ipapi.city || 'Unknown'}, ${results.ipapi.country || 'Unknown'}`,
+      source: 'IP-API',
+      severity: 'info',
+    });
+  }
+
+  // Process VirusTotal
+  if (results.virustotal?.found) {
+    const vt = results.virustotal;
+    const detectionRatio = vt.positives / vt.total;
+    
+    if (vt.positives > 0) {
+      const vtScore = Math.min(vt.positives * 8, 70); // Scale positives
+      riskScore += vtScore;
+      
+      if (vt.positives >= 5) {
+        malicious++;
+        indicators.push({
+          type: 'VirusTotal Detection',
+          value: `${vt.positives}/${vt.total} engines`,
+          source: 'VirusTotal',
+          severity: vt.positives >= 10 ? 'critical' : 'high',
+        });
+      } else {
+        suspicious++;
+        indicators.push({
+          type: 'VirusTotal Detection',
+          value: `${vt.positives}/${vt.total} engines`,
+          source: 'VirusTotal',
+          severity: 'medium',
+        });
+      }
+      categories.push('Malware Detection');
+    } else {
+      clean++;
+      indicators.push({
+        type: 'VirusTotal Scan',
+        value: `Clean (0/${vt.total} engines)`,
+        source: 'VirusTotal',
+        severity: 'info',
+      });
+    }
+  } else if (results.virustotal && !results.virustotal.error) {
+    undetected++;
   }
   
   // Process Shodan InternetDB
@@ -735,7 +890,7 @@ function formatThreatData(type: string, target: string, results: Record<string, 
 export async function queryThreatIntel(
   type: 'ip' | 'domain' | 'url' | 'hash' | 'email',
   target: string,
-  sources: string[] = ['shodan', 'threatfox', 'urlhaus', 'malwarebazaar', 'circl', 'feodo', 'sslbl']
+  sources: string[] = ['virustotal', 'shodan', 'threatfox', 'urlhaus', 'malwarebazaar', 'circl', 'feodo', 'sslbl']
 ): Promise<ThreatIntelResult> {
   const results: Record<string, any> = {};
   const errors: string[] = [];
@@ -744,6 +899,16 @@ export async function queryThreatIntel(
 
   try {
     const queries: Promise<void>[] = [];
+
+    // VirusTotal for all types (primary source)
+    if (sources.includes('virustotal') && VIRUSTOTAL_API_KEY) {
+      queries.push(
+        queryVirusTotal(type, target).then(r => {
+          if (r.error) errors.push(`VirusTotal: ${r.error}`);
+          else results.virustotal = r;
+        }).catch(e => { errors.push(`VirusTotal: ${e.message}`); })
+      );
+    }
 
     // IP-specific queries
     if (type === 'ip') {
