@@ -7,6 +7,7 @@ import { getAllRecords, getSubdomains } from "@/services/dnsService";
 import { getFullIPAnalysis } from "@/services/ipService";
 import { searchCertificates, getSubdomainsFromCerts, analyzeCertificates } from "@/services/certService";
 import { saveRecord, logActivity } from "@/lib/database";
+import { saveSearchHistory } from "@/services/userDataService";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { DNSResults, GeoLocation, PortInfo, Certificate, ThreatLevel } from "@/types/osint";
@@ -100,6 +101,15 @@ export function DomainIntelligence() {
         type: "search",
         title: `Domain analysis: ${cleanDomain}`,
         description: `Completed in ${analysisTime.toFixed(2)}s`,
+      });
+
+      // Save to Supabase search history (for logged-in users)
+      await saveSearchHistory(cleanDomain, 'domain', dns.records.length + subdomainsFromCerts.length, {
+        recordsCount: dns.records.length,
+        subdomainsCount: subdomainsFromCerts.length,
+        certificatesCount: certs.length,
+        threatLevel,
+        analysisTime,
       });
 
       toast({ title: "Analysis complete", description: `Found ${dns.records.length} records` });

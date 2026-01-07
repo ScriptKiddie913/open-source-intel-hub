@@ -110,7 +110,7 @@ export async function getSubdomains(domain: string): Promise<string[]> {
       });
     });
 
-    const result = Array.from(subdomains).slice(0, 100);
+    const result = Array.from(subdomains);
     await cacheAPIResponse(cacheKey, result, 60);
     return result;
   } catch (error) {

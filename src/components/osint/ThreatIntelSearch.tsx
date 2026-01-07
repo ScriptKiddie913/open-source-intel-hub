@@ -56,7 +56,7 @@ export function ThreatIntelSearch() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-foreground">
             <Shield className="h-5 w-5 text-primary" />
-            Threat Intelligence Search
+            VirusTotal & Threat Intelligence Search
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -98,7 +98,7 @@ export function ThreatIntelSearch() {
           </div>
 
           <div className="text-xs text-muted-foreground">
-            Sources: Shodan InternetDB, ThreatFox, URLhaus, MalwareBazaar, CIRCL Hashlookup, Feodo Tracker, SSL Blacklist
+            Sources: VirusTotal, Abuse.ch (Feodo, SSL Blacklist), CIRCL Hashlookup, Spamhaus DROP
           </div>
         </CardContent>
       </Card>

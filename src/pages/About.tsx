@@ -19,6 +19,7 @@ import {
   Code,
   Database,
 } from 'lucide-react';
+import AnimatedOrb from '@/components/AnimatedOrb';
 
 const CAPABILITIES = [
   'Real-time threat monitoring across 150+ data sources',
@@ -78,6 +79,13 @@ export default function About() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
+      {/* Animated Orb Background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px]">
+          <AnimatedOrb size={280} particleCount={1000} cycleSpeed={0.0006} />
+        </div>
+      </div>
+      
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -87,7 +95,7 @@ export default function About() {
                 <Shield className="h-6 w-6 text-primary" />
               </div>
               <span className="text-xl font-bold bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent">
-                CIPHER OSINT
+                SoTaNik OSINT HUB
               </span>
             </Link>
             <div className="flex items-center gap-4">
@@ -120,7 +128,7 @@ export default function About() {
           <h1 className="text-4xl md:text-5xl font-bold mb-6">
             About{' '}
             <span className="bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent">
-              CIPHER OSINT
+               SoTaNik OSINT HUB
             </span>
           </h1>
           <p className="text-xl text-slate-400 max-w-3xl mx-auto">
@@ -141,7 +149,7 @@ export default function About() {
                 threat intelligence shouldn't be limited to large enterprises with deep pockets.
               </p>
               <p className="text-slate-400 mb-4">
-                CIPHER OSINT democratizes threat intelligence by providing powerful, 
+                SoTaNik OSINT HUB democratizes threat intelligence by providing powerful, 
                 easy-to-use tools that aggregate data from hundreds of sources into a 
                 single, actionable dashboard.
               </p>
@@ -233,43 +241,6 @@ export default function About() {
           </div>
         </div>
       </section>
-
-      {/* Technology Section */}
-      <section className="py-16 bg-slate-900/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4">Built with Modern Technology</h2>
-            <p className="text-slate-400 max-w-2xl mx-auto">
-              Leveraging cutting-edge technologies to deliver a fast, secure, and reliable platform.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <div className="text-center">
-              <div className="p-4 rounded-2xl bg-slate-800/50 w-fit mx-auto mb-4">
-                <Code className="h-8 w-8 text-cyan-400" />
-              </div>
-              <h3 className="font-semibold mb-2">React & TypeScript</h3>
-              <p className="text-slate-400 text-sm">Type-safe, component-based architecture</p>
-            </div>
-            <div className="text-center">
-              <div className="p-4 rounded-2xl bg-slate-800/50 w-fit mx-auto mb-4">
-                <Database className="h-8 w-8 text-cyan-400" />
-              </div>
-              <h3 className="font-semibold mb-2">Cloud Backend</h3>
-              <p className="text-slate-400 text-sm">Secure, scalable data persistence</p>
-            </div>
-            <div className="text-center">
-              <div className="p-4 rounded-2xl bg-slate-800/50 w-fit mx-auto mb-4">
-                <Zap className="h-8 w-8 text-cyan-400" />
-              </div>
-              <h3 className="font-semibold mb-2">Edge Functions</h3>
-              <p className="text-slate-400 text-sm">Low-latency serverless compute</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* CTA Section */}
       <section className="py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -277,7 +248,7 @@ export default function About() {
             Ready to get started?
           </h2>
           <p className="text-slate-400 mb-8">
-            Join thousands of security professionals already using CIPHER OSINT.
+            Join thousands of security professionals already using SoTaNik OSINT HUB.
           </p>
           <Link to="/auth">
             <Button size="lg" className="bg-gradient-to-r from-primary to-cyan-500 text-slate-900 font-semibold text-lg px-8">
@@ -296,7 +267,7 @@ export default function About() {
               <div className="p-2 bg-primary/10 rounded-lg border border-primary/20">
                 <Shield className="h-5 w-5 text-primary" />
               </div>
-              <span className="font-semibold text-slate-300">CIPHER OSINT</span>
+              <span className="font-semibold text-slate-300">SoTaNik OSINT HUB</span>
             </div>
             <div className="flex items-center gap-6 text-sm text-slate-400">
               <Link to="/" className="hover:text-white transition-colors">Home</Link>
@@ -304,7 +275,7 @@ export default function About() {
               <a href="#" className="hover:text-white transition-colors">Terms</a>
             </div>
             <p className="text-sm text-slate-500">
-              © 2026 CIPHER OSINT. All rights reserved.
+              © 2026 SoTaNik OSINT HUB. All rights reserved.
             </p>
           </div>
         </div>

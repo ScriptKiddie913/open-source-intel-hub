@@ -15,6 +15,7 @@ import {
   CVEData,
   ExploitData 
 } from '@/services/cveService';
+import { saveSearchHistory } from '@/services/userDataService';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -61,6 +62,12 @@ export function CVEExplorer() {
         if (cve) {
           setCveResults([cve]);
           setSelectedCVE(cve);
+          
+          // Save to Supabase search history (for logged-in users)
+          await saveSearchHistory(query.toUpperCase(), 'cve', 1, {
+            severity: cve.cvss?.severity,
+            cvssScore: cve.cvss?.score,
+          });
         } else {
           toast.error('CVE not found');
         }
@@ -69,6 +76,11 @@ export function CVEExplorer() {
         const results = await searchCVE(query, 30);
         setCveResults(results);
         toast.success(`Found ${results.length} CVEs`);
+
+        // Save to Supabase search history (for logged-in users)
+        await saveSearchHistory(query, 'cve', results.length, {
+          resultsCount: results.length,
+        });
       }
     } catch (error) {
       toast.error('CVE search failed');
@@ -90,6 +102,11 @@ export function CVEExplorer() {
       const results = await searchExploitDB(query, 50);
       setExploitResults(results);
       toast.success(`Found ${results.length} exploits`);
+
+      // Save to Supabase search history (for logged-in users)
+      await saveSearchHistory(query, 'exploit', results.length, {
+        resultsCount: results.length,
+      });
     } catch (error) {
       toast.error('Exploit search failed');
     } finally {

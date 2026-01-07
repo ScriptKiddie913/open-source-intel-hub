@@ -9,6 +9,7 @@ import { getFullIPAnalysis, isValidIP } from "@/services/ipService";
 import { searchCertificates, getSubdomainsFromCerts, analyzeCertificates } from "@/services/certService";
 import { searchBreaches } from "@/lib/database";
 import { saveRecord, logActivity } from "@/lib/database";
+import { saveSearchHistory } from "@/services/userDataService";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { ThreatLevel, DNSResults, GeoLocation, PortInfo, Certificate, BreachRecord } from "@/types/osint";
@@ -113,6 +114,13 @@ export function SearchInterface() {
             title: `Domain search: ${query}`,
             description: `Found ${dns.records.length} DNS records, ${subdomains.length} subdomains`,
           });
+
+          // Save to Supabase search history (for logged-in users)
+          await saveSearchHistory(query, 'domain', dns.records.length + subdomains.length, {
+            recordsCount: dns.records.length,
+            subdomainsCount: subdomains.length,
+            threatLevel,
+          });
           break;
         }
 
@@ -141,6 +149,12 @@ export function SearchInterface() {
             title: `IP search: ${query}`,
             description: `Location: ${geo?.city || "Unknown"}, ${geo?.country || "Unknown"}`,
           });
+
+          // Save to Supabase search history (for logged-in users)
+          await saveSearchHistory(query, 'ip', 1, {
+            location: `${geo?.city || "Unknown"}, ${geo?.country || "Unknown"}`,
+            threatLevel,
+          });
           break;
         }
 
@@ -158,6 +172,12 @@ export function SearchInterface() {
             type: "search",
             title: `Email search: ${query}`,
             description: `Found ${breaches.length} breach records`,
+          });
+
+          // Save to Supabase search history (for logged-in users)
+          await saveSearchHistory(query, 'breach', breaches.length, {
+            breachCount: breaches.length,
+            threatLevel,
           });
           break;
         }

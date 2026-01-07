@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThreatBadge } from "./ThreatBadge";
+import { saveSearchHistory } from "@/services/userDataService";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -166,6 +167,14 @@ export function BreachChecker() {
       );
 
       setResults(uniq);
+
+      // Save to Supabase search history (for logged-in users)
+      const threatLevel = getThreatLevel(uniq.length);
+      await saveSearchHistory(clean, 'breach', uniq.length, {
+        breachCount: uniq.length,
+        threatLevel,
+        passwordsExposed: uniq.filter(b => b.passwordExposed).length,
+      });
 
       toast({
         title: uniq.length
