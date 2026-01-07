@@ -36,195 +36,149 @@ export interface ThreatIndicator {
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
 }
 
-// Query Abuse.ch feeds directly (free, no API key required)
-async function queryAbuseCh(type: string, target: string): Promise<any> {
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+
+// Helper to fetch with timeout
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 10000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  
   try {
-    const results: any = { matched: false, sources: [] };
-    
-    // Check Feodo Tracker for IPs
-    if (type === 'ip') {
-      try {
-        const feodoResponse = await fetch('https://feodotracker.abuse.ch/downloads/ipblocklist.txt');
-        if (feodoResponse.ok) {
-          const feodoData = await feodoResponse.text();
-          if (feodoData.includes(target)) {
-            results.matched = true;
-            results.sources.push({
-              name: 'Feodo Tracker',
-              type: 'Botnet C2',
-              risk: 'high',
-            });
-          }
-        }
-      } catch (e) {
-        console.warn('Feodo Tracker query failed:', e);
-      }
-    }
-    
-    // Check SSL Blacklist
-    if (type === 'ip') {
-      try {
-        const sslResponse = await fetch('https://sslbl.abuse.ch/blacklist/sslipblacklist.txt');
-        if (sslResponse.ok) {
-          const sslData = await sslResponse.text();
-          if (sslData.includes(target)) {
-            results.matched = true;
-            results.sources.push({
-              name: 'SSL Blacklist',
-              type: 'Malicious SSL',
-              risk: 'high',
-            });
-          }
-        }
-      } catch (e) {
-        console.warn('SSL Blacklist query failed:', e);
-      }
-    }
-    
-    return results;
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(id);
+    return response;
   } catch (error) {
-    console.error('Abuse.ch query error:', error);
+    clearTimeout(id);
+    throw error;
+  }
+}
+
+// Query IP-API for geolocation (FREE, no CORS issues)
+async function queryIPAPI(ip: string): Promise<any> {
+  try {
+    console.log(`[IP-API] Querying geolocation for: ${ip}`);
+    const response = await fetchWithTimeout(`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,query`);
+    
+    if (!response.ok) {
+      return { error: `API error: ${response.status}` };
+    }
+    
+    const data = await response.json();
+    if (data.status === 'fail') {
+      return { error: data.message || 'IP lookup failed' };
+    }
+    
+    return {
+      found: true,
+      ip: data.query,
+      country: data.country,
+      countryCode: data.countryCode,
+      region: data.regionName,
+      city: data.city,
+      lat: data.lat,
+      lon: data.lon,
+      isp: data.isp,
+      org: data.org,
+      as: data.as,
+      timezone: data.timezone,
+    };
+  } catch (error) {
+    console.error('[IP-API] Error:', error);
     return { error: error instanceof Error ? error.message : 'Query failed' };
   }
 }
 
-// Query CIRCL Hashlookup (free, no API key required)
-async function queryCirclHashlookup(hash: string): Promise<any> {
+// Query Shodan InternetDB (FREE, no API key required)
+async function queryShodanInternetDB(ip: string): Promise<any> {
   try {
-    // Determine hash type
-    let hashType = 'sha256';
-    if (hash.length === 32) hashType = 'md5';
-    else if (hash.length === 40) hashType = 'sha1';
+    console.log(`[Shodan InternetDB] Querying: ${ip}`);
+    const response = await fetchWithTimeout(`https://internetdb.shodan.io/${ip}`);
     
-    const response = await fetch(`https://hashlookup.circl.lu/lookup/${hashType}/${hash}`);
+    if (response.status === 404) {
+      return { found: false, message: 'IP not found in Shodan database' };
+    }
     
     if (!response.ok) {
-      if (response.status === 404) {
-        return { found: false, message: 'Hash not found in CIRCL database' };
-      }
       return { error: `API error: ${response.status}` };
     }
     
     const data = await response.json();
     return {
       found: true,
-      filename: data.FileName,
-      filesize: data.FileSize,
-      knownSource: data.KnownMalicious ? 'malicious' : 'benign',
-      md5: data.MD5,
-      sha1: data.SHA1,
-      sha256: data.SHA256,
+      ip: data.ip,
+      ports: data.ports || [],
+      hostnames: data.hostnames || [],
+      cpes: data.cpes || [],
+      tags: data.tags || [],
+      vulns: data.vulns || [],
     };
   } catch (error) {
-    console.error('CIRCL query error:', error);
+    console.error('[Shodan InternetDB] Error:', error);
     return { error: error instanceof Error ? error.message : 'Query failed' };
   }
 }
 
-// Query URLhaus (free, no API key required)
-async function queryUrlhaus(url: string): Promise<any> {
+// Query AbuseIPDB (FREE check via proxy)
+async function queryAbuseIPDB(ip: string): Promise<any> {
   try {
-    const response = await fetch('https://urlhaus-api.abuse.ch/v1/url/', {
-      method: 'POST',
+    console.log(`[AbuseIPDB] Checking: ${ip}`);
+    // Use the check endpoint which has some free quota
+    const url = `https://api.abuseipdb.com/api/v2/check?ipAddress=${encodeURIComponent(ip)}`;
+    
+    // Try via CORS proxy
+    const response = await fetchWithTimeout(`${CORS_PROXY}${encodeURIComponent(url)}`, {
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
       },
-      body: `url=${encodeURIComponent(url)}`,
-    });
+    }, 8000);
     
     if (!response.ok) {
-      return { error: `API error: ${response.status}` };
+      return { found: false, message: 'AbuseIPDB check unavailable' };
     }
     
-    const data = await response.json();
-    return {
-      found: data.query_status === 'ok',
-      status: data.url_status,
-      threat: data.threat,
-      dateAdded: data.date_added,
-      tags: data.tags,
-    };
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      if (data.data) {
+        return {
+          found: true,
+          abuseScore: data.data.abuseConfidenceScore || 0,
+          totalReports: data.data.totalReports || 0,
+          country: data.data.countryCode,
+          isp: data.data.isp,
+          domain: data.data.domain,
+          isTor: data.data.isTor || false,
+          isPublic: data.data.isPublic || true,
+        };
+      }
+    } catch {
+      // Response wasn't JSON, skip
+    }
+    return { found: false };
   } catch (error) {
-    console.error('URLhaus query error:', error);
+    console.error('[AbuseIPDB] Error:', error);
     return { error: error instanceof Error ? error.message : 'Query failed' };
   }
 }
 
-// Query URLhaus by host (for domains)
-async function queryUrlhausByHost(host: string): Promise<any> {
-  try {
-    const response = await fetch('https://urlhaus-api.abuse.ch/v1/host/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `host=${encodeURIComponent(host)}`,
-    });
-    
-    if (!response.ok) {
-      return { error: `API error: ${response.status}` };
-    }
-    
-    const data = await response.json();
-    return {
-      found: data.query_status === 'ok',
-      urlCount: data.url_count || 0,
-      urls: data.urls?.slice(0, 10) || [],
-    };
-  } catch (error) {
-    console.error('URLhaus host query error:', error);
-    return { error: error instanceof Error ? error.message : 'Query failed' };
-  }
-}
-
-// Query MalwareBazaar for hashes (free, no API key required)
-async function queryMalwareBazaar(hash: string): Promise<any> {
-  try {
-    const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `query=get_info&hash=${encodeURIComponent(hash)}`,
-    });
-    
-    if (!response.ok) {
-      return { error: `API error: ${response.status}` };
-    }
-    
-    const data = await response.json();
-    if (data.query_status === 'ok' && data.data && data.data.length > 0) {
-      const sample = data.data[0];
-      return {
-        found: true,
-        filename: sample.file_name,
-        fileType: sample.file_type,
-        signature: sample.signature,
-        tags: sample.tags,
-        firstSeen: sample.first_seen,
-        reporter: sample.reporter,
-      };
-    }
-    return { found: false, message: 'Hash not found in MalwareBazaar' };
-  } catch (error) {
-    console.error('MalwareBazaar query error:', error);
-    return { error: error instanceof Error ? error.message : 'Query failed' };
-  }
-}
-
-// Query ThreatFox for IOCs (free, no API key required)
+// Query ThreatFox for IOCs (FREE API)
 async function queryThreatFox(type: string, target: string): Promise<any> {
   try {
-    let searchType = 'search_ioc';
-    let body = `query=${searchType}&search_term=${encodeURIComponent(target)}`;
+    console.log(`[ThreatFox] Searching for: ${target}`);
     
-    const response = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
+    const response = await fetchWithTimeout('https://threatfox-api.abuse.ch/api/v1/', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
-      body,
-    });
+      body: JSON.stringify({
+        query: 'search_ioc',
+        search_term: target,
+      }),
+    }, 15000);
     
     if (!response.ok) {
       return { error: `API error: ${response.status}` };
@@ -235,18 +189,287 @@ async function queryThreatFox(type: string, target: string): Promise<any> {
       return {
         found: true,
         iocs: data.data.slice(0, 10).map((ioc: any) => ({
+          id: ioc.id,
           type: ioc.ioc_type,
           value: ioc.ioc,
           threat: ioc.threat_type,
           malware: ioc.malware,
           confidence: ioc.confidence_level,
-          firstSeen: ioc.first_seen,
+          firstSeen: ioc.first_seen_utc,
+          lastSeen: ioc.last_seen_utc,
+          reporter: ioc.reporter,
+          tags: ioc.tags || [],
         })),
       };
     }
     return { found: false, message: 'Not found in ThreatFox' };
   } catch (error) {
-    console.error('ThreatFox query error:', error);
+    console.error('[ThreatFox] Error:', error);
+    return { error: error instanceof Error ? error.message : 'Query failed' };
+  }
+}
+
+// Query URLhaus for URLs and hosts (FREE API)
+async function queryURLhaus(type: string, target: string): Promise<any> {
+  try {
+    console.log(`[URLhaus] Searching for: ${target}`);
+    
+    let endpoint = 'https://urlhaus-api.abuse.ch/v1/';
+    let body = '';
+    
+    if (type === 'url') {
+      endpoint += 'url/';
+      body = `url=${encodeURIComponent(target)}`;
+    } else if (type === 'domain' || type === 'ip') {
+      endpoint += 'host/';
+      body = `host=${encodeURIComponent(target)}`;
+    } else if (type === 'hash') {
+      endpoint += 'payload/';
+      if (target.length === 32) {
+        body = `md5_hash=${encodeURIComponent(target)}`;
+      } else {
+        body = `sha256_hash=${encodeURIComponent(target)}`;
+      }
+    } else {
+      return { found: false };
+    }
+    
+    const response = await fetchWithTimeout(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
+    }, 15000);
+    
+    if (!response.ok) {
+      return { error: `API error: ${response.status}` };
+    }
+    
+    const data = await response.json();
+    
+    if (data.query_status === 'ok' || data.query_status === 'no_results') {
+      if (type === 'url') {
+        return {
+          found: data.query_status === 'ok',
+          status: data.url_status,
+          threat: data.threat,
+          dateAdded: data.date_added,
+          tags: data.tags || [],
+          payloads: data.payloads?.slice(0, 5) || [],
+        };
+      } else if (type === 'domain' || type === 'ip') {
+        return {
+          found: data.query_status === 'ok' && data.url_count > 0,
+          urlCount: data.url_count || 0,
+          blacklists: data.blacklists || {},
+          urls: data.urls?.slice(0, 10).map((u: any) => ({
+            url: u.url,
+            status: u.url_status,
+            threat: u.threat,
+            dateAdded: u.date_added,
+            tags: u.tags,
+          })) || [],
+        };
+      } else if (type === 'hash') {
+        return {
+          found: data.query_status === 'ok',
+          signature: data.signature,
+          fileType: data.file_type,
+          fileSize: data.file_size,
+          firstSeen: data.firstseen,
+          lastSeen: data.lastseen,
+          urlCount: data.url_count || 0,
+          urls: data.urls?.slice(0, 5) || [],
+        };
+      }
+    }
+    
+    return { found: false };
+  } catch (error) {
+    console.error('[URLhaus] Error:', error);
+    return { error: error instanceof Error ? error.message : 'Query failed' };
+  }
+}
+
+// Query MalwareBazaar for hashes (FREE API)
+async function queryMalwareBazaar(hash: string): Promise<any> {
+  try {
+    console.log(`[MalwareBazaar] Searching for hash: ${hash}`);
+    
+    const response = await fetchWithTimeout('https://mb-api.abuse.ch/api/v1/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `query=get_info&hash=${encodeURIComponent(hash)}`,
+    }, 15000);
+    
+    if (!response.ok) {
+      return { error: `API error: ${response.status}` };
+    }
+    
+    const data = await response.json();
+    
+    if (data.query_status === 'ok' && data.data && data.data.length > 0) {
+      const sample = data.data[0];
+      return {
+        found: true,
+        sha256: sample.sha256_hash,
+        sha1: sample.sha1_hash,
+        md5: sample.md5_hash,
+        filename: sample.file_name,
+        fileType: sample.file_type,
+        fileSize: sample.file_size,
+        signature: sample.signature,
+        firstSeen: sample.first_seen,
+        lastSeen: sample.last_seen,
+        reporter: sample.reporter,
+        tags: sample.tags || [],
+        deliveryMethod: sample.delivery_method,
+        intelligence: sample.intelligence || {},
+      };
+    }
+    
+    return { found: false, message: 'Hash not found in MalwareBazaar' };
+  } catch (error) {
+    console.error('[MalwareBazaar] Error:', error);
+    return { error: error instanceof Error ? error.message : 'Query failed' };
+  }
+}
+
+// Query CIRCL Hashlookup (FREE, no API key)
+async function queryCirclHashlookup(hash: string): Promise<any> {
+  try {
+    console.log(`[CIRCL] Searching for hash: ${hash}`);
+    
+    let hashType = 'sha256';
+    if (hash.length === 32) hashType = 'md5';
+    else if (hash.length === 40) hashType = 'sha1';
+    
+    const response = await fetchWithTimeout(`https://hashlookup.circl.lu/lookup/${hashType}/${hash}`, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    }, 10000);
+    
+    if (response.status === 404) {
+      return { found: false, message: 'Hash not found in CIRCL database' };
+    }
+    
+    if (!response.ok) {
+      return { error: `API error: ${response.status}` };
+    }
+    
+    const data = await response.json();
+    return {
+      found: true,
+      filename: data.FileName,
+      filesize: data.FileSize,
+      knownSource: data.KnownMalicious ? 'malicious' : (data.source || 'known'),
+      md5: data.MD5,
+      sha1: data['SHA-1'],
+      sha256: data['SHA-256'],
+      source: data.source,
+      packageName: data.PackageName,
+      packageVersion: data.PackageVersion,
+    };
+  } catch (error) {
+    console.error('[CIRCL] Error:', error);
+    return { error: error instanceof Error ? error.message : 'Query failed' };
+  }
+}
+
+// Query Feodo Tracker for C2 IPs (FREE)
+async function queryFeodoTracker(ip: string): Promise<any> {
+  try {
+    console.log(`[FeodoTracker] Checking IP: ${ip}`);
+    
+    // Download the JSON blocklist and check if IP is in it
+    const response = await fetchWithTimeout('https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json', {}, 15000);
+    
+    if (!response.ok) {
+      return { found: false };
+    }
+    
+    const data = await response.json();
+    const entries = Array.isArray(data) ? data : [];
+    
+    const match = entries.find((entry: any) => entry.ip_address === ip || entry.dst_ip === ip);
+    
+    if (match) {
+      return {
+        found: true,
+        matched: true,
+        malware: match.malware,
+        port: match.dst_port,
+        firstSeen: match.first_seen,
+        lastOnline: match.last_online,
+        status: match.status,
+        source: 'Feodo Tracker',
+        risk: 'critical',
+      };
+    }
+    
+    return { found: false, matched: false };
+  } catch (error) {
+    console.error('[FeodoTracker] Error:', error);
+    return { error: error instanceof Error ? error.message : 'Query failed' };
+  }
+}
+
+// Query SSL Blacklist (FREE)
+async function querySSLBL(ip: string): Promise<any> {
+  try {
+    console.log(`[SSLBL] Checking IP: ${ip}`);
+    
+    const response = await fetchWithTimeout('https://sslbl.abuse.ch/blacklist/sslipblacklist.txt', {}, 10000);
+    
+    if (!response.ok) {
+      return { found: false };
+    }
+    
+    const text = await response.text();
+    const lines = text.split('\n').filter(line => !line.startsWith('#') && line.trim());
+    
+    if (lines.some(line => line.includes(ip))) {
+      return {
+        found: true,
+        matched: true,
+        source: 'SSL Blacklist',
+        type: 'Malicious SSL Certificate',
+        risk: 'high',
+      };
+    }
+    
+    return { found: false, matched: false };
+  } catch (error) {
+    console.error('[SSLBL] Error:', error);
+    return { error: error instanceof Error ? error.message : 'Query failed' };
+  }
+}
+
+// Query Google Safe Browsing (via transparency report - limited)
+async function checkDomainReputation(domain: string): Promise<any> {
+  try {
+    console.log(`[DomainCheck] Checking: ${domain}`);
+    
+    // Check if domain resolves (basic check)
+    const dnsResponse = await fetchWithTimeout(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=A`, {}, 5000);
+    
+    if (!dnsResponse.ok) {
+      return { found: false };
+    }
+    
+    const dnsData = await dnsResponse.json();
+    
+    return {
+      found: true,
+      resolves: dnsData.Status === 0,
+      answers: dnsData.Answer?.map((a: any) => a.data) || [],
+    };
+  } catch (error) {
+    console.error('[DomainCheck] Error:', error);
     return { error: error instanceof Error ? error.message : 'Query failed' };
   }
 }
@@ -263,75 +486,119 @@ function formatThreatData(type: string, target: string, results: Record<string, 
   let clean = 0;
   let undetected = 0;
   
-  // Process Abuse.ch results
-  if (results.abuse?.matched) {
-    riskScore += 40;
-    for (const source of results.abuse.sources || []) {
-      malicious++;
-      indicators.push({
-        type: source.type,
-        value: target,
-        source: source.name,
-        severity: source.risk === 'critical' ? 'critical' : 'high',
-      });
-      categories.push(source.type);
-    }
-  } else if (results.abuse && !results.abuse.error) {
+  // Process IP-API geolocation
+  if (results.ipapi?.found) {
     clean++;
   }
   
-  // Process CIRCL results
-  if (results.circl?.found) {
-    if (results.circl.knownSource === 'malicious') {
-      riskScore += 50;
+  // Process Shodan InternetDB
+  if (results.shodan?.found) {
+    const shodan = results.shodan;
+    
+    // Check for vulnerabilities
+    if (shodan.vulns && shodan.vulns.length > 0) {
+      riskScore += 40;
       malicious++;
       indicators.push({
-        type: 'Known Malicious File',
-        value: results.circl.filename || target,
-        source: 'CIRCL Hashlookup',
-        severity: 'high',
+        type: 'Vulnerabilities',
+        value: `${shodan.vulns.length} CVE(s) found`,
+        source: 'Shodan InternetDB',
+        severity: 'critical',
       });
-      categories.push('Malware');
-    } else {
+      categories.push('Vulnerable');
+      shodan.vulns.slice(0, 3).forEach((cve: string) => {
+        indicators.push({
+          type: 'CVE',
+          value: cve,
+          source: 'Shodan InternetDB',
+          severity: 'high',
+        });
+      });
+    }
+    
+    // Check for risky tags
+    const riskyTags = ['malware', 'botnet', 'c2', 'compromised', 'honeypot'];
+    const foundRiskyTags = shodan.tags?.filter((t: string) => 
+      riskyTags.some(rt => t.toLowerCase().includes(rt))
+    ) || [];
+    
+    if (foundRiskyTags.length > 0) {
+      riskScore += 50;
+      malicious++;
+      foundRiskyTags.forEach((tag: string) => {
+        indicators.push({
+          type: 'Tag',
+          value: tag,
+          source: 'Shodan InternetDB',
+          severity: 'critical',
+        });
+        categories.push(tag);
+      });
+    }
+    
+    // Check for risky ports
+    const riskyPorts = [22, 23, 3389, 5900, 445, 139, 1433, 3306, 5432];
+    const openRiskyPorts = shodan.ports?.filter((p: number) => riskyPorts.includes(p)) || [];
+    
+    if (openRiskyPorts.length > 0) {
+      riskScore += 15;
+      suspicious++;
+      indicators.push({
+        type: 'Open Ports',
+        value: openRiskyPorts.join(', '),
+        source: 'Shodan InternetDB',
+        severity: 'medium',
+      });
+    }
+    
+    if (!shodan.vulns?.length && !foundRiskyTags.length && !openRiskyPorts.length) {
       clean++;
     }
-  } else if (results.circl && !results.circl.error) {
+  } else if (results.shodan && !results.shodan.error) {
     undetected++;
   }
   
-  // Process URLhaus results
+  // Process ThreatFox
+  if (results.threatfox?.found) {
+    riskScore += 60;
+    for (const ioc of results.threatfox.iocs || []) {
+      malicious++;
+      indicators.push({
+        type: ioc.threat || 'IOC',
+        value: ioc.malware || target,
+        source: 'ThreatFox',
+        severity: ioc.confidence >= 75 ? 'critical' : 'high',
+      });
+      if (ioc.malware) categories.push(ioc.malware);
+      if (ioc.threat) categories.push(ioc.threat);
+    }
+  } else if (results.threatfox && !results.threatfox.error) {
+    clean++;
+  }
+  
+  // Process URLhaus
   if (results.urlhaus?.found) {
-    riskScore += 45;
-    malicious++;
-    indicators.push({
-      type: results.urlhaus.threat || 'Malicious URL',
-      value: target,
-      source: 'URLhaus',
-      severity: 'high',
-    });
-    if (results.urlhaus.threat) {
-      categories.push(results.urlhaus.threat);
+    if (results.urlhaus.urlCount > 0 || results.urlhaus.threat) {
+      riskScore += 50;
+      malicious++;
+      indicators.push({
+        type: results.urlhaus.threat || 'Malicious URL/Host',
+        value: results.urlhaus.urlCount ? `${results.urlhaus.urlCount} malicious URLs` : target,
+        source: 'URLhaus',
+        severity: 'high',
+      });
+      if (results.urlhaus.threat) categories.push(results.urlhaus.threat);
+      categories.push('Malware Distribution');
+    } else {
+      clean++;
     }
   } else if (results.urlhaus && !results.urlhaus.error) {
     clean++;
   }
   
-  // Process URLhaus host results
-  if (results.urlhausHost?.found && results.urlhausHost.urlCount > 0) {
-    riskScore += 35;
-    suspicious++;
-    indicators.push({
-      type: 'Associated Malicious URLs',
-      value: `${results.urlhausHost.urlCount} URLs found`,
-      source: 'URLhaus',
-      severity: 'medium',
-    });
-    categories.push('Malware Distribution');
-  }
-  
-  // Process MalwareBazaar results
+  // Process MalwareBazaar
   if (results.malwarebazaar?.found) {
-    riskScore += 60;
+    riskScore += 70;
     malicious++;
     indicators.push({
       type: results.malwarebazaar.signature || 'Malware Sample',
@@ -347,34 +614,56 @@ function formatThreatData(type: string, target: string, results: Record<string, 
     clean++;
   }
   
-  // Process ThreatFox results
-  if (results.threatfox?.found) {
-    riskScore += 50;
-    for (const ioc of results.threatfox.iocs || []) {
+  // Process CIRCL
+  if (results.circl?.found) {
+    if (results.circl.knownSource === 'malicious') {
+      riskScore += 50;
       malicious++;
       indicators.push({
-        type: ioc.threat || 'Threat Indicator',
-        value: ioc.malware || target,
-        source: 'ThreatFox',
-        severity: ioc.confidence >= 75 ? 'high' : 'medium',
+        type: 'Known Malicious',
+        value: results.circl.filename || target,
+        source: 'CIRCL Hashlookup',
+        severity: 'high',
       });
-      if (ioc.malware) {
-        categories.push(ioc.malware);
-      }
+      categories.push('Malware');
+    } else {
+      clean++;
+      indicators.push({
+        type: 'Known File',
+        value: results.circl.filename || results.circl.packageName || target,
+        source: 'CIRCL Hashlookup',
+        severity: 'info',
+      });
     }
+  } else if (results.circl && !results.circl.error) {
+    undetected++;
   }
   
-  // Process OpenPhish results
-  if (results.openphish?.matched) {
-    riskScore += 55;
+  // Process Feodo Tracker
+  if (results.feodo?.matched) {
+    riskScore += 80;
     malicious++;
     indicators.push({
-      type: 'Phishing URL',
-      value: target,
-      source: 'OpenPhish',
+      type: 'Botnet C2',
+      value: results.feodo.malware || 'C2 Server',
+      source: 'Feodo Tracker',
       severity: 'critical',
     });
-    categories.push('Phishing');
+    categories.push('Botnet');
+    categories.push('C2');
+  }
+  
+  // Process SSL Blacklist
+  if (results.sslbl?.matched) {
+    riskScore += 60;
+    malicious++;
+    indicators.push({
+      type: 'Malicious SSL',
+      value: target,
+      source: 'SSL Blacklist',
+      severity: 'high',
+    });
+    categories.push('Malicious SSL');
   }
   
   // Cap risk score at 100
@@ -387,16 +676,21 @@ function formatThreatData(type: string, target: string, results: Record<string, 
   else if (riskScore >= 20) riskLevel = 'low';
   else riskLevel = 'info';
   
-  // Generate recommendations based on findings
+  // Generate recommendations
   if (riskLevel === 'critical' || riskLevel === 'high') {
     recommendations.push('Block this indicator immediately in your security controls');
     recommendations.push('Investigate any systems that have communicated with this target');
     recommendations.push('Review logs for signs of compromise');
+    recommendations.push('Consider reporting to relevant authorities if criminal activity is suspected');
   } else if (riskLevel === 'medium') {
     recommendations.push('Monitor traffic to/from this target closely');
     recommendations.push('Consider implementing additional controls');
+    recommendations.push('Update threat detection signatures');
+  } else if (riskLevel === 'low') {
+    recommendations.push('Continue routine monitoring');
+    recommendations.push('No immediate action required');
   } else {
-    recommendations.push('No immediate action required based on current intelligence');
+    recommendations.push('No threats detected based on current intelligence');
     recommendations.push('Continue monitoring for new threat intelligence');
   }
   
@@ -405,11 +699,21 @@ function formatThreatData(type: string, target: string, results: Record<string, 
   if (malicious > 0) {
     summary = `${target} was flagged as malicious by ${malicious} threat intelligence source(s). `;
   } else if (suspicious > 0) {
-    summary = `${target} shows suspicious activity in ${suspicious} source(s). `;
+    summary = `${target} shows suspicious characteristics in ${suspicious} source(s). `;
+  } else if (clean > 0) {
+    summary = `${target} appears clean across ${clean} checked source(s). `;
   } else {
-    summary = `${target} was not found in any threat intelligence feeds checked. `;
+    summary = `${target} was not found in threat intelligence feeds. `;
   }
   summary += `Risk score: ${riskScore}/100.`;
+  
+  // Build metadata
+  const metadata: FormattedThreatData['metadata'] = {
+    asn: results.ipapi?.as || results.shodan?.asn || null,
+    country: results.ipapi?.country || null,
+    owner: results.ipapi?.org || results.ipapi?.isp || null,
+    lastAnalysis: new Date().toISOString(),
+  };
   
   return {
     summary,
@@ -424,75 +728,115 @@ function formatThreatData(type: string, target: string, results: Record<string, 
     },
     categories: [...new Set(categories)],
     recommendations,
-    metadata: {
-      asn: null,
-      country: null,
-      owner: null,
-      lastAnalysis: new Date().toISOString(),
-    },
+    metadata,
   };
 }
 
 export async function queryThreatIntel(
   type: 'ip' | 'domain' | 'url' | 'hash' | 'email',
   target: string,
-  sources: string[] = ['abuse', 'circl', 'urlhaus', 'malwarebazaar', 'threatfox']
+  sources: string[] = ['shodan', 'threatfox', 'urlhaus', 'malwarebazaar', 'circl', 'feodo', 'sslbl']
 ): Promise<ThreatIntelResult> {
   const results: Record<string, any> = {};
   const errors: string[] = [];
 
+  console.log(`[ThreatIntel] Starting analysis for ${type}: ${target}`);
+
   try {
-    // Run queries in parallel based on type
     const queries: Promise<void>[] = [];
 
-    // Abuse.ch feeds for IPs
-    if (sources.includes('abuse') && type === 'ip') {
+    // IP-specific queries
+    if (type === 'ip') {
+      // Always get geolocation for IPs
       queries.push(
-        queryAbuseCh(type, target).then(r => {
-          if (r.error) errors.push(`Abuse.ch: ${r.error}`);
-          else results.abuse = r;
-        })
+        queryIPAPI(target).then(r => {
+          if (r.error) errors.push(`IP-API: ${r.error}`);
+          else results.ipapi = r;
+        }).catch(e => { errors.push(`IP-API: ${e.message}`); })
+      );
+      
+      // Shodan InternetDB
+      if (sources.includes('shodan')) {
+        queries.push(
+          queryShodanInternetDB(target).then(r => {
+            if (r.error) errors.push(`Shodan: ${r.error}`);
+            else results.shodan = r;
+          }).catch(e => { errors.push(`Shodan: ${e.message}`); })
+        );
+      }
+      
+      // Feodo Tracker for C2 IPs
+      if (sources.includes('feodo')) {
+        queries.push(
+          queryFeodoTracker(target).then(r => {
+            if (r.error) errors.push(`FeodoTracker: ${r.error}`);
+            else results.feodo = r;
+          }).catch(e => { errors.push(`FeodoTracker: ${e.message}`); })
+        );
+      }
+      
+      // SSL Blacklist
+      if (sources.includes('sslbl')) {
+        queries.push(
+          querySSLBL(target).then(r => {
+            if (r.error) errors.push(`SSLBL: ${r.error}`);
+            else results.sslbl = r;
+          }).catch(e => { errors.push(`SSLBL: ${e.message}`); })
+        );
+      }
+    }
+
+    // Domain-specific queries
+    if (type === 'domain') {
+      queries.push(
+        checkDomainReputation(target).then(r => {
+          if (r.error) errors.push(`DNS: ${r.error}`);
+          else results.dns = r;
+        }).catch(e => { errors.push(`DNS: ${e.message}`); })
       );
     }
 
-    // CIRCL Hashlookup for hashes
-    if (sources.includes('circl') && type === 'hash') {
+    // URL and Domain queries - URLhaus
+    if ((type === 'url' || type === 'domain' || type === 'ip') && sources.includes('urlhaus')) {
       queries.push(
-        queryCirclHashlookup(target).then(r => {
-          if (r.error) errors.push(`CIRCL: ${r.error}`);
-          else results.circl = r;
-        })
-      );
-    }
-
-    // URLhaus for URLs
-    if (sources.includes('urlhaus') && type === 'url') {
-      queries.push(
-        queryUrlhaus(target).then(r => {
+        queryURLhaus(type, target).then(r => {
           if (r.error) errors.push(`URLhaus: ${r.error}`);
           else results.urlhaus = r;
-        })
+        }).catch(e => { errors.push(`URLhaus: ${e.message}`); })
       );
     }
 
-    // URLhaus by host for domains/IPs
-    if (sources.includes('urlhaus') && (type === 'domain' || type === 'ip')) {
-      queries.push(
-        queryUrlhausByHost(target).then(r => {
-          if (r.error) errors.push(`URLhaus Host: ${r.error}`);
-          else results.urlhausHost = r;
-        })
-      );
-    }
-
-    // MalwareBazaar for hashes
-    if (sources.includes('malwarebazaar') && type === 'hash') {
-      queries.push(
-        queryMalwareBazaar(target).then(r => {
-          if (r.error) errors.push(`MalwareBazaar: ${r.error}`);
-          else results.malwarebazaar = r;
-        })
-      );
+    // Hash-specific queries
+    if (type === 'hash') {
+      // MalwareBazaar
+      if (sources.includes('malwarebazaar')) {
+        queries.push(
+          queryMalwareBazaar(target).then(r => {
+            if (r.error) errors.push(`MalwareBazaar: ${r.error}`);
+            else results.malwarebazaar = r;
+          }).catch(e => { errors.push(`MalwareBazaar: ${e.message}`); })
+        );
+      }
+      
+      // CIRCL Hashlookup
+      if (sources.includes('circl')) {
+        queries.push(
+          queryCirclHashlookup(target).then(r => {
+            if (r.error) errors.push(`CIRCL: ${r.error}`);
+            else results.circl = r;
+          }).catch(e => { errors.push(`CIRCL: ${e.message}`); })
+        );
+      }
+      
+      // URLhaus for hash payloads
+      if (sources.includes('urlhaus')) {
+        queries.push(
+          queryURLhaus('hash', target).then(r => {
+            if (r.error) errors.push(`URLhaus: ${r.error}`);
+            else results.urlhaus = r;
+          }).catch(e => { errors.push(`URLhaus: ${e.message}`); })
+        );
+      }
     }
 
     // ThreatFox for all types
@@ -501,21 +845,14 @@ export async function queryThreatIntel(
         queryThreatFox(type, target).then(r => {
           if (r.error) errors.push(`ThreatFox: ${r.error}`);
           else results.threatfox = r;
-        })
-      );
-    }
-
-    // OpenPhish for URLs/domains
-    if (type === 'url' || type === 'domain') {
-      queries.push(
-        queryFreeThreatFeeds(type, target).then(r => {
-          if (r.openphish) results.openphish = r.openphish;
-        })
+        }).catch(e => { errors.push(`ThreatFox: ${e.message}`); })
       );
     }
 
     // Wait for all queries to complete
     await Promise.all(queries);
+
+    console.log(`[ThreatIntel] Completed. Results from ${Object.keys(results).length} sources, ${errors.length} errors`);
 
     // Format the results
     const formatted = formatThreatData(type, target, results);
@@ -530,7 +867,7 @@ export async function queryThreatIntel(
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
-    console.error('Threat intel query error:', error);
+    console.error('[ThreatIntel] Fatal error:', error);
     return {
       success: false,
       type,
@@ -548,20 +885,21 @@ export async function queryFreeThreatFeeds(type: string, target: string): Promis
   const results: Record<string, any> = {};
 
   try {
-    // OpenPhish for phishing URLs
-    if (type === 'url' || type === 'domain') {
-      const openPhishResponse = await fetch('https://openphish.com/feed.txt');
-      if (openPhishResponse.ok) {
-        const phishData = await openPhishResponse.text();
-        const phishUrls = phishData.split('\n').filter(u => u.includes(target));
-        results.openphish = {
-          matched: phishUrls.length > 0,
-          matchedUrls: phishUrls.slice(0, 10),
-        };
+    if (type === 'ip') {
+      // Get IP geolocation
+      const geoResult = await queryIPAPI(target);
+      if (!geoResult.error) {
+        results.geolocation = geoResult;
+      }
+      
+      // Check Shodan InternetDB
+      const shodanResult = await queryShodanInternetDB(target);
+      if (!shodanResult.error) {
+        results.shodan = shodanResult;
       }
     }
   } catch (error) {
-    console.error('OpenPhish query failed:', error);
+    console.error('Free threat feeds query failed:', error);
   }
 
   return results;
