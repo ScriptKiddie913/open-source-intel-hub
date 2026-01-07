@@ -30,7 +30,6 @@ import {
   Workflow,
   Target,
   Map,
-  Bitcoin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -63,7 +62,6 @@ const toolsNavItems: NavItem[] = [
   { name: "IP Analyzer", href: "/dashboard/ip", icon: Activity, description: "IP Intelligence" },
   { name: "Certificates", href: "/dashboard/certs", icon: Lock, description: "SSL/TLS Certificates" },
   { name: "Breach Check", href: "/dashboard/breach", icon: Shield, description: "Email Breach Lookup" },
-  { name: "Crypto Abuse", href: "/dashboard/crypto-abuse", icon: Bitcoin, description: "Wallet Scam Detection" },
   { name: "Username OSINT", href: "/dashboard/username", icon: User, description: "100+ Platform Enumeration" },
   { name: "Dark Web", href: "/dashboard/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
   { name: "Telegram Intel", href: "/dashboard/telegram", icon: Send, description: "Telegram Leak & OSINT Monitor" },
