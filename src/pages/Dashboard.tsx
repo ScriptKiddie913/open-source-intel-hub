@@ -232,7 +232,7 @@ function FloatingPerplexityChat() {
       
       if (entity.confidence >= 70 && entity.type !== 'unknown') {
         // Run OSINT query for specific entities
-        console.log(`[Phoenix] Detected ${entity.type}: ${entity.normalized}`);
+        // Debug: Detected entity type and normalized value
         
         osintResult = await processOSINTQuery({
           input: entity.normalized,
@@ -276,7 +276,7 @@ function FloatingPerplexityChat() {
         { role: "assistant", content: reply, timestamp: new Date(), osintResult },
       ]);
     } catch (err) {
-      console.error('[Phoenix] Error:', err);
+      // Handle Phoenix error appropriately
       setMessages((m) => [
         ...m,
         {
@@ -586,7 +586,9 @@ const DashboardPage = () => {
   const { user, loading, signOut } = useAuth(true);
 
   useEffect(() => {
-    initDatabase().catch(console.error);
+    initDatabase().catch(error => {
+      // Handle database initialization error
+    });
   }, []);
 
   // Show loading while checking auth

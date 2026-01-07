@@ -228,15 +228,15 @@ async function queryBlockchainInfo(address: string): Promise<any> {
       totalReceived: data.total_received / 100000000,
       totalSent: data.total_sent / 100000000,
       transactionCount: data.n_tx,
-      transactions: data.txs?.slice(0, 10).map((tx: any) => ({
-        hash: tx.hash,
-        time: new Date(tx.time * 1000).toISOString(),
-        result: tx.result / 100000000,
-        balance: tx.balance / 100000000,
+      transactions: data.txs?.slice(0, 10).map((tx: Record<string, unknown>) => ({
+        hash: tx.hash as string,
+        time: new Date((tx.time as number) * 1000).toISOString(),
+        result: (tx.result as number) / 100000000,
+        balance: (tx.balance as number) / 100000000,
       })) || [],
     };
   } catch (error) {
-    console.error('[Blockchain.info] Error:', error);
+    // Blockchain.info error handled
     return { error: error instanceof Error ? error.message : 'Query failed' };
   }
 }

@@ -458,7 +458,7 @@ async function searchHackerNewsTelegram(query: string, type: ScanTargetType): Pr
     // Search for EXACT query - HN Algolia supports quoted strings
     const url = `https://hn.algolia.com/api/v1/search?query="${encodeURIComponent(query)}"&tags=story&hitsPerPage=20`;
     
-    console.log(`[HackerNews Telegram] Searching for exact: "${query}"`);
+    // Searching HackerNews for exact query
     
     const res = await fetch(url);
     if (!res.ok) return [];

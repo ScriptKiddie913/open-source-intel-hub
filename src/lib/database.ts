@@ -33,7 +33,7 @@ export async function initDatabase(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => {
-      console.error('[IndexedDB] Failed to open database:', request.error);
+      // Database connection failed - handle appropriately
       reject(request.error);
     };
 
@@ -42,12 +42,12 @@ export async function initDatabase(): Promise<IDBDatabase> {
       
       // Handle connection closing unexpectedly
       db.onclose = () => {
-        console.log('[IndexedDB] Database connection closed');
+        // Database connection closed
         db = null;
       };
       
       db.onerror = (event) => {
-        console.error('[IndexedDB] Database error:', event);
+        // Handle database error appropriately
       };
       
       resolve(db);

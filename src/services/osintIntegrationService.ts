@@ -26,9 +26,9 @@ export interface OSINTResult {
   confidence: number;
   timestamp: string;
   results: {
-    primary: any;
-    secondary?: any;
-    threatIntel?: any;
+    primary: Record<string, unknown>;
+    secondary?: Record<string, unknown>;
+    threatIntel?: Record<string, unknown>;
     aiAnalysis?: string;
   };
   summary: string;

@@ -312,7 +312,7 @@ export async function getThreatStats(): Promise<ThreatStats> {
       .select('severity');
     
     const bySeverity: Record<string, number> = {};
-    (severityData || []).forEach((item: any) => {
+    (severityData || []).forEach((item: { severity: string }) => {
       bySeverity[item.severity] = (bySeverity[item.severity] || 0) + 1;
     });
     
@@ -322,7 +322,7 @@ export async function getThreatStats(): Promise<ThreatStats> {
       .select('type');
     
     const byType: Record<string, number> = {};
-    (typeData || []).forEach((item: any) => {
+    (typeData || []).forEach((item: { type: string }) => {
       byType[item.type] = (byType[item.type] || 0) + 1;
     });
     
@@ -332,7 +332,7 @@ export async function getThreatStats(): Promise<ThreatStats> {
       .select('country');
     
     const countryCount: Record<string, number> = {};
-    (countryData || []).forEach((item: any) => {
+    (countryData || []).forEach((item: { country?: string }) => {
       if (item.country) {
         countryCount[item.country] = (countryCount[item.country] || 0) + 1;
       }

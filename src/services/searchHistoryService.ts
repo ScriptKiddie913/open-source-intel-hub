@@ -74,8 +74,8 @@ export async function saveEnhancedSearch(
   category: SearchCategory,
   searchType: string,
   resultsCount: number = 0,
-  searchResults: Record<string, any> = {},
-  metadata: Record<string, any> = {}
+  searchResults: Record<string, unknown> = {},
+  metadata: Record<string, unknown> = {}
 ): Promise<EnhancedSearchHistory | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {

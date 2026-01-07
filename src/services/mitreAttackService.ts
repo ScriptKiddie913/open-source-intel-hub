@@ -51,23 +51,22 @@ class MitreAttackService {
         throw new Error('Invalid MITRE ATT&CK response structure');
       }
 
-      // Filter for malware objects only
-      const malwareObjects = data.objects.filter((obj: any) => 
+      const malwareObjects = data.objects.filter((obj: Record<string, unknown>) => 
         obj.type === 'malware' && obj.is_family === true
       );
 
-      const malwareFamilies: MitreMalware[] = malwareObjects.map((obj: any) => ({
-        id: obj.id,
-        name: obj.name,
-        is_family: obj.is_family || true,
-        description: obj.description || 'No description available',
-        aliases: obj.x_mitre_aliases || obj.aliases || [],
-        created: obj.created,
-        modified: obj.modified,
-        external_references: obj.external_references || []
+      const malwareFamilies: MitreMalware[] = malwareObjects.map((obj: Record<string, unknown>) => ({
+        id: obj.id as string,
+        name: obj.name as string,
+        is_family: (obj.is_family as boolean) || true,
+        description: (obj.description as string) || 'No description available',
+        aliases: (obj.x_mitre_aliases as string[]) || (obj.aliases as string[]) || [],
+        created: obj.created as string,
+        modified: obj.modified as string,
+        external_references: (obj.external_references as unknown[]) || []
       }));
 
-      console.log('[MITRE] Successfully fetched', malwareFamilies.length, 'real malware families');
+      // Successfully fetched malware families
       
       return {
         malware_families: malwareFamilies,

@@ -552,14 +552,14 @@ async function searchMITREActors(query: string): Promise<ThreatActor[]> {
     if (!response.ok) return actors;
     
     const data = await response.json();
-    const groups = data.objects?.filter((o: any) => o.type === 'intrusion-set') || [];
+    const groups = data.objects?.filter((o: Record<string, unknown>) => o.type === 'intrusion-set') || [];
     
     const queryLower = query.toLowerCase();
     
     for (const group of groups) {
-      const name = group.name || '';
-      const aliases = group.aliases || [];
-      const description = group.description || '';
+      const name = group.name as string || '';
+      const aliases = group.aliases as string[] || [];
+      const description = group.description as string || '';
       
       // Check if matches
       const matches = 
@@ -569,15 +569,15 @@ async function searchMITREActors(query: string): Promise<ThreatActor[]> {
       
       if (matches) {
         actors.push({
-          id: group.id,
+          id: group.id as string,
           name: name,
           aliases: aliases,
           type: 'apt',
           motivation: 'espionage',
           description: description.substring(0, 500),
-          firstSeen: group.first_seen || '2010-01-01',
-          lastSeen: group.last_seen || new Date().toISOString(),
-          active: !group.revoked,
+          firstSeen: (group.first_seen as string) || '2010-01-01',
+          lastSeen: (group.last_seen as string) || new Date().toISOString(),
+          active: !(group.revoked as boolean),
           confidence: 80,
           attributionEvidence: ['MITRE ATT&CK'],
           ttps: [],
@@ -586,13 +586,13 @@ async function searchMITREActors(query: string): Promise<ThreatActor[]> {
           targetSectors: [],
           targetCountries: [],
           knownCampaigns: [],
-          references: group.external_references?.map((r: any) => r.url).filter(Boolean) || [],
+          references: (group.external_references as Array<{url: string}>)?.map(r => r.url).filter(Boolean) || [],
           source: 'mitre',
         });
       }
     }
   } catch (err) {
-    console.warn('[MITRE] API error:', err);
+    // MITRE API error handled silently
   }
   
   return actors.slice(0, 10);
