@@ -1,8 +1,8 @@
-// DNS Intelligence Service using Google Public DNS API
+// DNS Intelligence Service using Cloudflare DNS-over-HTTPS API
 
 import { API_ENDPOINTS, DNS_RECORD_TYPES } from '@/data/publicApiEndpoints';
 import { DNSRecord, DNSResults } from '@/types/osint';
-import { GoogleDNSResponse } from '@/types/api';
+import { CloudflareDNSResponse } from '@/types/api';
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
 
 const DNS_CACHE_TTL = 30; // minutes
@@ -30,10 +30,15 @@ export async function resolveDNS(domain: string, type: string = 'A'): Promise<DN
   const url = `${API_ENDPOINTS.dns.base}?name=${encodeURIComponent(domain)}&type=${typeNum}`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/dns-json',
+        'User-Agent': 'OSINT-Hub/1.0'
+      }
+    });
     if (!response.ok) throw new Error(`DNS lookup failed: ${response.statusText}`);
 
-    const data: GoogleDNSResponse = await response.json();
+    const data: CloudflareDNSResponse = await response.json();
     
     if (data.Status !== 0) {
       return [];
@@ -110,7 +115,7 @@ export async function getSubdomains(domain: string): Promise<string[]> {
       });
     });
 
-    const result = Array.from(subdomains).slice(0, 100);
+    const result = Array.from(subdomains);
     await cacheAPIResponse(cacheKey, result, 60);
     return result;
   } catch (error) {
