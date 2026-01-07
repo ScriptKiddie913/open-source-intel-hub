@@ -612,7 +612,7 @@ const RealTimeCharts: React.FC<RealTimeChartsProps> = ({
         <CardContent>
           <ScrollArea className="h-[400px]">
             <div className="space-y-2">
-              {liveFeed.map((entry, index) => (
+              {liveFeed.slice(0, 50).map((entry, index) => (
                 <div 
                   key={`${entry.id}-${index}`} 
                   className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800 transition-all cursor-pointer"
@@ -672,7 +672,7 @@ const RealTimeCharts: React.FC<RealTimeChartsProps> = ({
         <CardContent>
           <ScrollArea className="h-[500px]">
             <div className="space-y-3">
-              {malwareDetails.map((malware) => {
+              {malwareDetails.slice(0, 30).map((malware) => {
                 const isExpanded = expandedFamilies.has(malware.name);
                 return (
                   <div key={malware.name} className="border border-gray-700 rounded-lg overflow-hidden">

@@ -18,7 +18,7 @@ export interface ThreatIndicator {
   last_seen?: string;
   confidence: number;
   malware_family?: string;
-  raw_data?: Record<string, unknown>;
+  raw_data?: any;
 }
 
 export interface ThreatFeedResult {
@@ -112,7 +112,7 @@ export async function fetchFeodoTrackerData(): Promise<ThreatIndicator[]> {
     // Handle { value: [...] } format
     const entries = Array.isArray(data) ? data : (data?.value || data?.data || []);
     
-    return entries.map((entry: Record<string, unknown>, index: number) => ({
+    return entries.slice(0, 100).map((entry: any, index: number) => ({
       id: `feodo-${index}-${Date.now()}`,
       indicator_type: 'ip' as const,
       value: entry.ip_address || entry.ip || '',
@@ -152,7 +152,7 @@ export async function fetchURLhausData(): Promise<ThreatIndicator[]> {
     }
 
     // URLhaus returns { "id": [entry], ... } format
-    const entries = Object.values(data || {}).flat();
+    const entries = Object.values(data || {}).flat().slice(0, 100);
     
     return entries.map((entry: any, index: number) => {
       let host = 'unknown';
@@ -202,7 +202,8 @@ export async function fetchThreatFoxData(): Promise<ThreatIndicator[]> {
     const entries = Object.entries(data || {})
       .flatMap(([id, items]: [string, any]) => 
         (Array.isArray(items) ? items : [items]).map(item => ({ ...item, _id: id }))
-      );
+      )
+      .slice(0, 100);
     
     return entries.map((entry: any, index: number) => {
       const iocType = entry.ioc_type || '';
@@ -254,7 +255,8 @@ export async function fetchMalwareBazaarData(): Promise<ThreatIndicator[]> {
     const hashes = text
       .split('\n')
       .map((line: string) => line.trim())
-      .filter((line: string) => line && !line.startsWith('#') && /^[a-f0-9]{64}$/i.test(line));
+      .filter((line: string) => line && !line.startsWith('#') && /^[a-f0-9]{64}$/i.test(line))
+      .slice(0, 100);
     
     return hashes.map((hash: string, index: number) => ({
       id: `bazaar-${hash.slice(0, 16)}-${Date.now()}`,

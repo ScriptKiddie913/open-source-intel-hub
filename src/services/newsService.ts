@@ -207,7 +207,7 @@ async function fetchFromHackerNews(params: NewsSearchParams): Promise<NewsArticl
       url = 'https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30';
     }
 
-    // Fetching HackerNews data...
+    console.log(`[HackerNews] Fetching...`);
 
     const res = await fetch(url);
     if (!res.ok) return [];
@@ -238,11 +238,11 @@ async function fetchFromHackerNews(params: NewsSearchParams): Promise<NewsArticl
       articles.push(article);
     });
 
-    // Found HackerNews articles
+    console.log(`[HackerNews] ✅ Found ${articles.length} articles`);
     await cacheAPIResponse(cacheKey, articles, 15);
     return articles;
   } catch (err) {
-    // HackerNews error handled
+    console.error('[HackerNews] ❌ Error:', err);
     return [];
   }
 }

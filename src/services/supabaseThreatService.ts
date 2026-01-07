@@ -74,7 +74,7 @@ export async function syncAPTGroups(aptGroups: CleanedAPTData[]): Promise<{ succ
         last_seen: new Date().toISOString(),
       };
       
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from('threats')
         .upsert(threat, { onConflict: 'id' });
       
@@ -135,7 +135,7 @@ export async function syncMalwareIndicators(indicators: MalwareIndicator[]): Pro
         last_seen: indicator.lastSeen,
       }));
       
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from('threats')
         .upsert(threats, { onConflict: 'id' });
       
@@ -187,7 +187,7 @@ export async function syncC2Servers(servers: C2Server[]): Promise<{ success: boo
   }));
   
   try {
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from('threats')
       .upsert(threats, { onConflict: 'id' });
     
@@ -214,7 +214,7 @@ export async function syncC2Servers(servers: C2Server[]): Promise<{ success: boo
 
 export async function getRecentThreats(limit: number = 100): Promise<StoredThreat[]> {
   try {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from('threats')
       .select('*')
       .order('last_seen', { ascending: false })
@@ -234,7 +234,7 @@ export async function getRecentThreats(limit: number = 100): Promise<StoredThrea
 
 export async function getThreatsBySeverity(severity: string): Promise<StoredThreat[]> {
   try {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from('threats')
       .select('*')
       .eq('severity', severity)
@@ -255,7 +255,7 @@ export async function getThreatsBySeverity(severity: string): Promise<StoredThre
 
 export async function getThreatsByCountry(country: string): Promise<StoredThreat[]> {
   try {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from('threats')
       .select('*')
       .eq('country', country)
@@ -276,7 +276,7 @@ export async function getThreatsByCountry(country: string): Promise<StoredThreat
 
 export async function searchThreats(query: string): Promise<StoredThreat[]> {
   try {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from('threats')
       .select('*')
       .or(`name.ilike.%${query}%,indicators.cs.{${query}}`)
@@ -302,37 +302,37 @@ export async function searchThreats(query: string): Promise<StoredThreat[]> {
 export async function getThreatStats(): Promise<ThreatStats> {
   try {
     // Get total count
-    const { count: totalCount } = await (supabase as any)
+    const { count: totalCount } = await supabase
       .from('threats')
       .select('*', { count: 'exact', head: true });
     
     // Get by severity
-    const { data: severityData } = await (supabase as any)
+    const { data: severityData } = await supabase
       .from('threats')
       .select('severity');
     
     const bySeverity: Record<string, number> = {};
-    (severityData || []).forEach((item: { severity: string }) => {
+    (severityData || []).forEach((item: any) => {
       bySeverity[item.severity] = (bySeverity[item.severity] || 0) + 1;
     });
     
     // Get by type
-    const { data: typeData } = await (supabase as any)
+    const { data: typeData } = await supabase
       .from('threats')
       .select('type');
     
     const byType: Record<string, number> = {};
-    (typeData || []).forEach((item: { type: string }) => {
+    (typeData || []).forEach((item: any) => {
       byType[item.type] = (byType[item.type] || 0) + 1;
     });
     
     // Get by country (top 10)
-    const { data: countryData } = await (supabase as any)
+    const { data: countryData } = await supabase
       .from('threats')
       .select('country');
     
     const countryCount: Record<string, number> = {};
-    (countryData || []).forEach((item: { country?: string }) => {
+    (countryData || []).forEach((item: any) => {
       if (item.country) {
         countryCount[item.country] = (countryCount[item.country] || 0) + 1;
       }

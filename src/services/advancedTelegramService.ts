@@ -248,7 +248,7 @@ function extractAffectedEntities(text: string, query: string): string[] {
     entities.unshift(query);
   }
   
-  return entities;
+  return entities.slice(0, 10);
 }
 
 function extractDataTypes(text: string): string[] {
@@ -320,7 +320,7 @@ async function scrapeTelegramChannel(
   
   try {
     const url = `https://t.me/s/${channel.username}`;
-    // Scraping channel data...
+    console.log(`[Telegram] Scraping ${channel.name}...`);
     
     const res = await fetch(`${CORS_PROXY}${encodeURIComponent(url)}`);
     if (!res.ok) return [];
@@ -378,10 +378,10 @@ async function scrapeTelegramChannel(
       });
     });
     
-    // Found results for channel
+    console.log(`[Telegram] ${channel.name}: ${results.length} matches`);
     return results;
   } catch (err) {
-    // Error processing channel
+    console.error(`[Telegram] ${channel.name} error:`, err);
     return [];
   }
 }
@@ -394,7 +394,7 @@ async function searchPsbdmpTelegram(query: string): Promise<TelegramIntelResult[
   const results: TelegramIntelResult[] = [];
   
   try {
-    // Searching Psbdmp for query
+    console.log(`[Psbdmp Telegram] Searching for: "${query}"`);
     
     const url = `https://psbdmp.ws/api/v3/search/${encodeURIComponent(query)}`;
     
@@ -411,7 +411,7 @@ async function searchPsbdmpTelegram(query: string): Promise<TelegramIntelResult[
     
     const items = Array.isArray(data) ? data : (data.data || data.results || []);
     
-    items.forEach((paste: any) => {
+    items.slice(0, 30).forEach((paste: any) => {
       const text = paste.text || paste.content || '';
       
       if (!isRelevantResult(text, query)) return;
@@ -448,10 +448,10 @@ async function searchPsbdmpTelegram(query: string): Promise<TelegramIntelResult[
       });
     });
     
-    // Found Psbdmp results
+    console.log(`[Psbdmp Telegram] ✅ Found ${results.length} results`);
     return results;
   } catch (err) {
-    // Error in Psbdmp search
+    console.error('[Psbdmp Telegram] ❌ Error:', err);
     return [];
   }
 }
@@ -464,7 +464,7 @@ async function searchRedditTelegramLeaks(query: string): Promise<TelegramIntelRe
   const results: TelegramIntelResult[] = [];
   
   try {
-    // Searching Reddit for query
+    console.log(`[Reddit Telegram] Searching for: "${query}"`);
     
     // Search multiple subreddits
     const subreddits = 'datahoarder+privacy+netsec+cybersecurity+DataBreaches';
@@ -514,10 +514,10 @@ async function searchRedditTelegramLeaks(query: string): Promise<TelegramIntelRe
       });
     });
     
-    // Found Reddit results
+    console.log(`[Reddit Telegram] ✅ Found ${results.length} results`);
     return results;
   } catch (err) {
-    // Error in Reddit search
+    console.error('[Reddit Telegram] ❌ Error:', err);
     return [];
   }
 }
@@ -530,7 +530,7 @@ async function searchGitHubTelegramLeaks(query: string): Promise<TelegramIntelRe
   const results: TelegramIntelResult[] = [];
   
   try {
-    // Searching GitHub for query
+    console.log(`[GitHub Telegram] Searching for: "${query}"`);
     
     const url = `https://api.github.com/search/code?q="${encodeURIComponent(query)}"+telegram&per_page=20`;
     
@@ -575,10 +575,10 @@ async function searchGitHubTelegramLeaks(query: string): Promise<TelegramIntelRe
       });
     });
     
-    // Found GitHub results
+    console.log(`[GitHub Telegram] ✅ Found ${results.length} results`);
     return results;
   } catch (err) {
-    // Error in GitHub search
+    console.error('[GitHub Telegram] ❌ Error:', err);
     return [];
   }
 }
@@ -591,7 +591,7 @@ async function searchArchiveTelegram(query: string): Promise<TelegramIntelResult
   const results: TelegramIntelResult[] = [];
   
   try {
-    // Searching Archive.org for query
+    console.log(`[Archive.org Telegram] Searching for: "${query}"`);
     
     const url = `https://archive.org/advancedsearch.php?q="${encodeURIComponent(query)}"+AND+(telegram+OR+leak+OR+breach)&fl[]=identifier&fl[]=title&fl[]=description&fl[]=date&rows=20&output=json`;
     
@@ -634,10 +634,10 @@ async function searchArchiveTelegram(query: string): Promise<TelegramIntelResult
       });
     });
     
-    // Found Archive.org results
+    console.log(`[Archive.org Telegram] ✅ Found ${results.length} results`);
     return results;
   } catch (err) {
-    // Error in Archive.org search
+    console.error('[Archive.org Telegram] ❌ Error:', err);
     return [];
   }
 }
@@ -713,7 +713,7 @@ export async function deepSearchTelegram(query: string): Promise<TelegramSearchR
   const startTime = Date.now();
   
   // Scrape monitored channels
-  const channelPromises = MONITORED_CHANNELS.map(ch => 
+  const channelPromises = MONITORED_CHANNELS.slice(0, 6).map(ch => 
     scrapeTelegramChannel(ch, query)
   );
   

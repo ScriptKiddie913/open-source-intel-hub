@@ -100,7 +100,7 @@ export async function getSubdomains(domain: string): Promise<string[]> {
     const certs = await response.json();
     const subdomains = new Set<string>();
     
-    certs.forEach((cert: Record<string, unknown>) => {
+    certs.forEach((cert: any) => {
       const names = cert.name_value?.split('\n') || [];
       names.forEach((name: string) => {
         const cleaned = name.replace(/^\*\./, '').toLowerCase();
@@ -110,7 +110,7 @@ export async function getSubdomains(domain: string): Promise<string[]> {
       });
     });
 
-    const result = Array.from(subdomains);
+    const result = Array.from(subdomains).slice(0, 100);
     await cacheAPIResponse(cacheKey, result, 60);
     return result;
   } catch (error) {

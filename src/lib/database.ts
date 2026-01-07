@@ -7,49 +7,19 @@ const DB_VERSION = 1;
 
 let db: IDBDatabase | null = null;
 
-// Check if the database connection is still valid
-function isConnectionValid(database: IDBDatabase | null): boolean {
-  if (!database) return false;
-  try {
-    // Try to access objectStoreNames - this will throw if connection is closed
-    const _ = database.objectStoreNames;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function initDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    // Check if existing connection is still valid
-    if (db && isConnectionValid(db)) {
+    if (db) {
       resolve(db);
       return;
     }
-    
-    // Clear stale reference
-    db = null;
 
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onerror = () => {
-      // Database connection failed - handle appropriately
-      reject(request.error);
-    };
+    request.onerror = () => reject(request.error);
 
     request.onsuccess = () => {
       db = request.result;
-      
-      // Handle connection closing unexpectedly
-      db.onclose = () => {
-        // Database connection closed
-        db = null;
-      };
-      
-      db.onerror = (event) => {
-        // Handle database error appropriately
-      };
-      
       resolve(db);
     };
 

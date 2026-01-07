@@ -18,7 +18,7 @@ export interface ThreatIntelligence {
   first_seen: string;
   last_seen: string;
   tags: string[];
-  raw_data?: Record<string, unknown>;
+  raw_data?: any;
   created_at: string;
   updated_at: string;
 }
@@ -83,7 +83,7 @@ export interface IntelligenceRecord {
   id: string;
   target: string;
   type: DataSource;
-  data: Record<string, unknown>;
+  data: any;
   threatLevel: ThreatLevel;
   timestamp: Date;
   source: string;
@@ -168,7 +168,7 @@ export interface Monitor {
   lastCheck?: Date;
   nextCheck?: Date;
   status: 'active' | 'paused' | 'error';
-  baseline?: Record<string, unknown>;
+  baseline?: any;
   alertCount: number;
   createdAt: Date;
 }
@@ -180,16 +180,16 @@ export interface MonitoringAlert {
   severity: ThreatLevel;
   title: string;
   description: string;
-  data: Record<string, unknown>;
-  previousData?: Record<string, unknown>;
+  data: any;
+  previousData?: any;
   timestamp: Date;
   read: boolean;
 }
 
 export interface Change {
   field: string;
-  previous: unknown;
-  current: unknown;
+  previous: any;
+  current: any;
   type: 'added' | 'removed' | 'modified';
 }
 
@@ -202,7 +202,7 @@ export interface SearchQuery {
 
 export interface SearchResult {
   source: DataSource;
-  data: Record<string, unknown>;
+  data: any;
   threatLevel: ThreatLevel;
   timestamp: Date;
   loading: boolean;

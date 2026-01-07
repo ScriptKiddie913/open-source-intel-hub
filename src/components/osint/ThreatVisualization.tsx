@@ -131,6 +131,7 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
       // Load comprehensive threat data for visualization
       const [recentThreats, stats, timeSeriesThreats] = await Promise.all([
         threatIntelligenceDB.queryThreatIntelligence({
+          limit: 500,
           timeRange: {
             from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // Last 7 days
             to: new Date().toISOString()
@@ -138,6 +139,7 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
         }),
         threatIntelligenceDB.getThreatStatistics(),
         threatIntelligenceDB.queryThreatIntelligence({
+          limit: 1000,
           timeRange: {
             from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // Last 30 days
             to: new Date().toISOString()
@@ -209,7 +211,7 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
     medium: d.medium,
     low: d.low
   })) : (realTimeTrends?.trends || []).map(d => ({
-    date: new Date(d.timestamp).toLocaleDateString(),
+    date: new Date(d.date).toLocaleDateString(),
     total: d.total,
     critical: d.critical,
     high: d.high,
@@ -571,7 +573,7 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
         </CardHeader>
         <CardContent>
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {threatData.map(threat => (
+            {threatData.slice(0, 20).map(threat => (
               <div key={threat.id} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">

@@ -535,6 +535,7 @@ export async function processAllThreatData(
   
   // Process indicators
   const processedIndicators = feedSummary.indicators
+    .slice(0, 500) // Limit for performance
     .map(processIndicator);
   console.log(`[LLM Processor] Processed ${processedIndicators.length} indicators`);
   

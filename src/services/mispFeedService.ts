@@ -10,60 +10,6 @@
 
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
 
-// CORS proxy configuration - used in production, vite proxy used in development
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
-const ALT_CORS_PROXY = 'https://corsproxy.io/?';
-const IS_DEVELOPMENT = (import.meta as any).env?.DEV ?? false;
-
-// Helper to get the correct URL based on environment
-function getApiUrl(localPath: string, remoteUrl: string): string {
-  return IS_DEVELOPMENT ? localPath : `${CORS_PROXY}${encodeURIComponent(remoteUrl)}`;
-}
-
-// Fetch with fallback to alternative proxy
-async function fetchWithFallback(url: string, options: RequestInit = {}, timeout = 15000): Promise<Response> {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-        ...options.headers,
-      },
-    });
-    clearTimeout(id);
-    
-    if (!response.ok && !IS_DEVELOPMENT && url.includes('allorigins')) {
-      // Try alternative proxy
-      const originalUrl = decodeURIComponent(url.replace(CORS_PROXY, ''));
-      // Primary proxy failed, trying alternative
-      const altUrl = `${ALT_CORS_PROXY}${encodeURIComponent(originalUrl)}`;
-      return fetch(altUrl, options);
-    }
-    
-    return response;
-  } catch (error: unknown) {
-    clearTimeout(id);
-    
-    // Try alternative proxy on network failure
-    if (!IS_DEVELOPMENT && url.includes('allorigins')) {
-      try {
-        const originalUrl = decodeURIComponent(url.replace(CORS_PROXY, ''));
-        // Primary proxy failed on error, trying alternative
-        const altUrl = `${ALT_CORS_PROXY}${encodeURIComponent(originalUrl)}`;
-        return fetch(altUrl, options);
-      } catch (altError) {
-        // Alternative proxy also failed
-      }
-    }
-    
-    throw error;
-  }
-}
-
 /* ============================================================================
    TYPES
 ============================================================================ */
@@ -80,7 +26,7 @@ export interface MalwareIndicator {
   firstSeen: string;
   lastSeen: string;
   tags: string[];
-  metadata: Record<string, unknown>;
+  metadata: Record<string, any>;
 }
 
 export interface C2Server {
@@ -178,14 +124,10 @@ export async function fetchFeodoC2Servers(): Promise<C2Server[]> {
   }
   
   try {
-    // Fetching C2 server data via proxy
+    console.log('[FeodoTracker] Fetching C2 server data...');
     
-    // Use local proxy in dev, CORS proxy in production
-    const url = getApiUrl(
-      '/api/feodo/ipblocklist_recommended.json',
-      'https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json'
-    );
-    const response = await fetchWithFallback(url);
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/feodo/ipblocklist_recommended.json');
     
     if (!response.ok) {
       throw new Error(`Feodo fetch failed: ${response.status}`);
@@ -195,27 +137,27 @@ export async function fetchFeodoC2Servers(): Promise<C2Server[]> {
     
     // API returns { value: [...] } structure - extract the array
     const entries = Array.isArray(data) ? data : (data?.value || data?.data || []);
-    // Processing FeodoTracker entries
+    console.log('[FeodoTracker] Raw entries:', entries.length);
     
-    const servers: C2Server[] = entries.map((entry: Record<string, unknown>, index: number) => ({
-      id: `feodo-${index}-${(entry.ip_address as string)?.replace(/\./g, '-') || index}`,
-      ip: (entry.ip_address as string) || '',
-      port: (entry.port as number) || 443,
-      malwareFamily: (entry.malware as string) || 'Unknown',
-      status: (entry.status as string) === 'online' ? 'online' : 'offline',
-      firstSeen: (entry.first_seen as string) || new Date().toISOString(),
-      lastOnline: (entry.last_online as string) || new Date().toISOString(),
-      asn: (entry.as_number as number)?.toString(),
-      asName: entry.as_name as string,
-      country: entry.country as string,
-      countryCode: entry.country_code as string,
+    const servers: C2Server[] = entries.map((entry: any, index: number) => ({
+      id: `feodo-${index}-${entry.ip_address?.replace(/\./g, '-') || index}`,
+      ip: entry.ip_address || '',
+      port: entry.port || 443,
+      malwareFamily: entry.malware || 'Unknown',
+      status: entry.status === 'online' ? 'online' : 'offline',
+      firstSeen: entry.first_seen || new Date().toISOString(),
+      lastOnline: entry.last_online || new Date().toISOString(),
+      asn: entry.as_number?.toString(),
+      asName: entry.as_name,
+      country: entry.country,
+      countryCode: entry.country_code,
     }));
     
     await cacheAPIResponse(cacheKey, servers, CACHE_TTL.feodo);
-    // Successfully loaded C2 servers
+    console.log(`[FeodoTracker] Loaded ${servers.length} C2 servers`);
     return servers;
   } catch (error) {
-    // FeodoTracker error handled
+    console.error('[FeodoTracker] Error:', error);
     return [];
   }
 }
@@ -232,14 +174,10 @@ export async function fetchURLhausRecent(): Promise<URLhausEntry[]> {
   }
   
   try {
-    // Fetching recent malware URLs via proxy
+    console.log('[URLhaus] Fetching recent malware URLs...');
     
-    // Use local proxy in dev, CORS proxy in production
-    const url = getApiUrl(
-      '/api/urlhaus/json_recent/',
-      'https://urlhaus.abuse.ch/downloads/json_recent/'
-    );
-    const response = await fetchWithFallback(url);
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/urlhaus/json_recent/');
     
     if (!response.ok) {
       throw new Error(`URLhaus fetch failed: ${response.status}`);
@@ -253,33 +191,33 @@ export async function fetchURLhausRecent(): Promise<URLhausEntry[]> {
       .flat() // Flatten the arrays
       .slice(0, 1000);
     
-    // Processing URLhaus entries
+    console.log('[URLhaus] Raw entries:', rawEntries.length);
     
-    const entries: URLhausEntry[] = rawEntries.map((entry: Record<string, unknown>, index: number) => {
+    const entries: URLhausEntry[] = rawEntries.map((entry: any, index: number) => {
       let host = '';
       try {
-        host = (entry.host as string) || (entry.url ? new URL(entry.url as string).hostname : 'unknown');
+        host = entry.host || (entry.url ? new URL(entry.url).hostname : 'unknown');
       } catch {
         host = 'unknown';
       }
       
       return {
-        id: `urlhaus-${(entry.id as string) || index}`,
-        url: (entry.url as string) || '',
-        urlStatus: (entry.url_status as string) === 'online' ? 'online' : 'offline',
+        id: `urlhaus-${entry.id || index}`,
+        url: entry.url || '',
+        urlStatus: entry.url_status === 'online' ? 'online' : 'offline',
         host,
-        dateAdded: (entry.dateadded as string) || new Date().toISOString(),
-        threat: (entry.threat as string) || 'malware_download',
-        tags: Array.isArray(entry.tags) ? entry.tags as string[] : (entry.tags ? [entry.tags as string] : []),
-        reporter: (entry.reporter as string) || 'anonymous',
+        dateAdded: entry.dateadded || new Date().toISOString(),
+        threat: entry.threat || 'malware_download',
+        tags: Array.isArray(entry.tags) ? entry.tags : (entry.tags ? [entry.tags] : []),
+        reporter: entry.reporter || 'anonymous',
       };
     });
     
     await cacheAPIResponse(cacheKey, entries, CACHE_TTL.urlhaus);
-    // Successfully loaded malware URLs
+    console.log(`[URLhaus] Loaded ${entries.length} malware URLs`);
     return entries;
   } catch (error) {
-    // URLhaus error handled
+    console.error('[URLhaus] Error:', error);
     return [];
   }
 }
@@ -296,14 +234,10 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
   }
   
   try {
-    // Fetching recent IOCs via proxy
+    console.log('[ThreatFox] Fetching recent IOCs...');
     
-    // Use local proxy in dev, CORS proxy in production
-    const url = getApiUrl(
-      '/api/threatfox/json/recent/',
-      'https://threatfox.abuse.ch/export/json/recent/'
-    );
-    const response = await fetchWithFallback(url);
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/threatfox/json/recent/');
     
     if (!response.ok) {
       throw new Error(`ThreatFox fetch failed: ${response.status}`);
@@ -314,32 +248,32 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
     // Export endpoint returns object with numeric keys, each containing an array
     // Format: { "1688983": [{ ioc_value, ioc_type, threat_type, ... }], ... }
     const rawEntries = Object.entries(data || {})
-      .flatMap(([id, entries]: [string, unknown]) => 
+      .flatMap(([id, entries]: [string, any]) => 
         (Array.isArray(entries) ? entries : [entries]).map(entry => ({ ...entry, _id: id }))
       )
       .slice(0, 1000);
     
-    // Processing ThreatFox entries
+    console.log('[ThreatFox] Raw entries:', rawEntries.length);
     
-    const iocs: ThreatFoxIOC[] = rawEntries.map((entry: Record<string, unknown>) => ({
-      id: `threatfox-${(entry._id as string) || (entry.id as string)}`,
-      ioc: (entry.ioc_value as string) || (entry.ioc as string) || '',
-      iocType: (entry.ioc_type as string) || 'unknown',
-      threatType: (entry.threat_type as string) || 'unknown',
-      malware: entry.malware as string,
-      malwarePrintable: entry.malware_printable as string,
-      confidenceLevel: (entry.confidence_level as number) || 50,
-      firstSeen: (entry.first_seen_utc as string) || (entry.first_seen as string) || new Date().toISOString(),
-      lastSeen: (entry.last_seen_utc as string) || (entry.last_seen as string),
-      tags: typeof entry.tags === 'string' ? (entry.tags as string).split(',') : ((entry.tags as string[]) || []),
-      reference: entry.reference as string,
+    const iocs: ThreatFoxIOC[] = rawEntries.map((entry: any) => ({
+      id: `threatfox-${entry._id || entry.id}`,
+      ioc: entry.ioc_value || entry.ioc || '',
+      iocType: entry.ioc_type || 'unknown',
+      threatType: entry.threat_type || 'unknown',
+      malware: entry.malware,
+      malwarePrintable: entry.malware_printable,
+      confidenceLevel: entry.confidence_level || 50,
+      firstSeen: entry.first_seen_utc || entry.first_seen || new Date().toISOString(),
+      lastSeen: entry.last_seen_utc || entry.last_seen,
+      tags: typeof entry.tags === 'string' ? entry.tags.split(',') : (entry.tags || []),
+      reference: entry.reference,
     }));
     
     await cacheAPIResponse(cacheKey, iocs, CACHE_TTL.threatfox);
-    // Successfully loaded ThreatFox IOCs
+    console.log(`[ThreatFox] Loaded ${iocs.length} IOCs`);
     return iocs;
   } catch (error) {
-    // ThreatFox error handled
+    console.error('[ThreatFox] Error:', error);
     return [];
   }
 }
@@ -348,22 +282,18 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
    MALWAREBAZAAR (Samples)
 ============================================================================ */
 
-export async function fetchMalwareBazaarRecent(): Promise<MalwareSample[]> {
-  const cacheKey = `malwarebazaar_recent`;
+export async function fetchMalwareBazaarRecent(limit: number = 500): Promise<MalwareSample[]> {
+  const cacheKey = `malwarebazaar_recent_${limit}`;
   const cached = await getCachedData(cacheKey) as MalwareSample[] | null;
   if (cached && Array.isArray(cached) && cached.length > 0) {
     return cached;
   }
   
   try {
-    // Fetching recent malware samples via proxy
+    console.log('[MalwareBazaar] Fetching recent samples...');
     
-    // Use local proxy in dev, CORS proxy in production
-    const url = getApiUrl(
-      '/api/bazaar/txt/sha256/recent/',
-      'https://bazaar.abuse.ch/export/txt/sha256/recent/'
-    );
-    const response = await fetchWithFallback(url);
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/bazaar/txt/sha256/recent/');
     
     if (!response.ok) {
       throw new Error(`MalwareBazaar fetch failed: ${response.status}`);
@@ -375,9 +305,10 @@ export async function fetchMalwareBazaarRecent(): Promise<MalwareSample[]> {
     const hashes = text
       .split('\n')
       .map(line => line.trim())
-      .filter(line => line && !line.startsWith('#'));
+      .filter(line => line && !line.startsWith('#'))
+      .slice(0, limit);
     
-    // Processing MalwareBazaar hashes
+    console.log('[MalwareBazaar] Raw hashes:', hashes.length);
     
     const samples: MalwareSample[] = hashes.map((hash, index) => ({
       id: `bazaar-${hash.slice(0, 16)}`,
@@ -397,10 +328,10 @@ export async function fetchMalwareBazaarRecent(): Promise<MalwareSample[]> {
     }));
     
     await cacheAPIResponse(cacheKey, samples, CACHE_TTL.malwarebazaar);
-    // Successfully loaded malware samples
+    console.log(`[MalwareBazaar] Loaded ${samples.length} samples`);
     return samples;
   } catch (error) {
-    // MalwareBazaar error handled
+    console.error('[MalwareBazaar] Error:', error);
     return [];
   }
 }
@@ -410,14 +341,14 @@ export async function fetchMalwareBazaarRecent(): Promise<MalwareSample[]> {
 ============================================================================ */
 
 export async function fetchAllThreatFeeds(): Promise<ThreatFeedSummary> {
-  // Fetching all threat feeds in parallel
+  console.log('[MISP] Fetching all threat feeds...');
   
   // Fetch all feeds in parallel
   const [c2Servers, urlhausEntries, threatfoxIOCs, malwareSamples] = await Promise.all([
     fetchFeodoC2Servers(),
     fetchURLhausRecent(),
     fetchThreatFoxIOCs(30),  // Last 30 days for more data
-    fetchMalwareBazaarRecent(),
+    fetchMalwareBazaarRecent(500),
   ]);
   
   // Convert to unified indicators

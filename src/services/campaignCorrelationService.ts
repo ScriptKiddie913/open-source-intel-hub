@@ -68,10 +68,6 @@ export interface Campaign {
   lastSeen: string;
   confidence: number;
   riskScore: number;
-  sources: { name: string; url: string }[];
-  description?: string;
-  actor?: string;
-  threatLevel?: string;
 }
 
 export interface CampaignEvent {
@@ -246,7 +242,7 @@ const MALWARE_FAMILIES: Record<string, {
  * Main correlation function - takes indicators and builds campaign graph
  */
 export async function correlateCampaigns(query: string): Promise<CorrelationResult> {
-  // Analyzing query
+  console.log(`[CampaignCorrelation] Analyzing: ${query}`);
   
   const result: CorrelationResult = {
     campaigns: [],
@@ -309,7 +305,7 @@ export async function correlateCampaigns(query: string): Promise<CorrelationResu
     correlationStrength: calculateCorrelationStrength(result.newCorrelations),
   };
   
-  // Analysis complete
+  console.log(`[CampaignCorrelation] Found ${result.campaigns.length} campaigns, ${allSamples.length} samples`);
   
   return result;
 }
@@ -336,7 +332,7 @@ async function fetchThreatFoxCampaigns(query: string): Promise<{
     if (response.ok) {
       const data = await response.json();
       if (data.data && Array.isArray(data.data)) {
-        for (const ioc of data.data) {
+        for (const ioc of data.data.slice(0, 50)) {
           // Add infrastructure
           if (ioc.ioc_type?.includes('ip') || ioc.ioc_type?.includes('domain') || ioc.ioc_type?.includes('url')) {
             infrastructure.push({
@@ -404,7 +400,7 @@ async function fetchURLhausCampaigns(query: string): Promise<{
     if (response.ok) {
       const data = await response.json();
       if (data.urls && Array.isArray(data.urls)) {
-        for (const url of data.urls) {
+        for (const url of data.urls.slice(0, 30)) {
           infrastructure.push({
             id: `uh-${url.id}`,
             type: 'dropper',
@@ -506,7 +502,7 @@ async function fetchFeodoCampaigns(query: string): Promise<{
         const filtered = data.filter((item: any) => 
           item.ip_address?.includes(query) || 
           item.malware?.toLowerCase().includes(query.toLowerCase())
-        );
+        ).slice(0, 30);
         
         for (const c2 of filtered) {
           infrastructure.push({
@@ -577,7 +573,7 @@ function buildCampaignsFromSignals(
     const status = daysSinceLastSeen < 7 ? 'active' : daysSinceLastSeen < 30 ? 'dormant' : 'concluded';
     
     // Build timeline events
-    const timeline: CampaignEvent[] = familySamples.map(s => ({
+    const timeline: CampaignEvent[] = familySamples.slice(0, 10).map(s => ({
       id: uuidv4(),
       timestamp: s.firstSeen,
       type: 'sample_detected' as const,
@@ -600,31 +596,6 @@ function buildCampaignsFromSignals(
     // Calculate risk score
     const riskScore = calculateRiskScore(familySamples, relatedInfra, status);
     
-    // Determine sources from samples
-    const sampleSources = [...new Set(familySamples.map(s => s.source))];
-    const sources: { name: string; url: string }[] = sampleSources.map(src => {
-      switch (src) {
-        case 'ThreatFox': return { name: 'ThreatFox', url: `https://threatfox.abuse.ch/browse/?search=${encodeURIComponent(family)}` };
-        case 'MalwareBazaar': return { name: 'MalwareBazaar', url: `https://bazaar.abuse.ch/browse.php?search=${encodeURIComponent(family)}` };
-        case 'URLhaus': return { name: 'URLhaus', url: `https://urlhaus.abuse.ch/browse.php?search=${encodeURIComponent(family)}` };
-        case 'FeodoTracker': return { name: 'Feodo Tracker', url: 'https://feodotracker.abuse.ch/browse/' };
-        default: return { name: src, url: `https://www.virustotal.com/gui/search/${encodeURIComponent(family)}` };
-      }
-    });
-    
-    // Add MITRE ATT&CK source if TTPs present
-    if (familyInfo?.ttps && familyInfo.ttps.length > 0) {
-      sources.push({ 
-        name: 'MITRE ATT&CK', 
-        url: `https://attack.mitre.org/techniques/${familyInfo.ttps[0]}/` 
-      });
-    }
-    
-    // Generate description
-    const description = familyInfo 
-      ? `${family} is a known ${familyInfo.type} targeting ${inferTargetSectors(family).join(', ')} sectors. Capabilities include ${familyInfo.capabilities.slice(0, 3).join(', ')}.`
-      : `Active campaign leveraging ${family} malware family with ${familySamples.length} detected samples.`;
-
     campaigns.push({
       id: uuidv4(),
       name: `${family} Campaign - ${new Date(firstSeen).toLocaleDateString()}`,
@@ -642,10 +613,6 @@ function buildCampaignsFromSignals(
       lastSeen,
       confidence: Math.round(familySamples.reduce((sum, s) => sum + s.confidence, 0) / familySamples.length),
       riskScore,
-      sources,
-      description,
-      actor: attribution.length > 0 ? attribution[0].value : 'Unknown Actor',
-      threatLevel: riskScore > 70 ? 'critical' : riskScore > 50 ? 'high' : 'medium',
     });
   }
   
@@ -828,7 +795,7 @@ function inferTargetRegions(infrastructure: InfrastructureNode[]): string[] {
       regions.add(infra.country);
     }
   }
-  return Array.from(regions);
+  return Array.from(regions).slice(0, 5);
 }
 
 export { MALWARE_FAMILIES };
