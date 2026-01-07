@@ -30,10 +30,6 @@ import {
   Workflow,
   Target,
   Map,
-<<<<<<< HEAD
-=======
-  DollarSign,
->>>>>>> 751396fd3bc0a6780840c9586816be95331047f8
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -68,10 +64,6 @@ const toolsNavItems: NavItem[] = [
   { name: "Breach Check", href: "/dashboard/breach", icon: Shield, description: "Email Breach Lookup" },
   { name: "Username OSINT", href: "/dashboard/username", icon: User, description: "100+ Platform Enumeration" },
   { name: "Dark Web", href: "/dashboard/darkweb", icon: Eye, description: "Dark Web & Leak Monitor" },
-<<<<<<< HEAD
-=======
-  { name: "Crypto Scanner", href: "/dashboard/crypto", icon: DollarSign, description: "Cryptocurrency Address Intelligence" },
->>>>>>> 751396fd3bc0a6780840c9586816be95331047f8
   { name: "Telegram Intel", href: "/dashboard/telegram", icon: Send, description: "Telegram Leak & OSINT Monitor" },
   { name: "Graph Map", href: "/dashboard/graph", icon: Network, description: "Maltego-style Visualization" },
 ];
