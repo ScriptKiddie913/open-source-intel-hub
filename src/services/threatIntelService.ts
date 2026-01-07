@@ -40,19 +40,44 @@ const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 const VIRUSTOTAL_API_KEY = (import.meta as any)?.env?.VITE_VIRUSTOTAL_API_KEY || '5b1f66e34505cb0985f4954a22751ea024db382e6ab8d7522c3652a51aaf2ce0';
 
 // Helper to fetch with timeout
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 10000): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 30000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   
   try {
+    console.log(`[Fetch] Requesting: ${url}`);
+    
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
+      mode: 'cors',
+      credentials: 'omit',
+      headers: {
+        'User-Agent': 'OSINT-Hub/1.0 (Threat Intelligence Scanner)',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        ...options.headers,
+      },
     });
+    
     clearTimeout(id);
+    console.log(`[Fetch] Response: ${response.status} ${response.statusText}`);
     return response;
-  } catch (error) {
+  } catch (error: any) {
     clearTimeout(id);
+    console.error(`[Fetch] Error for ${url}:`, error);
+    
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout after 30 seconds');
+    }
+    if (error.message?.includes('Failed to fetch')) {
+      throw new Error('Network connection failed - possible CORS or connectivity issue');
+    }
+    if (error.message?.includes('signal is aborted')) {
+      throw new Error('Request was aborted due to timeout or cancellation');
+    }
     throw error;
   }
 }
@@ -61,29 +86,56 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
 async function queryIPAPI(ip: string): Promise<any> {
   try {
     console.log(`[IP-API] Querying geolocation for: ${ip}`);
-    const response = await fetchWithTimeout(`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,query`);
+    // Use HTTPS to avoid mixed content issues
+    const response = await fetchWithTimeout(`https://ipapi.co/${ip}/json/`, {
+      headers: {
+        'User-Agent': 'OSINT-Hub/1.0'
+      }
+    }, 15000);
     
     if (!response.ok) {
-      return { error: `API error: ${response.status}` };
+      // Fallback to ip-api.com
+      const fallbackResponse = await fetchWithTimeout(`${CORS_PROXY}${encodeURIComponent(`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,query`)}`, {}, 15000);
+      if (!fallbackResponse.ok) {
+        return { error: `API error: ${fallbackResponse.status}` };
+      }
+      const fallbackData = await fallbackResponse.json();
+      if (fallbackData.status === 'fail') {
+        return { error: fallbackData.message || 'IP lookup failed' };
+      }
+      return {
+        found: true,
+        ip: fallbackData.query,
+        country: fallbackData.country,
+        countryCode: fallbackData.countryCode,
+        region: fallbackData.regionName,
+        city: fallbackData.city,
+        lat: fallbackData.lat,
+        lon: fallbackData.lon,
+        isp: fallbackData.isp,
+        org: fallbackData.org,
+        as: fallbackData.as,
+        timezone: fallbackData.timezone,
+      };
     }
     
     const data = await response.json();
-    if (data.status === 'fail') {
-      return { error: data.message || 'IP lookup failed' };
+    if (data.error) {
+      return { error: data.reason || 'IP lookup failed' };
     }
     
     return {
       found: true,
-      ip: data.query,
-      country: data.country,
-      countryCode: data.countryCode,
-      region: data.regionName,
+      ip: ip,
+      country: data.country_name,
+      countryCode: data.country_code,
+      region: data.region,
       city: data.city,
-      lat: data.lat,
-      lon: data.lon,
-      isp: data.isp,
+      lat: data.latitude,
+      lon: data.longitude,
+      isp: data.org,
       org: data.org,
-      as: data.as,
+      as: data.asn,
       timezone: data.timezone,
     };
   } catch (error) {
@@ -135,7 +187,7 @@ async function queryVirusTotal(type: string, target: string): Promise<any> {
     let urlPath = '';
     
     if (type === 'ip') {
-      endpoint = 'ip_addresses';
+      endpoint = 'ip-addresses';
       urlPath = target;
     } else if (type === 'domain') {
       endpoint = 'domains';
@@ -152,15 +204,21 @@ async function queryVirusTotal(type: string, target: string): Promise<any> {
       return { error: `Unsupported type: ${type}` };
     }
     
-    const url = `https://www.virustotal.com/vtapi/v2/${endpoint}/${urlPath}`;
+    // Use v3 API which is more reliable
+    const url = `https://www.virustotal.com/api/v3/${endpoint}/${urlPath}`;
     const response = await fetchWithTimeout(url, {
       headers: {
-        'apikey': VIRUSTOTAL_API_KEY,
+        'x-apikey': VIRUSTOTAL_API_KEY,
+        'Accept': 'application/json',
       },
-    }, 15000);
+    }, 20000);
     
-    if (response.status === 204) {
+    if (response.status === 429) {
       return { found: false, message: 'Rate limit exceeded' };
+    }
+    
+    if (response.status === 404) {
+      return { found: false, message: 'Not found in VirusTotal' };
     }
     
     if (!response.ok) {
@@ -169,25 +227,27 @@ async function queryVirusTotal(type: string, target: string): Promise<any> {
     
     const data = await response.json();
     
-    if (data.response_code === 0) {
+    if (!data.data) {
       return { found: false, message: 'Not found in VirusTotal' };
     }
     
+    const attributes = data.data.attributes;
+    const stats = attributes.last_analysis_stats || {};
+    
     return {
       found: true,
-      scans: data.scans || {},
-      positives: data.positives || 0,
-      total: data.total || 0,
-      scanDate: data.scan_date,
-      permalink: data.permalink,
-      resource: data.resource,
-      md5: data.md5,
-      sha1: data.sha1,
-      sha256: data.sha256,
-      country: data.country,
-      asn: data.asn,
-      detectedUrls: data.detected_urls?.slice(0, 5) || [],
-      detectedCommunicatingSamples: data.detected_communicating_samples?.slice(0, 5) || [],
+      scans: attributes.last_analysis_results || {},
+      positives: stats.malicious || 0,
+      total: Object.values(stats).reduce((a: number, b: number) => a + b, 0),
+      scanDate: attributes.last_analysis_date,
+      permalink: `https://www.virustotal.com/gui/${endpoint}/${urlPath}`,
+      resource: target,
+      md5: attributes.md5,
+      sha1: attributes.sha1,
+      sha256: attributes.sha256,
+      country: attributes.country,
+      asn: attributes.asn,
+      reputation: attributes.reputation || 0,
     };
   } catch (error) {
     console.error('[VirusTotal] Error:', error);
@@ -229,40 +289,45 @@ async function queryThreatFox(type: string, target: string): Promise<any> {
   try {
     console.log(`[ThreatFox] Searching for: ${target}`);
     
-    // Try direct API first
+    // Prepare the search query based on type
+    const searchValue = type === 'hash' ? target : target;
+    const body = JSON.stringify({
+      query: 'search_ioc',
+      search_term: searchValue
+    });
+    
+    // Try direct API first with enhanced headers
     let response = await fetchWithTimeout('https://threatfox-api.abuse.ch/api/v1/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'OSINT-Hub/1.0'
       },
-      body: JSON.stringify({
-        query: 'search_ioc',
-        search_term: target,
-      }),
-    }, 10000);
+      body,
+    }, 15000);
     
-    // If 503, try via CORS proxy
-    if (!response.ok && response.status === 503) {
-      console.log('[ThreatFox] Direct API failed, trying via proxy...');
+    // If failed with 503 or 429, try via CORS proxy
+    if (response.status === 503 || response.status === 429 || !response.ok) {
+      console.log('[ThreatFox] Direct API failed with status', response.status, ', trying via proxy...');
       const proxyUrl = `${CORS_PROXY}${encodeURIComponent('https://threatfox-api.abuse.ch/api/v1/')}`;
       response = await fetchWithTimeout(proxyUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
-        body: JSON.stringify({
-          query: 'search_ioc',
-          search_term: target,
-        }),
-      }, 10000);
+        body,
+      }, 15000);
     }
     
     if (!response.ok) {
+      console.error(`[ThreatFox] API error: ${response.status} ${response.statusText}`);
       return { found: false, message: 'ThreatFox unavailable' };
     }
     
     const data = await response.json();
-    if (data.query_status === 'ok' && data.data && data.data.length > 0) {
+    if (data.query_status === 'ok' && data.data && Array.isArray(data.data) && data.data.length > 0) {
       return {
         found: true,
         iocs: data.data.slice(0, 10).map((ioc: any) => ({
@@ -270,11 +335,15 @@ async function queryThreatFox(type: string, target: string): Promise<any> {
           type: ioc.ioc_type,
           value: ioc.ioc,
           threat: ioc.threat_type,
+          threatDesc: ioc.threat_type_desc,
           malware: ioc.malware,
+          malwareAlias: ioc.malware_alias,
+          malwarePrintable: ioc.malware_printable,
           confidence: ioc.confidence_level,
-          firstSeen: ioc.first_seen_utc,
-          lastSeen: ioc.last_seen_utc,
+          firstSeen: ioc.first_seen_utc || ioc.first_seen,
+          lastSeen: ioc.last_seen_utc || ioc.last_seen,
           reporter: ioc.reporter,
+          reference: ioc.reference,
           tags: ioc.tags || [],
         })),
       };
