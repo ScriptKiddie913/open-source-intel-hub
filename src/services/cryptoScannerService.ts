@@ -34,6 +34,33 @@ export interface BlockchainTransaction {
 
 const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
+// Enhanced fetch with timeout for crypto APIs
+async function fetchCryptoAPI(url: string, options: RequestInit = {}, timeout = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'OSINT-Hub/1.0 (Cryptocurrency Intelligence Scanner)',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache',
+        ...options.headers,
+      },
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error: any) {
+    clearTimeout(id);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout - blockchain API not responding');
+    }
+    throw error;
+  }
+}
+
 // Helper to detect cryptocurrency type
 function detectCryptoType(address: string): string {
   // Bitcoin
@@ -83,11 +110,7 @@ async function queryBlockCypher(address: string, crypto: string): Promise<any> {
         return { error: 'Unsupported cryptocurrency for BlockCypher' };
     }
     
-    const response = await fetch(`https://api.blockcypher.com/v1/${network}/addrs/${address}/balance`, {
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
+    const response = await fetchCryptoAPI(`https://api.blockcypher.com/v1/${network}/addrs/${address}/balance`);
     
     if (response.status === 404) {
       return { found: false, message: 'Address not found' };
@@ -154,7 +177,7 @@ async function queryBlockchainInfo(address: string): Promise<any> {
   try {
     console.log(`[Blockchain.info] Querying Bitcoin: ${address}`);
     
-    const response = await fetch(`https://blockchain.info/rawaddr/${address}?limit=0`);
+    const response = await fetchCryptoAPI(`https://blockchain.info/rawaddr/${address}?limit=10`);
     
     if (response.status === 500) {
       return { found: false, message: 'Address not found' };
