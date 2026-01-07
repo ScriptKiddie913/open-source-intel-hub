@@ -52,6 +52,7 @@ const SEARCH_TYPE_CONFIG: Record<string, { icon: any; label: string; route: stri
   threat_intel: { icon: Shield, label: 'Threat Intel', route: '/dashboard/threat-intel' },
   malware_pipeline: { icon: Workflow, label: 'Pipeline', route: '/dashboard/pipeline' },
   stealthmole: { icon: Eye, label: 'StealthMole', route: '/dashboard/stealthmole' },
+  'crypto-abuse': { icon: Bitcoin, label: 'Crypto Abuse', route: '/dashboard/crypto-abuse' },
   graph: { icon: Network, label: 'Graph', route: '/dashboard/graph' },
   malware: { icon: Bug, label: 'Malware', route: '/dashboard/malware' },
 };
@@ -60,6 +61,7 @@ const CATEGORY_CONFIG: Record<SearchCategory, { icon: any; label: string; color:
   pipeline: { icon: Workflow, label: 'Pipeline', color: 'bg-orange-500/20 text-orange-400 border-orange-500/50' },
   graph: { icon: Network, label: 'Graph', color: 'bg-purple-500/20 text-purple-400 border-purple-500/50' },
   stealthmole: { icon: Eye, label: 'StealthMole', color: 'bg-blue-500/20 text-blue-400 border-blue-500/50' },
+  'crypto-abuse': { icon: Bitcoin, label: 'Crypto Abuse', color: 'bg-orange-600/20 text-orange-500 border-orange-600/50' },
   darkweb: { icon: Hash, label: 'Dark Web', color: 'bg-red-500/20 text-red-400 border-red-500/50' },
   malware: { icon: Bug, label: 'Malware', color: 'bg-green-500/20 text-green-400 border-green-500/50' },
   threat_intel: { icon: Shield, label: 'Threat Intel', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' },
@@ -80,7 +82,7 @@ export function SearchHistoryPage() {
   const [searchFilter, setSearchFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<SearchCategory | 'all'>('all');
-  const [activeTab, setActiveTab] = useState<'all' | 'pipeline' | 'graph' | 'stealthmole' | 'other'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'pipeline' | 'graph' | 'stealthmole' | 'crypto-abuse' | 'other'>('all');
 
   useEffect(() => {
     loadHistory();
