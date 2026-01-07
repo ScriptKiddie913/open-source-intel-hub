@@ -228,18 +228,26 @@ async function transformDnsResolve(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
+    console.log(`[DNS Transform] Resolving: ${node.value}`);
+    
     // Google DNS-over-HTTPS (supports CORS)
     const response = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(node.value)}&type=A`, {
       headers: { 'Accept': 'application/dns-json' }
     });
     
     if (!response.ok) {
-      console.warn(`DNS lookup failed with status ${response.status}`);
-      throw new Error('DNS lookup failed');
+      console.warn(`[DNS Transform] DNS lookup failed with status ${response.status}`);
+      throw new Error(`DNS lookup failed with status ${response.status}`);
     }
 
     const data = await response.json();
-    console.log('[DNS] Response:', data);
+    console.log('[DNS Transform] Response:', data);
+
+    // Check if DNS query was successful
+    if (data.Status !== 0) {
+      console.warn(`[DNS Transform] DNS returned error status: ${data.Status}`);
+      throw new Error(`DNS query failed with status ${data.Status}`);
+    }
 
     if (data.Answer && data.Answer.length > 0) {
       data.Answer.forEach((record: any, idx: number) => {
@@ -272,7 +280,7 @@ async function transformDnsResolve(node: GraphNode): Promise<GraphNode[]> {
       const ipv6Response = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(node.value)}&type=AAAA`);
       if (ipv6Response.ok) {
         const ipv6Data = await ipv6Response.json();
-        if (ipv6Data.Answer) {
+        if (ipv6Data.Status === 0 && ipv6Data.Answer) {
           ipv6Data.Answer.slice(0, 3).forEach((record: any, idx: number) => {
             if (record.type === 28) { // AAAA record
               newNodes.push({
@@ -297,13 +305,20 @@ async function transformDnsResolve(node: GraphNode): Promise<GraphNode[]> {
           });
         }
       }
-    } catch { /* IPv6 is optional */ }
+    } catch (ipv6Error) { 
+      console.log('[DNS Transform] IPv6 lookup failed (optional):', ipv6Error);
+    }
 
+    if (newNodes.length === 0) {
+      throw new Error('No A or AAAA records found for this domain');
+    }
+
+    console.log(`[DNS Transform] Found ${newNodes.length} IP addresses`);
     await cacheAPIResponse(cacheKey, newNodes, 60);
     return newNodes;
   } catch (error) {
-    console.error('DNS resolve error:', error);
-    return [];
+    console.error('[DNS Transform] Error:', error);
+    throw error;
   }
 }
 
@@ -2067,6 +2082,8 @@ export async function executeTransform(
 ): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
   let newNodes: GraphNode[] = [];
 
+  console.log(`[Transform] Executing ${transformId} on node:`, node.label);
+
   try {
     switch (transformId) {
       case 'dns_resolve':
@@ -2112,26 +2129,29 @@ export async function executeTransform(
         throw new Error(`Transform ${transformId} not implemented`);
     }
   } catch (error) {
-    console.error(`Transform ${transformId} error:`, error);
-    throw error;
+    console.error(`[Transform] ${transformId} error:`, error);
+    throw new Error(`Transform ${transformId} failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 
-  if (newNodes.length === 0) {
-    throw new Error('No results found for this transform');
+  if (!newNodes || newNodes.length === 0) {
+    console.warn(`[Transform] ${transformId} returned no results for ${node.label}`);
+    throw new Error(`No results found for this transform. The ${transformId} query did not return any data.`);
   }
+
+  console.log(`[Transform] ${transformId} succeeded: ${newNodes.length} nodes found`);
 
   // Create edges
   const newEdges: GraphEdge[] = newNodes.map(newNode => ({
     id: `edge-${node.id}-${newNode.id}`,
     source: node.id,
-    target: newNode. id,
-    label:  AVAILABLE_TRANSFORMS. find(t => t.id === transformId)?.name || transformId,
+    target: newNode.id,
+    label: AVAILABLE_TRANSFORMS.find(t => t.id === transformId)?.name || transformId,
     type: transformId,
     color: '#64748b',
     weight: 1,
   }));
 
-  return { nodes:  newNodes, edges: newEdges };
+  return { nodes: newNodes, edges: newEdges };
 }
 
 /* ============================================================================
