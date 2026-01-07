@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, ChangeEvent } from 'react';
 import { Search, Shield, AlertTriangle, Globe, Hash, Mail, Loader2, Bitcoin, Activity, DollarSign, Eye, Clock, Target, Database, Camera, Upload, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -172,7 +172,7 @@ export function ThreatIntelSearch() {
   };
 
   // CrimeWall handlers
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       if (!file.type.startsWith('image/')) {
