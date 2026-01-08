@@ -140,7 +140,7 @@ function LeafletThreatMap({ threats, activeView, mapStyle, onThreatClick }: Leaf
     }
   }, [mapStyle]);
 
-  return <div ref={mapRef} style={{ height: '600px', width: '100%' }} className="rounded-lg overflow-hidden" />;
+  return <div ref={mapRef} style={{ height: '600px', width: '100%', position: 'relative', zIndex: 1 }} className="rounded-lg overflow-hidden" />;
 }
 
 // Leaflet map creation with style support
@@ -1275,7 +1275,7 @@ export function LiveThreatFeed() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="relative p-4">
+        <CardContent className="relative p-4" style={{ zIndex: 1 }}>
           <LeafletThreatMap 
             threats={combinedThreats}
             activeView={activeView}
