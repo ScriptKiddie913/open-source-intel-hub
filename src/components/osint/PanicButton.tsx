@@ -12,7 +12,6 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { getAdvancedGeoLocation } from '@/services/advancedGeoLocationService';
 
 interface LocationData {
   latitude: number;
@@ -120,29 +119,30 @@ export function PanicButton({ className }: PanicButtonProps) {
       });
     };
 
-    // Fallback to advanced IP-based geolocation with multiple providers
+    // Fallback to IP-based geolocation
     const tryIpGeolocation = async (): Promise<LocationData | null> => {
       try {
-        console.log('[Panic] Trying advanced IP-based geolocation...');
+        console.log('[Panic] Trying IP-based geolocation...');
         
         if (!fetchedIp) {
           console.log('[Panic] No IP address available');
           return null;
         }
         
-        const geoData = await getAdvancedGeoLocation(fetchedIp);
+        const response = await fetch(`https://ipapi.co/${fetchedIp}/json/`);
+        const data = await response.json();
         
-        if (geoData && geoData.lat && geoData.lon) {
+        if (data && data.latitude && data.longitude && !data.error) {
           const addressParts = [
-            geoData.city,
-            geoData.region,
-            geoData.country
+            data.city,
+            data.region,
+            data.country_name || data.country
           ].filter(Boolean);
           
           return {
-            latitude: geoData.lat,
-            longitude: geoData.lon,
-            accuracy: geoData.accuracy === 'high' ? 1000 : geoData.accuracy === 'medium' ? 5000 : 10000,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            accuracy: 5000,
             address: addressParts.join(', ') || 'Location determined',
           };
         }
