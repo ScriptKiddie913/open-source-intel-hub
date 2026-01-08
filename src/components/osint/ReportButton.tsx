@@ -124,7 +124,7 @@ Timestamp: ${new Date().toLocaleString()}
         onClick={() => setOpen(true)}
         className={cn(
           "fixed z-50 group",
-          "bottom-42 right-6",
+          "bottom-44 right-6",
           className
         )}
         title="Submit Intelligence Report"
