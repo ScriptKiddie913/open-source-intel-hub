@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { 
   Database, 
@@ -214,18 +215,18 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Threat Intel Assistant Chat */}
+      {/* Garud AI Assistant */}
       <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent overflow-hidden">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary/10 rounded-lg">
-                <MessageSquare className="h-5 w-5 text-primary" />
+                <Shield className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <CardTitle className="text-lg">Threat Intel Assistant</CardTitle>
+                <CardTitle className="text-lg">Garud AI Assistant</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  AI-powered threat intelligence analysis and investigation
+                  CERT-In aligned cyber threat intelligence • Hindi & English support
                 </p>
               </div>
             </div>
@@ -244,18 +245,16 @@ export function Dashboard() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="relative overflow-hidden">
-            {/* Iframe container - iframe is larger than container to crop bottom base44 badge */}
             <div 
               className="relative w-full overflow-hidden" 
-              style={{ height: chatExpanded ? '600px' : '400px' }}
+              style={{ height: chatExpanded ? '700px' : '500px' }}
             >
               <iframe
-                src="https://threat-intel-assistant-8b6ecbcd.base44.app/"
-                className="w-full border-0"
-                style={{ height: chatExpanded ? '650px' : '450px' }}
-                title="Threat Intel Assistant"
+                src="https://garud1.lovable.app/"
+                className="w-full h-full border-0"
+                title="Garud AI Assistant"
                 sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-                allow="microphone *; camera *"
+                allow="microphone; camera; geolocation"
               />
             </div>
           </div>
