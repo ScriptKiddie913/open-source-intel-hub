@@ -5,7 +5,7 @@ import { Certificate } from '@/types/osint';
 import { CrtShCertificate } from '@/types/api';
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
 
-const CERT_CACHE_TTL = 120; // minutes
+const CERT_CACHE_TTL = 7200; // 120 minutes in seconds
 
 export async function searchCertificates(domain: string): Promise<Certificate[]> {
   const cacheKey = `certs:${domain}`;
@@ -14,12 +14,26 @@ export async function searchCertificates(domain: string): Promise<Certificate[]>
 
   try {
     const response = await fetch(
-      `${API_ENDPOINTS.certs.base}/?q=${encodeURIComponent(domain)}&output=json`
+      `${API_ENDPOINTS.certs.base}/?q=${encodeURIComponent(domain)}&output=json`,
+      {
+        headers: {
+          'Accept': 'application/json',
+        },
+      }
     );
     
-    if (!response.ok) throw new Error(`Certificate lookup failed: ${response.statusText}`);
+    if (!response.ok) {
+      console.warn(`Certificate lookup failed: ${response.status} ${response.statusText}`);
+      return [];
+    }
 
-    const data: CrtShCertificate[] = await response.json();
+    const text = await response.text();
+    if (!text || text.trim() === '' || text.includes('error')) {
+      console.warn('Certificate API returned empty or error response');
+      return [];
+    }
+
+    const data: CrtShCertificate[] = JSON.parse(text);
     
     // Deduplicate by serial number and limit results
     const seen = new Set<string>();
@@ -45,7 +59,7 @@ export async function searchCertificates(domain: string): Promise<Certificate[]>
     return certificates;
   } catch (error) {
     console.error('Certificate search error:', error);
-    throw error;
+    return []; // Return empty array instead of throwing
   }
 }
 
