@@ -21,6 +21,7 @@ import MalwarePipeline from "@/components/osint/MalwarePipeline";
 import { StealthMoleScanner } from "@/components/osint/StealthMoleScanner";
 import { MonitoringDashboard } from "@/components/osint/MonitoringDashboard";
 import { SearchHistoryPage } from "@/components/osint/SearchHistoryPage";
+import { PanicButton } from "@/components/osint/PanicButton";
 
 import { useAuth } from "@/hooks/useAuth";
 import { initDatabase } from "@/lib/database";
@@ -170,7 +171,7 @@ function FloatingPerplexityChat() {
     };
   };
 
-  const onMouseMove = (e: MouseEvent) => {
+  const onMouseMove = (e: globalThis.MouseEvent) => {
     if (!dragging.current || expanded) return;
     e.preventDefault();
     const nextX = e.clientX - offset.current.x;
@@ -186,10 +187,10 @@ function FloatingPerplexityChat() {
   };
 
   useEffect(() => {
-    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mousemove", onMouseMove as EventListener);
     window.addEventListener("mouseup", onMouseUp);
     return () => {
-      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mousemove", onMouseMove as EventListener);
       window.removeEventListener("mouseup", onMouseUp);
     };
   }, []);
@@ -630,6 +631,7 @@ const DashboardPage = () => {
         </Routes>
       </main>
       <FloatingPerplexityChat />
+      <PanicButton />
     </div>
   );
 };
