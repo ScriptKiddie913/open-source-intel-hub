@@ -22,6 +22,7 @@ import { StealthMoleScanner } from "@/components/osint/StealthMoleScanner";
 import { MonitoringDashboard } from "@/components/osint/MonitoringDashboard";
 import { SearchHistoryPage } from "@/components/osint/SearchHistoryPage";
 import { PanicButton } from "@/components/osint/PanicButton";
+import { ReportButton } from "@/components/osint/ReportButton";
 
 import { useAuth } from "@/hooks/useAuth";
 import { initDatabase } from "@/lib/database";
@@ -696,6 +697,7 @@ const DashboardPage = () => {
         </Routes>
       </main>
       <FloatingPerplexityChat />
+      <ReportButton />
       <PanicButton />
     </div>
   );
