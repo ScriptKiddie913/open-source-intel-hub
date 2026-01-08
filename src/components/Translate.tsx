@@ -24,109 +24,75 @@ const languages = [
 ];
 
 const Translate = () => {
-  const [isOpen, setIsOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState('en');
 
   useEffect(() => {
-    // Check for saved language preference
-    const savedLang = localStorage.getItem('googtrans');
-    if (savedLang) {
-      const langCode = savedLang.split('/')[2];
-      setCurrentLang(langCode || 'en');
-    }
+    // Clear any existing translation on initial load
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
+    localStorage.removeItem('googtrans');
   }, []);
 
-  const handleLanguageSelect = (langCode: string) => {
+  const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const langCode = e.target.value;
     setCurrentLang(langCode);
-    setIsOpen(false);
 
-    // Set Google Translate cookie
-    const cookieName = 'googtrans';
-    const cookieVal = `/en/${langCode}`;
-    document.cookie = `${cookieName}=${cookieVal};path=/;domain=${window.location.hostname}`;
-    document.cookie = `${cookieName}=${cookieVal};path=/`;
-    
-    // Store preference
-    localStorage.setItem('googtrans', cookieVal);
-    
-    // Reload to apply translation
-    window.location.reload();
+    if (langCode === 'en') {
+      // Clear translation and reload
+      document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
+      localStorage.removeItem('googtrans');
+      window.location.reload();
+    } else {
+      // Set Google Translate cookie
+      const cookieVal = `/en/${langCode}`;
+      document.cookie = `googtrans=${cookieVal}; path=/;`;
+      document.cookie = `googtrans=${cookieVal}; path=/; domain=${window.location.hostname}`;
+      localStorage.setItem('googtrans', cookieVal);
+      window.location.reload();
+    }
   };
 
   return (
     <div className="fixed top-4 right-4 z-50">
       <div className="relative">
-        {/* Main Button */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg",
-            "bg-gradient-to-br from-slate-900 to-slate-950",
-            "border border-primary/30 hover:border-primary/60",
-            "text-primary hover:text-primary-foreground",
-            "shadow-lg shadow-primary/20 hover:shadow-primary/40",
-            "transition-all duration-300",
-            "backdrop-blur-sm"
-          )}
-        >
-          <Languages className="h-4 w-4" />
-          <span className="text-sm font-medium">
-            {languages.find(l => l.code === currentLang)?.flag || '🌐'}
-          </span>
-        </button>
-
-        {/* Dropdown Menu */}
-        {isOpen && (
-          <div className={cn(
-            "absolute top-full right-0 mt-2 w-56",
-            "bg-gradient-to-b from-slate-900 to-slate-950",
-            "border border-primary/30 rounded-lg",
-            "shadow-2xl shadow-primary/30",
-            "backdrop-blur-md",
-            "overflow-hidden"
-          )}>
-            <div className="p-2 border-b border-primary/20">
-              <div className="flex items-center gap-2 px-2 py-1">
-                <Languages className="h-3 w-3 text-primary" />
-                <span className="text-xs font-semibold text-primary uppercase tracking-wider">
-                  Select Language
-                </span>
-              </div>
-            </div>
-            
-            <div className="max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent">
-              {languages.map((lang) => (
-                <button
-                  key={lang.code}
-                  onClick={() => handleLanguageSelect(lang.code)}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-4 py-2.5",
-                    "text-left text-sm transition-all duration-200",
-                    "hover:bg-primary/10 hover:text-primary",
-                    currentLang === lang.code
-                      ? "bg-primary/20 text-primary font-medium"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  <span className="text-lg">{lang.flag}</span>
-                  <span>{lang.name}</span>
-                  {currentLang === lang.code && (
-                    <span className="ml-auto text-primary">✓</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        <div className={cn(
+          "flex items-center gap-2 px-3 py-2 rounded-lg",
+          "bg-gradient-to-br from-slate-900 to-slate-950",
+          "border border-primary/30",
+          "shadow-lg shadow-primary/20",
+          "backdrop-blur-sm"
+        )}>
+          <Languages className="h-4 w-4 text-primary flex-shrink-0" />
+          <select
+            value={currentLang}
+            onChange={handleLanguageChange}
+            className={cn(
+              "bg-transparent border-none outline-none",
+              "text-sm font-medium text-primary",
+              "cursor-pointer",
+              "pr-2",
+              "appearance-none"
+            )}
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2306b6d4' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right center',
+              paddingRight: '20px'
+            }}
+          >
+            {languages.map((lang) => (
+              <option 
+                key={lang.code} 
+                value={lang.code}
+                className="bg-slate-900 text-foreground"
+              >
+                {lang.flag} {lang.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
-
-      {/* Click outside to close */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
     </div>
   );
 };
