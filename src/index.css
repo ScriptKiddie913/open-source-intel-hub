@@ -91,6 +91,10 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', system-ui, sans-serif;
+    top: 0 !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* Custom scrollbar */
@@ -192,6 +196,7 @@
   background: var(--gradient-glow);
   pointer-events: none;
 }
+
 /* Enhanced Chatbot Animations */
 @keyframes fade-in {
   from {
@@ -345,29 +350,36 @@
   filter: blur(8px);
 }
 
-/* Google Translate Styling */
+/* ============================================ */
+/* GOOGLE TRANSLATE STYLING - DROPDOWN ONLY */
+/* ============================================ */
+
+/* Main translate element container - positioned fixed */
 #google_translate_element {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 9999;
+  position: fixed !important;
+  top: 1rem !important;
+  right: 1rem !important;
+  z-index: 9999 !important;
   background: linear-gradient(to bottom right, rgb(15 23 42), rgb(2 6 23)) !important;
-  padding: 0.75rem;
-  border: 1px solid rgba(6, 182, 212, 0.3);
-  border-radius: 0.5rem;
-  box-shadow: 0 10px 15px -3px rgba(6, 182, 212, 0.2);
+  padding: 0.75rem !important;
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 10px 15px -3px rgba(6, 182, 212, 0.2), 0 0 30px rgba(6, 182, 212, 0.1) !important;
+  backdrop-filter: blur(10px) !important;
 }
 
+/* Style the gadget container */
 .goog-te-gadget {
-  font-family: inherit !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
   font-size: 0.875rem !important;
   color: #06b6d4 !important;
   line-height: normal !important;
 }
 
+/* Style the dropdown select */
 .goog-te-gadget .goog-te-combo {
   margin: 0 !important;
-  padding: 0.5rem 2rem 0.5rem 0.75rem !important;
+  padding: 0.5rem 2.5rem 0.5rem 0.75rem !important;
   font-size: 0.875rem !important;
   font-weight: 500 !important;
   color: #06b6d4 !important;
@@ -376,31 +388,109 @@
   border-radius: 0.375rem !important;
   cursor: pointer !important;
   outline: none !important;
+  transition: all 0.2s ease !important;
+  min-width: 150px !important;
 }
 
+/* Hover state for dropdown */
 .goog-te-gadget .goog-te-combo:hover {
   border-color: rgba(6, 182, 212, 0.6) !important;
-  box-shadow: 0 10px 15px -3px rgba(6, 182, 212, 0.4) !important;
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.4) !important;
+  background: rgb(15 23 42) !important;
 }
 
+/* Focus state for dropdown */
 .goog-te-gadget .goog-te-combo:focus {
-  border-color: rgba(6, 182, 212, 0.6) !important;
+  border-color: rgba(6, 182, 212, 0.8) !important;
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.5) !important;
 }
 
+/* Style dropdown options */
 .goog-te-gadget .goog-te-combo option {
   background-color: rgb(15 23 42) !important;
   color: rgb(226 232 240) !important;
   padding: 0.5rem !important;
+  font-weight: 500 !important;
 }
 
-/* Hide all Google popups and banners */
+/* Style the "Powered by" text */
+.goog-te-gadget span:first-child {
+  display: inline-block !important;
+  color: #06b6d4 !important;
+  font-size: 0.75rem !important;
+  margin-right: 0.5rem !important;
+  opacity: 0.8 !important;
+  font-weight: 500 !important;
+}
+
+/* Hide the Google branding link */
+.goog-te-gadget > span > a,
+.goog-logo-link,
+.goog-logo-link:link,
+.goog-logo-link:visited,
+.goog-logo-link:hover,
+.goog-logo-link:active {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Style the simple gadget if present */
+.goog-te-gadget .goog-te-gadget-simple {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+/* ============================================ */
+/* HIDE ALL GOOGLE TRANSLATE POPUPS & BANNERS */
+/* ============================================ */
+
+/* Hide the top banner frame completely */
 .goog-te-banner-frame,
-.goog-te-banner-frame.skiptranslate,
+.goog-te-banner-frame.skiptranslate {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Hide tooltips */
 #goog-gt-tt,
-.goog-te-balloon-frame,
 .goog-tooltip,
-.goog-tooltip:hover,
-.goog-te-spinner-pos,
+.goog-tooltip:hover {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  top: -9999px !important;
+  left: -9999px !important;
+}
+
+/* Hide balloon/popup frame */
+.goog-te-balloon-frame {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  top: -9999px !important;
+  left: -9999px !important;
+}
+
+/* Hide spinner */
+.goog-te-spinner-pos {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Hide floating tab */
 .goog-te-ftab-frame {
   display: none !important;
   visibility: hidden !important;
@@ -408,48 +498,104 @@
   pointer-events: none !important;
 }
 
+/* Hide any skiptranslate iframes */
+.skiptranslate iframe,
+iframe.skiptranslate {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Hide menu frame */
+iframe.goog-te-menu-frame,
+.goog-te-menu-frame {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Prevent body from being pushed down */
 body {
   top: 0 !important;
   position: static !important;
 }
 
+/* Hide any remaining skiptranslate elements */
 .skiptranslate {
-  display: none !important;
-}
-
-/* Hide Google branding */
-.goog-logo-link,
-.goog-logo-link:link,
-.goog-logo-link:visited,
-.goog-logo-link:hover,
-.goog-logo-link:active {
-  display: none !important;
-}
-
-.goog-te-gadget span:first-child {
   display: inline-block !important;
-  color: #06b6d4 !important;
-  font-size: 0.75rem !important;
-  margin-right: 0.5rem !important;
 }
 
-.goog-te-gadget > span > a {
+.skiptranslate:not(#google_translate_element) {
   display: none !important;
 }
 
-.goog-te-gadget .goog-te-gadget-simple {
-  background-color: transparent !important;
-  border: none !important;
-}
-
-/* Hide iframe menu */
-iframe.goog-te-menu-frame {
-  display: none !important;
-}
-
-/* Hide tooltip and balloon */
-#goog-gt-tt,
-.goog-te-balloon-frame {
+/* Additional safety rules to hide popups */
+body > .skiptranslate,
+#goog-gt-,
+[id^="goog-gt-"] {
   display: none !important;
   visibility: hidden !important;
+}
+
+/* Make sure only our translate element is visible */
+#google_translate_element .skiptranslate {
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Responsive adjustments for translate widget */
+@media (max-width: 768px) {
+  #google_translate_element {
+    top: 0.5rem !important;
+    right: 0.5rem !important;
+    padding: 0.5rem !important;
+  }
+
+  .goog-te-gadget .goog-te-combo {
+    min-width: 120px !important;
+    font-size: 0.75rem !important;
+    padding: 0.4rem 2rem 0.4rem 0.6rem !important;
+  }
+
+  .goog-te-gadget span:first-child {
+    font-size: 0.65rem !important;
+  }
+}
+
+/* Ensure iframe doesn't push content */
+iframe.goog-te-banner-frame {
+  display: none !important;
+  height: 0 !important;
+  width: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Additional override for any iframe that might appear */
+body > iframe,
+body > .goog-te-banner-frame,
+body > #goog-gt-tt {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  top: -10000px !important;
+  left: -10000px !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Keep the translate element visible */
+#google_translate_element,
+#google_translate_element * {
+  visibility: visible !important;
 }
