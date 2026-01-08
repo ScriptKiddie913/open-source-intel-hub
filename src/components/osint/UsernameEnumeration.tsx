@@ -86,6 +86,32 @@ export function UsernameEnumeration() {
         </p>
       </div>
 
+      {/* Digital Footprint Investigator Embed */}
+      <Card className="bg-card border-border overflow-hidden">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <User className="h-5 w-5 text-primary" />
+            Digital Footprint Investigator
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="relative w-full" style={{ height: '600px' }}>
+            <iframe
+              src="https://digital-footprint-investigator-076b2cad.base44.app/"
+              className="w-full h-full border-0"
+              style={{
+                transform: 'scale(1)',
+                transformOrigin: 'top left',
+                marginTop: '-60px',
+                height: 'calc(100% + 60px)'
+              }}
+              title="Digital Footprint Investigator"
+              sandbox="allow-same-origin allow-scripts allow-forms"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Search */}
       <Card className="bg-card border-border">
         <CardContent className="p-4">
