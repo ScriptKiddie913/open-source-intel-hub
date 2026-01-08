@@ -121,7 +121,7 @@ Use this context to answer user questions about the investigation.`;
 
     console.log("[Phoenix Chat] Processing message...");
 
-    // Stream response from Lovable AI
+    // Call Lovable AI (non-streaming for compatibility)
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -129,12 +129,12 @@ Use this context to answer user questions about the investigation.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.0-flash-exp",
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,
         ],
-        stream: true,
+        stream: false,
         temperature: 0.4,
         max_tokens: 4096,
       }),
@@ -153,15 +153,25 @@ Use this context to answer user questions about the investigation.`;
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      if (aiResponse.status === 401) {
+        return new Response(
+          JSON.stringify({ error: "API key is invalid or expired. Please check your Lovable API configuration." }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       const errorText = await aiResponse.text();
       console.error("[Phoenix Chat] AI error:", aiResponse.status, errorText);
       throw new Error("AI service unavailable");
     }
 
-    // Return streaming response
-    return new Response(aiResponse.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+    // Parse and return the response
+    const result = await aiResponse.json();
+    console.log("[Phoenix Chat] Response received");
+    
+    // Return the complete response for client-side parsing
+    return new Response(JSON.stringify(result), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (error) {
