@@ -185,14 +185,43 @@ async function callPhoenixChat(
     },
   });
 
-  if (error) throw error;
-  
-  // Handle streaming response
-  if (data && typeof data === 'object' && 'error' in data) {
-    throw new Error(data.error);
+  if (error) {
+    console.error('[Phoenix] Edge function error:', error);
+    throw new Error(error.message || 'Failed to connect to Phoenix AI');
   }
   
-  return data?.choices?.[0]?.message?.content || 'No response received.';
+  // Handle error responses
+  if (data && typeof data === 'object' && 'error' in data) {
+    console.error('[Phoenix] API error:', data.error);
+    throw new Error(data.error as string);
+  }
+  
+  // Handle direct string response (streaming collected on server)
+  if (typeof data === 'string') {
+    return data;
+  }
+  
+  // Handle structured response from AI API
+  if (data && typeof data === 'object') {
+    // Check for choices array (OpenAI-style response)
+    if ('choices' in data && Array.isArray(data.choices) && data.choices.length > 0) {
+      const content = data.choices[0]?.message?.content || data.choices[0]?.text;
+      if (content) return content;
+    }
+    
+    // Check for direct content field
+    if ('content' in data && typeof data.content === 'string') {
+      return data.content;
+    }
+    
+    // Check for message field
+    if ('message' in data && typeof data.message === 'string') {
+      return data.message;
+    }
+  }
+  
+  console.warn('[Phoenix] Unexpected response format:', data);
+  return 'I received a response but couldn\'t parse it properly. Please try again.';
 }
 
 function formatRiskLevel(level: string): string {
@@ -504,12 +533,27 @@ Try asking me:
       ));
     } catch (error) {
       console.error('Chat error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      let userFriendlyMessage = 'Sorry, I encountered an error processing your request.';
+      
+      // Provide specific error messages
+      if (errorMessage.includes('Rate limit')) {
+        userFriendlyMessage = '⚠️ Rate limit reached. Please wait a moment and try again.';
+      } else if (errorMessage.includes('credits')) {
+        userFriendlyMessage = '⚠️ AI credits exhausted. Please check your workspace settings.';
+      } else if (errorMessage.includes('API key')) {
+        userFriendlyMessage = '⚠️ API configuration issue. Please check your Lovable API key.';
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        userFriendlyMessage = '⚠️ Network error. Please check your connection and try again.';
+      }
+      
       setMessages(prev => prev.map(m => 
         m.id === loadingId
-          ? { ...m, content: 'Sorry, I encountered an error processing your request. Please try again.', isLoading: false }
+          ? { ...m, content: userFriendlyMessage + '\\n\\nError details: ' + errorMessage, isLoading: false }
           : m
       ));
-      toast.error('Failed to generate response');
+      toast.error('Chat error: ' + errorMessage);
     } finally {
       setIsLoading(false);
     }
