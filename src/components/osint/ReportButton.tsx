@@ -124,7 +124,7 @@ Timestamp: ${new Date().toLocaleString()}
         onClick={() => setOpen(true)}
         className={cn(
           "fixed z-50 group",
-          "bottom-44 right-6",
+          "bottom-36 right-4 sm:bottom-44 sm:right-6",
           className
         )}
         title="Submit Intelligence Report"
@@ -134,8 +134,8 @@ Timestamp: ${new Date().toLocaleString()}
           <div className="absolute inset-0 rounded-full bg-blue-500 opacity-30 blur-md group-hover:opacity-50 transition-opacity" />
           
           {/* Main button */}
-          <div className="relative flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 border-2 border-blue-400/50 shadow-xl shadow-blue-500/20 hover:shadow-blue-500/40 transition-all duration-300 group-hover:scale-105">
-            <FileText className="h-6 w-6 text-white" />
+          <div className="relative flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 border-2 border-blue-400/50 shadow-xl shadow-blue-500/20 hover:shadow-blue-500/40 transition-all duration-300 group-hover:scale-105">
+            <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
           </div>
           
           {/* Badge */}
@@ -147,7 +147,7 @@ Timestamp: ${new Date().toLocaleString()}
 
       {/* Report Dialog */}
       <Dialog open={open} onOpenChange={(v) => !v && !sending && handleClose()}>
-        <DialogContent className="sm:max-w-[550px] bg-gradient-to-b from-slate-900 to-slate-950 border-blue-500/30">
+        <DialogContent className="w-[95vw] max-w-[550px] bg-gradient-to-b from-slate-900 to-slate-950 border-blue-500/30 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-blue-400">
               <FileText className="h-5 w-5" />
