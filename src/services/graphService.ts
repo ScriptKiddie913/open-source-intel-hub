@@ -337,20 +337,30 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
     let data: any = null;
     
     if (node.type === 'ip') {
-      // IP WHOIS via RDAP (ARIN supports CORS)
+      // IP WHOIS via RDAP (ARIN supports CORS directly)
       const apiUrl = `https://rdap.arin.net/registry/ip/${node.value}`;
-      console.log('[WHOIS] Fetching IP info from ARIN RDAP');
-      const response = await fetch(apiUrl, {
-        headers: { 'Accept': 'application/rdap+json' }
-      });
-      if (response.ok) {
-        data = await response.json();
+      console.log('[WHOIS IP] Fetching IP info from ARIN RDAP');
+      
+      try {
+        const response = await fetch(apiUrl, {
+          headers: { 'Accept': 'application/rdap+json' }
+        });
+        
+        if (response.ok) {
+          data = await response.json();
+          console.log('[WHOIS IP] RDAP response received');
+        } else {
+          console.warn(`[WHOIS IP] ARIN RDAP failed with status ${response.status}`);
+        }
+      } catch (error) {
+        console.error('[WHOIS IP] RDAP request failed:', error);
       }
     } else {
-      // Domain WHOIS - try RDAP, then fallback to WhoisXMLAPI public endpoint
+      // Domain WHOIS via RDAP
       const domain = node.value.toLowerCase();
       const tld = domain.split('.').pop();
-      // Different RDAP servers for different TLDs
+      
+      // RDAP servers for different TLDs
       const rdapServers: Record<string, string> = {
         'com': 'https://rdap.verisign.com/com/v1/domain/',
         'net': 'https://rdap.verisign.com/net/v1/domain/',
@@ -359,46 +369,47 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
         'dev': 'https://rdap.nic.google/domain/',
         'app': 'https://rdap.nic.google/domain/',
       };
+      
       const rdapUrl = rdapServers[tld || 'com'] || rdapServers['com'];
       const apiUrl = `${rdapUrl}${domain}`;
-      console.log(`[WHOIS] Fetching domain info via CORS proxy: ${apiUrl}`);
-      // RDAP needs CORS proxy for browser requests
+      
+      console.log(`[WHOIS Domain] Fetching domain info from RDAP: ${apiUrl}`);
+      
+      // Try direct RDAP first
       try {
-        const response = await fetch(getProxyUrl(apiUrl));
+        const response = await fetch(apiUrl, {
+          headers: { 'Accept': 'application/rdap+json' }
+        });
+        
         if (response.ok) {
-          const text = await response.text();
-          data = JSON.parse(text);
-        }
-      } catch (e) {
-        console.warn('[WHOIS] CORS proxy failed, trying direct');
-        // Fallback to direct (works in some browsers/extensions)
-        try {
-          const directRes = await fetch(apiUrl);
-          if (directRes.ok) {
-            data = await directRes.json();
-          }
-        } catch (e2) {
-          console.warn('[WHOIS] RDAP direct failed, trying WhoisXMLAPI public endpoint');
-          // WhoisXMLAPI public endpoint (no API key, limited info)
+          data = await response.json();
+          console.log('[WHOIS Domain] RDAP response received');
+        } else {
+          console.warn(`[WHOIS Domain] RDAP direct failed with status ${response.status}`);
+          
+          // Try with CORS proxy as fallback
           try {
-            const whoisXmlUrl = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=at_demo_api_key&domainName=${encodeURIComponent(domain)}&outputFormat=JSON`;
-            const whoisRes = await fetch(whoisXmlUrl);
-            if (whoisRes.ok) {
-              data = await whoisRes.json();
+            const proxyResponse = await fetch(getProxyUrl(apiUrl));
+            if (proxyResponse.ok) {
+              const text = await proxyResponse.text();
+              data = JSON.parse(text);
+              console.log('[WHOIS Domain] RDAP via proxy succeeded');
             }
-          } catch (e3) {
-            console.warn('[WHOIS] WhoisXMLAPI public endpoint failed:', e3);
+          } catch (proxyError) {
+            console.warn('[WHOIS Domain] CORS proxy also failed:', proxyError);
           }
         }
+      } catch (error) {
+        console.error('[WHOIS Domain] RDAP request failed:', error);
       }
     }
 
     if (!data) {
-      console.warn('[WHOIS] No data returned');
+      console.warn('[WHOIS] No data returned from RDAP');
       return [];
     }
 
-    console.log('[WHOIS] Response received:', Object.keys(data));
+    console.log('[WHOIS] Response received, extracting entities...');
 
     // Extract registrant/organization info
     if (data.entities && data.entities.length > 0) {
@@ -491,10 +502,11 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
       }
     }
 
+    console.log(`[WHOIS] Extracted ${newNodes.length} nodes`);
     await cacheAPIResponse(cacheKey, newNodes, 300);
     return newNodes;
   } catch (error) {
-    console.error('WHOIS error:', error);
+    console.error('[WHOIS] Error:', error);
     return [];
   }
 }
