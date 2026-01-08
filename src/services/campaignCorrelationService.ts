@@ -246,7 +246,7 @@ const MALWARE_FAMILIES: Record<string, {
  * Main correlation function - takes indicators and builds campaign graph
  */
 export async function correlateCampaigns(query: string): Promise<CorrelationResult> {
-  console.log(`[CampaignCorrelation] Analyzing: ${query}`);
+  console.log(`[CampaignCorrelation] Analyzing: "${query}"`);
   
   const result: CorrelationResult = {
     campaigns: [],
@@ -261,55 +261,83 @@ export async function correlateCampaigns(query: string): Promise<CorrelationResu
     },
   };
   
-  // Gather data from multiple sources in parallel
-  const [
-    threatFoxData,
-    urlhausData,
-    malwareBazaarData,
-    feodoData,
-  ] = await Promise.all([
-    fetchThreatFoxCampaigns(query),
-    fetchURLhausCampaigns(query),
-    fetchMalwareBazaarCampaigns(query),
-    fetchFeodoCampaigns(query),
-  ]);
-  
-  // Merge and deduplicate samples
-  const allSamples = [
-    ...threatFoxData.samples,
-    ...urlhausData.samples,
-    ...malwareBazaarData.samples,
-    ...feodoData.samples,
-  ];
-  
-  // Merge infrastructure
-  const allInfra = [
-    ...threatFoxData.infrastructure,
-    ...urlhausData.infrastructure,
-    ...feodoData.infrastructure,
-  ];
-  
-  // Build campaigns from correlated data
-  result.campaigns = buildCampaignsFromSignals(allSamples, allInfra, query);
-  
-  // Find cross-campaign correlations
-  result.newCorrelations = findCampaignCorrelations(result.campaigns);
-  
-  // Find infrastructure overlaps
-  result.infraOverlaps = findInfrastructureOverlaps(allInfra, result.campaigns);
-  
-  // Build timeline
-  result.timeline = buildCampaignTimeline(result.campaigns);
-  
-  // Calculate stats
-  result.stats = {
-    totalSamples: allSamples.length,
-    totalCampaigns: result.campaigns.length,
-    activeThreats: result.campaigns.filter(c => c.status === 'active').length,
-    correlationStrength: calculateCorrelationStrength(result.newCorrelations),
-  };
-  
-  console.log(`[CampaignCorrelation] Found ${result.campaigns.length} campaigns, ${allSamples.length} samples`);
+  try {
+    // Gather data from multiple sources in parallel
+    console.log('[CampaignCorrelation] Fetching from threat sources...');
+    const [
+      threatFoxData,
+      urlhausData,
+      malwareBazaarData,
+      feodoData,
+    ] = await Promise.all([
+      fetchThreatFoxCampaigns(query).catch(err => {
+        console.error('[CampaignCorrelation] ThreatFox failed:', err);
+        return { samples: [], infrastructure: [] };
+      }),
+      fetchURLhausCampaigns(query).catch(err => {
+        console.error('[CampaignCorrelation] URLhaus failed:', err);
+        return { samples: [], infrastructure: [] };
+      }),
+      fetchMalwareBazaarCampaigns(query).catch(err => {
+        console.error('[CampaignCorrelation] MalwareBazaar failed:', err);
+        return { samples: [], infrastructure: [] };
+      }),
+      fetchFeodoCampaigns(query).catch(err => {
+        console.error('[CampaignCorrelation] Feodo failed:', err);
+        return { samples: [], infrastructure: [] };
+      }),
+    ]);
+    
+    console.log('[CampaignCorrelation] Data fetched:', {
+      threatFox: threatFoxData.samples.length,
+      urlhaus: urlhausData.samples.length,
+      malwareBazaar: malwareBazaarData.samples.length,
+      feodo: feodoData.samples.length,
+    });
+    
+    // Merge and deduplicate samples
+    const allSamples = [
+      ...threatFoxData.samples,
+      ...urlhausData.samples,
+      ...malwareBazaarData.samples,
+      ...feodoData.samples,
+    ];
+    
+    // Merge infrastructure
+    const allInfra = [
+      ...threatFoxData.infrastructure,
+      ...urlhausData.infrastructure,
+      ...feodoData.infrastructure,
+    ];
+    
+    console.log('[CampaignCorrelation] Total samples:', allSamples.length, 'Total infra:', allInfra.length);
+    
+    // Build campaigns from correlated data
+    result.campaigns = buildCampaignsFromSignals(allSamples, allInfra, query);
+    console.log('[CampaignCorrelation] Built', result.campaigns.length, 'campaigns');
+    
+    // Find cross-campaign correlations
+    result.newCorrelations = findCampaignCorrelations(result.campaigns);
+    
+    // Find infrastructure overlaps
+    result.infraOverlaps = findInfrastructureOverlaps(allInfra, result.campaigns);
+    
+    // Build timeline
+    result.timeline = buildCampaignTimeline(result.campaigns);
+    
+    // Calculate stats
+    result.stats = {
+      totalSamples: allSamples.length,
+      totalCampaigns: result.campaigns.length,
+      activeThreats: result.campaigns.filter(c => c.status === 'active').length,
+      correlationStrength: calculateCorrelationStrength(result.newCorrelations),
+    };
+    
+    console.log(`[CampaignCorrelation] Complete: ${result.campaigns.length} campaigns, ${allSamples.length} samples, ${result.newCorrelations.length} correlations`);
+    
+  } catch (error) {
+    console.error('[CampaignCorrelation] Critical error:', error);
+  }
   
   return result;
 }
