@@ -255,6 +255,7 @@ function FloatingPerplexityChat() {
         }
       } else {
         // Use Phoenix AI chat for general queries
+        console.log('[Phoenix] Sending message to edge function...');
         const { data, error } = await supabase.functions.invoke('phoenix-chat', {
           body: {
             messages: [
@@ -264,6 +265,8 @@ function FloatingPerplexityChat() {
             useWebSearch: true,
           },
         });
+        
+        console.log('[Phoenix] Received response:', data, 'Error:', error);
         
         if (error) {
           console.error('[Phoenix] Edge function error:', error);
@@ -276,29 +279,29 @@ function FloatingPerplexityChat() {
           throw new Error(data.error as string);
         }
         
-        // Handle direct string response (streaming collected on server)
-        if (typeof data === 'string') {
+        // Parse the response - now expecting { content: "..." }
+        if (data && typeof data === 'object' && 'content' in data && typeof data.content === 'string') {
+          reply = data.content;
+        }
+        // Fallback: try to extract content from any format
+        else if (typeof data === 'string') {
           reply = data;
         }
-        // Handle structured response from AI API
         else if (data && typeof data === 'object') {
-          // Check for choices array (OpenAI-style response)
+          // Try other possible fields
           if ('choices' in data && Array.isArray(data.choices) && data.choices.length > 0) {
             reply = data.choices[0]?.message?.content || data.choices[0]?.text || "No response received.";
           }
-          // Check for direct content field
-          else if ('content' in data && typeof data.content === 'string') {
-            reply = data.content;
-          }
-          // Check for message field
           else if ('message' in data && typeof data.message === 'string') {
             reply = data.message;
-          } else {
-            console.warn('[Phoenix] Unexpected response format:', data);
-            reply = "I received a response but couldn't parse it properly. Please try again.";
+          }
+          else {
+            console.error('[Phoenix] Unexpected response format:', JSON.stringify(data));
+            reply = "Error: Unexpected response format. Check console for details.";
           }
         } else {
-          reply = "No response received.";
+          console.error('[Phoenix] Invalid data type:', typeof data, data);
+          reply = "No response received from AI.";
         }
       }
 
