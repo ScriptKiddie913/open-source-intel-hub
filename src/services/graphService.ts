@@ -7,7 +7,6 @@ import { cacheAPIResponse, getCachedData } from '@/lib/database';
 import { searchDarkWebSignals, deepSearchDarkWeb, type DeepSearchResult } from '@/services/torService';
 import { searchTelegramLeaks } from '@/services/telegramService';
 import { getSubdomainsFromCerts, searchCertificates } from '@/services/certService';
-import { getSubdomains } from '@/services/dnsService';
 import { getIPGeolocation } from '@/services/ipService';
 import { API_ENDPOINTS, getProxyUrl } from '@/data/publicApiEndpoints';
 import { extractEntities, analyzeLeakIntelligence, mapEntityRelationships, type LeakAnalysis, type ExtractedEntity } from '@/services/llmAnalysisService';
@@ -522,17 +521,31 @@ async function transformSubdomainEnum(node: GraphNode): Promise<GraphNode[]> {
       console.warn('[Subdomains] certService failed:', e);
     }
     
-    // Method 2: Use getSubdomains from dnsService as additional source
+    // Method 2: Use crt.sh directly (certificate transparency logs)
     if (subdomains.length < 10) {
       try {
-        console.log('[Subdomains] Trying dnsService.getSubdomains...');
-        const dnsSubdomains = await getSubdomains(domain);
-        if (dnsSubdomains.length > 0) {
-          console.log(`[Subdomains] ✅ dnsService found ${dnsSubdomains.length} subdomains`);
-          subdomains = [...new Set([...subdomains, ...dnsSubdomains])];
+        console.log('[Subdomains] Trying crt.sh for subdomains...');
+        const crtshUrl = `https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`;
+        const response = await fetch(crtshUrl);
+        if (response.ok) {
+          const data = await response.json();
+          const crtshSubdomains = new Set<string>();
+          data.forEach((cert: any) => {
+            const names = cert.name_value?.split('\n') || [];
+            names.forEach((name: string) => {
+              const cleaned = name.replace(/^\*\./, '').toLowerCase();
+              if (cleaned.endsWith(domain) && cleaned !== domain) {
+                crtshSubdomains.add(cleaned);
+              }
+            });
+          });
+          if (crtshSubdomains.size > 0) {
+            console.log(`[Subdomains] ✅ crt.sh found ${crtshSubdomains.size} subdomains`);
+            subdomains = [...new Set([...subdomains, ...Array.from(crtshSubdomains)])];
+          }
         }
       } catch (e) {
-        console.warn('[Subdomains] dnsService failed:', e);
+        console.warn('[Subdomains] crt.sh failed:', e);
       }
     }
     
