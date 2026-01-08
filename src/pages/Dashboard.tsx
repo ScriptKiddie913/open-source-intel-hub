@@ -358,7 +358,7 @@ Provide accurate, actionable intelligence. Use technical terminology appropriate
   if (!open) {
     return (
       <button
-        className="fixed bottom-6 right-6 z-50 group"
+        className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 group"
         onClick={() => setOpen(true)}
         title="Open Phoenix Intelligence Assistant"
       >
@@ -367,15 +367,15 @@ Provide accurate, actionable intelligence. Use technical terminology appropriate
           <div className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-500 via-primary to-purple-500 opacity-75 blur-lg group-hover:opacity-100 transition-opacity animate-pulse" />
           
           {/* Main button */}
-          <div className="relative flex items-center gap-2 px-4 py-3 rounded-full bg-gradient-to-r from-slate-900 to-slate-800 border border-primary/50 shadow-2xl shadow-primary/25 hover:shadow-primary/50 transition-all duration-300 group-hover:scale-105">
+          <div className="relative flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-3 rounded-full bg-gradient-to-r from-slate-900 to-slate-800 border border-primary/50 shadow-2xl shadow-primary/25 hover:shadow-primary/50 transition-all duration-300 group-hover:scale-105">
             <div className="relative">
-              <Brain className="h-5 w-5 text-cyan-400" />
+              <Brain className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-400" />
               <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
             </div>
-            <span className="text-sm font-semibold bg-gradient-to-r from-cyan-400 to-primary bg-clip-text text-transparent">
+            <span className="text-xs sm:text-sm font-semibold bg-gradient-to-r from-cyan-400 to-primary bg-clip-text text-transparent">
               PHOENIX
             </span>
-            <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+            <Sparkles className="h-3 w-3 sm:h-4 sm:w-4 text-primary animate-pulse" />
           </div>
         </div>
       </button>
@@ -398,13 +398,17 @@ Provide accurate, actionable intelligence. Use technical terminology appropriate
           "border border-primary/30 rounded-2xl",
           "shadow-2xl shadow-primary/20",
           expanded
-            ? "w-[800px] h-[85vh] max-w-[95vw]"
-            : "w-[380px] h-[520px]"
+            ? "w-full h-full sm:w-[800px] sm:h-[85vh] max-w-[95vw]"
+            : "w-full h-[70vh] sm:w-[380px] sm:h-[520px] max-w-[95vw]"
         )}
         style={
           expanded
             ? undefined
-            : { left: position.x, bottom: position.y, position: "fixed" }
+            : { 
+                left: typeof window !== 'undefined' && window.innerWidth < 640 ? 0 : position.x, 
+                bottom: typeof window !== 'undefined' && window.innerWidth < 640 ? 0 : position.y, 
+                position: "fixed"
+              }
         }
       >
         {/* Header */}
@@ -465,7 +469,7 @@ Provide accurate, actionable intelligence. Use technical terminology appropriate
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent">
           {messages.length === 0 && showQuickPrompts && (
             <div className="flex flex-col items-center justify-center h-full animate-fade-in">
               {/* Hero Section */}
@@ -490,7 +494,8 @@ Provide accurate, actionable intelligence. Use technical terminology appropriate
                 </p>
                 <div className={cn(
                   "grid gap-2",
-                  expanded ? "grid-cols-3" : "grid-cols-2"
+                  "grid-cols-1 sm:grid-cols-2",
+                  expanded && "lg:grid-cols-3"
                 )}>
                   {QUICK_PROMPTS.map((item, i) => (
                     <button
