@@ -97,7 +97,7 @@ export function ReportButton({ className }: ReportButtonProps) {
         onClick={() => setOpen(true)}
         className={cn(
           "fixed z-50 group",
-          "bottom-6 right-6",
+          "bottom-42 right-6",
           className
         )}
         title="Submit Intelligence Report"
