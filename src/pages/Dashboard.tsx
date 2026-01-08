@@ -31,7 +31,10 @@ import { Loader2 } from "lucide-react";
 // OSINT Integration
 import { processOSINTQuery, OSINTResult } from "@/services/osintIntegrationService";
 import { detectEntityType, getEntityLabel } from "@/services/entityDetectionService";
-import { supabase } from "@/integrations/supabase/client";
+
+// Perplexity API Configuration
+const PERPLEXITY_API_KEY = "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";
+const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
 
 import {
   Bot,
@@ -252,76 +255,67 @@ function FloatingPerplexityChat() {
           reply += `\n*Modules: ${osintResult.modulesUsed.join(', ')}*`;
         }
       } else {
-        // Use Phoenix AI chat via edge function (Perplexity API)
-        console.log('[Phoenix] Sending message to edge function...');
-        const { data, error } = await supabase.functions.invoke('phoenix-chat', {
-          body: {
+        // Use Phoenix AI chat via Perplexity API directly
+        console.log('[Phoenix] Sending message to Perplexity API...');
+        
+        const systemPrompt = `You are Phoenix, an advanced OSINT (Open Source Intelligence) and cybersecurity assistant. You specialize in:
+- Threat intelligence analysis
+- CVE and vulnerability research
+- Malware analysis and indicators of compromise (IOCs)
+- Dark web monitoring insights
+- APT group tracking and attribution
+- Network security and IP/domain analysis
+- Cyber attack patterns and TTPs (Tactics, Techniques, and Procedures)
+
+Provide accurate, actionable intelligence. Use technical terminology appropriately. When discussing threats, include relevant IOCs, MITRE ATT&CK references, and mitigation recommendations where applicable. Always cite sources when possible.`;
+
+        const response = await fetch(PERPLEXITY_API_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'sonar-pro',
             messages: [
+              { role: 'system', content: systemPrompt },
               ...messages.map(m => ({ role: m.role, content: m.content })),
               { role: 'user', content: messageText },
             ],
-            useWebSearch: true,
-          },
+            temperature: 0.2,
+            top_p: 0.9,
+            search_domain_filter: ["<any>"],
+            return_images: false,
+            return_related_questions: false,
+            search_recency_filter: "month",
+            frequency_penalty: 1,
+          }),
         });
+
+        console.log('[Phoenix] Response status:', response.status);
         
-        console.log('[Phoenix] Raw response:', data);
-        console.log('[Phoenix] Raw response type:', typeof data);
-        console.log('[Phoenix] Error:', error);
-        
-        if (error) {
-          console.error('[Phoenix] Edge function error:', error);
-          throw new Error(error.message || 'Failed to connect to Phoenix AI');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('[Phoenix] API error:', response.status, errorData);
+          
+          if (response.status === 401) {
+            throw new Error('API authentication failed. Invalid API key.');
+          } else if (response.status === 429) {
+            throw new Error('Rate limit exceeded. Please wait before trying again.');
+          } else if (response.status === 402) {
+            throw new Error('API credits exhausted. Please check your subscription.');
+          } else {
+            throw new Error(errorData.error?.message || `API request failed with status ${response.status}`);
+          }
         }
         
-        // Handle error responses from edge function
-        if (data && typeof data === 'object' && 'error' in data) {
-          console.error('[Phoenix] API error:', data.error);
-          throw new Error(data.error as string);
-        }
+        const data = await response.json();
+        console.log('[Phoenix] Response data:', data);
         
-        // Try multiple ways to extract content
-        let extracted = false;
-        
-        // 1. Direct { content: "..." } format
-        if (data && typeof data === 'object' && 'content' in data && typeof data.content === 'string') {
-          reply = data.content;
-          extracted = true;
-          console.log('[Phoenix] Extracted from data.content');
-        }
-        // 2. OpenAI format { choices: [{ message: { content: "..." } }] }
-        else if (data?.choices?.[0]?.message?.content) {
+        if (data.choices && data.choices[0]?.message?.content) {
           reply = data.choices[0].message.content;
-          extracted = true;
-          console.log('[Phoenix] Extracted from choices[0].message.content');
-        }
-        // 3. Direct string
-        else if (typeof data === 'string' && data.trim()) {
-          reply = data;
-          extracted = true;
-          console.log('[Phoenix] Extracted direct string');
-        }
-        // 4. Nested data.data.content
-        else if (data?.data?.content) {
-          reply = data.data.content;
-          extracted = true;
-          console.log('[Phoenix] Extracted from data.data.content');
-        }
-        // 5. Message field
-        else if (data?.message && typeof data.message === 'string') {
-          reply = data.message;
-          extracted = true;
-          console.log('[Phoenix] Extracted from data.message');
-        }
-        // 6. Text field
-        else if (data?.text && typeof data.text === 'string') {
-          reply = data.text;
-          extracted = true;
-          console.log('[Phoenix] Extracted from data.text');
-        }
-        
-        if (!extracted || !reply) {
-          console.error('[Phoenix] Could not extract content. Full data:', JSON.stringify(data, null, 2));
-          throw new Error('Unexpected response format from Phoenix AI');
+        } else {
+          throw new Error('Unexpected response format from Perplexity API');
         }
       }
 
