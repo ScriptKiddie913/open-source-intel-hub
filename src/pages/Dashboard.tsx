@@ -63,8 +63,6 @@ import {
   AtSign,
 } from "lucide-react";
 
-const PERPLEXITY_API_KEY = import.meta.env.VITE_PERPLEXITY_API_KEY;
-
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
@@ -254,7 +252,7 @@ function FloatingPerplexityChat() {
           reply += `\n*Modules: ${osintResult.modulesUsed.join(', ')}*`;
         }
       } else {
-        // Use Phoenix AI chat for general queries
+        // Use Phoenix AI chat via edge function (Perplexity API)
         console.log('[Phoenix] Sending message to edge function...');
         const { data, error } = await supabase.functions.invoke('phoenix-chat', {
           body: {
@@ -266,42 +264,26 @@ function FloatingPerplexityChat() {
           },
         });
         
-        console.log('[Phoenix] Received response:', data, 'Error:', error);
+        console.log('[Phoenix] Raw response:', JSON.stringify(data)?.substring(0, 500), 'Error:', error);
         
         if (error) {
           console.error('[Phoenix] Edge function error:', error);
           throw new Error(error.message || 'Failed to connect to Phoenix AI');
         }
         
-        // Handle error responses
+        // Handle error responses from edge function
         if (data && typeof data === 'object' && 'error' in data) {
           console.error('[Phoenix] API error:', data.error);
           throw new Error(data.error as string);
         }
         
-        // Parse the response - now expecting { content: "..." }
+        // Extract content - edge function returns { content: "..." }
         if (data && typeof data === 'object' && 'content' in data && typeof data.content === 'string') {
           reply = data.content;
-        }
-        // Fallback: try to extract content from any format
-        else if (typeof data === 'string') {
-          reply = data;
-        }
-        else if (data && typeof data === 'object') {
-          // Try other possible fields
-          if ('choices' in data && Array.isArray(data.choices) && data.choices.length > 0) {
-            reply = data.choices[0]?.message?.content || data.choices[0]?.text || "No response received.";
-          }
-          else if ('message' in data && typeof data.message === 'string') {
-            reply = data.message;
-          }
-          else {
-            console.error('[Phoenix] Unexpected response format:', JSON.stringify(data));
-            reply = "Error: Unexpected response format. Check console for details.";
-          }
+          console.log('[Phoenix] Successfully extracted content');
         } else {
-          console.error('[Phoenix] Invalid data type:', typeof data, data);
-          reply = "No response received from AI.";
+          console.error('[Phoenix] Unexpected response format:', data);
+          throw new Error('Unexpected response format from Phoenix AI');
         }
       }
 
@@ -316,12 +298,12 @@ function FloatingPerplexityChat() {
       let userFriendlyMessage = "⚠️ Connection to intelligence service failed.";
       
       // Provide specific error messages
-      if (errorMessage.includes('Rate limit')) {
+      if (errorMessage.includes('Rate limit') || errorMessage.includes('429')) {
         userFriendlyMessage = '⚠️ Rate limit reached. Please wait a moment before trying again.';
-      } else if (errorMessage.includes('credits')) {
-        userFriendlyMessage = '⚠️ AI credits exhausted. Please check your workspace settings.';
-      } else if (errorMessage.includes('API key')) {
-        userFriendlyMessage = '⚠️ API configuration issue. Please check your Lovable API key in environment settings.';
+      } else if (errorMessage.includes('credits') || errorMessage.includes('402')) {
+        userFriendlyMessage = '⚠️ API credits exhausted. Please check your Perplexity subscription.';
+      } else if (errorMessage.includes('API key') || errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+        userFriendlyMessage = '⚠️ API authentication failed. Please check your Perplexity API key.';
       } else if (errorMessage.includes('network') || errorMessage.includes('fetch') || errorMessage.includes('Failed to connect')) {
         userFriendlyMessage = '⚠️ Network error. Please check your connection and try again.';
       }
