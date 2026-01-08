@@ -344,20 +344,3 @@
   opacity: 0.5;
   filter: blur(8px);
 }
-
-/* Google Translate fixes */
-.goog-te-banner-frame {
-  display: none !important;
-}
-
-body {
-  top: 0px !important;
-}
-
-.goog-logo-link {
-  display: none !important;
-}
-
-.goog-te-gadget {
-  font-size: 0 !important;
-}
