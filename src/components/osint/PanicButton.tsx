@@ -264,7 +264,7 @@ export function PanicButton({ className }: PanicButtonProps) {
         onClick={() => setOpen(true)}
         className={cn(
           "fixed z-50 group",
-          "bottom-24 right-6",
+          "bottom-20 right-4 sm:bottom-24 sm:right-6",
           className
         )}
         title="Emergency Panic Button"
@@ -274,8 +274,8 @@ export function PanicButton({ className }: PanicButtonProps) {
           <div className="absolute inset-0 rounded-full bg-red-500 opacity-50 blur-lg group-hover:opacity-75 animate-pulse" />
           
           {/* Main button */}
-          <div className="relative flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-red-600 to-red-800 border-2 border-red-400/50 shadow-2xl shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 group-hover:scale-110">
-            <AlertTriangle className="h-6 w-6 text-white animate-pulse" />
+          <div className="relative flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-red-600 to-red-800 border-2 border-red-400/50 shadow-2xl shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 group-hover:scale-110">
+            <AlertTriangle className="h-5 w-5 sm:h-6 sm:w-6 text-white animate-pulse" />
           </div>
           
           {/* Label */}
