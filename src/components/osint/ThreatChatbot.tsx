@@ -186,7 +186,7 @@ async function callPhoenixChat(
     },
   });
 
-  console.log('[Phoenix] Response:', data, 'Error:', error);
+  console.log('[Phoenix] Raw response:', JSON.stringify(data)?.substring(0, 500), 'Error:', error);
 
   if (error) {
     console.error('[Phoenix] Edge function error:', error);
@@ -199,32 +199,60 @@ async function callPhoenixChat(
     throw new Error(data.error as string);
   }
   
-  // Parse the response - expecting { content: "..." }
-  if (data && typeof data === 'object' && 'content' in data && typeof data.content === 'string') {
-    return data.content;
-  }
+  // Try every possible way to extract content
+  let extractedContent: string | null = null;
   
-  // Fallback handling for other formats
-  if (typeof data === 'string') {
-    return data;
+  // 1. Direct string
+  if (typeof data === 'string' && data.trim()) {
+    extractedContent = data;
   }
-  
-  // Handle structured response from AI API
-  if (data && typeof data === 'object') {
-    // Check for choices array (OpenAI-style response)
-    if ('choices' in data && Array.isArray(data.choices) && data.choices.length > 0) {
-      const content = data.choices[0]?.message?.content || data.choices[0]?.text;
-      if (content) return content;
-    }
-    
-    // Check for message field
-    if ('message' in data && typeof data.message === 'string') {
-      return data.message;
+  // 2. { content: "..." } format (our edge function returns this)
+  else if (data && typeof data === 'object' && 'content' in data) {
+    if (typeof data.content === 'string') {
+      extractedContent = data.content;
     }
   }
+  // 3. OpenAI-style { choices: [...] } format
+  else if (data && typeof data === 'object' && 'choices' in data) {
+    if (Array.isArray(data.choices) && data.choices.length > 0) {
+      const choice = data.choices[0];
+      extractedContent = choice?.message?.content || choice?.text || choice?.content || null;
+    }
+  }
+  // 4. { message: "..." } format
+  else if (data && typeof data === 'object' && 'message' in data) {
+    if (typeof data.message === 'string') {
+      extractedContent = data.message;
+    } else if (data.message && typeof data.message === 'object' && 'content' in data.message) {
+      extractedContent = data.message.content;
+    }
+  }
+  // 5. { data: { content: "..." } } nested format
+  else if (data && typeof data === 'object' && 'data' in data && data.data) {
+    if (typeof data.data === 'string') {
+      extractedContent = data.data;
+    } else if (typeof data.data === 'object') {
+      extractedContent = (data.data as any).content || (data.data as any).message || null;
+    }
+  }
+  // 6. { text: "..." } format
+  else if (data && typeof data === 'object' && 'text' in data && typeof data.text === 'string') {
+    extractedContent = data.text;
+  }
+  // 7. { response: "..." } format
+  else if (data && typeof data === 'object' && 'response' in data && typeof data.response === 'string') {
+    extractedContent = data.response;
+  }
   
-  console.error('[Phoenix] Unexpected response format:', JSON.stringify(data));
-  throw new Error('Unable to parse AI response. Check console for details.');
+  if (extractedContent && extractedContent.trim()) {
+    console.log('[Phoenix] Successfully extracted content:', extractedContent.substring(0, 100) + '...');
+    return extractedContent;
+  }
+  
+  // Last resort: try to stringify and look for any text content
+  console.error('[Phoenix] Could not extract content from response. Full data:', data);
+  console.error('[Phoenix] Data type:', typeof data, 'Keys:', data && typeof data === 'object' ? Object.keys(data) : 'N/A');
+  throw new Error(`Unable to parse AI response. Got type: ${typeof data}. Check browser console for full response.`);
 }
 
 function formatRiskLevel(level: string): string {
