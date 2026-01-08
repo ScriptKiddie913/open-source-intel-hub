@@ -340,19 +340,16 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
       // IP WHOIS via RDAP (ARIN supports CORS)
       const apiUrl = `https://rdap.arin.net/registry/ip/${node.value}`;
       console.log('[WHOIS] Fetching IP info from ARIN RDAP');
-      
       const response = await fetch(apiUrl, {
         headers: { 'Accept': 'application/rdap+json' }
       });
-      
       if (response.ok) {
         data = await response.json();
       }
     } else {
-      // Domain WHOIS - try multiple RDAP servers with CORS proxy
+      // Domain WHOIS - try RDAP, then fallback to WhoisXMLAPI public endpoint
       const domain = node.value.toLowerCase();
       const tld = domain.split('.').pop();
-      
       // Different RDAP servers for different TLDs
       const rdapServers: Record<string, string> = {
         'com': 'https://rdap.verisign.com/com/v1/domain/',
@@ -362,12 +359,9 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
         'dev': 'https://rdap.nic.google/domain/',
         'app': 'https://rdap.nic.google/domain/',
       };
-      
       const rdapUrl = rdapServers[tld || 'com'] || rdapServers['com'];
       const apiUrl = `${rdapUrl}${domain}`;
-      
       console.log(`[WHOIS] Fetching domain info via CORS proxy: ${apiUrl}`);
-      
       // RDAP needs CORS proxy for browser requests
       try {
         const response = await fetch(getProxyUrl(apiUrl));
@@ -378,9 +372,23 @@ async function transformWhois(node: GraphNode): Promise<GraphNode[]> {
       } catch (e) {
         console.warn('[WHOIS] CORS proxy failed, trying direct');
         // Fallback to direct (works in some browsers/extensions)
-        const directRes = await fetch(apiUrl);
-        if (directRes.ok) {
-          data = await directRes.json();
+        try {
+          const directRes = await fetch(apiUrl);
+          if (directRes.ok) {
+            data = await directRes.json();
+          }
+        } catch (e2) {
+          console.warn('[WHOIS] RDAP direct failed, trying WhoisXMLAPI public endpoint');
+          // WhoisXMLAPI public endpoint (no API key, limited info)
+          try {
+            const whoisXmlUrl = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=at_demo_api_key&domainName=${encodeURIComponent(domain)}&outputFormat=JSON`;
+            const whoisRes = await fetch(whoisXmlUrl);
+            if (whoisRes.ok) {
+              data = await whoisRes.json();
+            }
+          } catch (e3) {
+            console.warn('[WHOIS] WhoisXMLAPI public endpoint failed:', e3);
+          }
         }
       }
     }
