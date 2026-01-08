@@ -167,10 +167,28 @@ Use this context to answer user questions about the investigation.`;
 
     // Parse and return the response
     const result = await aiResponse.json();
-    console.log("[Phoenix Chat] Response received");
+    console.log("[Phoenix Chat] Response received", JSON.stringify(result).substring(0, 200));
     
-    // Return the complete response for client-side parsing
-    return new Response(JSON.stringify(result), {
+    // Extract the actual content from the AI response
+    let content = "";
+    if (result.choices && Array.isArray(result.choices) && result.choices.length > 0) {
+      content = result.choices[0]?.message?.content || result.choices[0]?.text || "";
+    } else if (result.content) {
+      content = result.content;
+    } else if (result.message) {
+      content = result.message;
+    }
+    
+    if (!content) {
+      console.error("[Phoenix Chat] No content found in response:", result);
+      return new Response(
+        JSON.stringify({ error: "No content in AI response" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    // Return a simplified response with just the content
+    return new Response(JSON.stringify({ content }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
