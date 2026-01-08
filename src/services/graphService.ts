@@ -10,6 +10,7 @@ import { getSubdomainsFromCerts, searchCertificates } from '@/services/certServi
 import { getSubdomains } from '@/services/dnsService';
 import { API_ENDPOINTS, getProxyUrl } from '@/data/publicApiEndpoints';
 import { extractEntities, analyzeLeakIntelligence, mapEntityRelationships, type LeakAnalysis, type ExtractedEntity } from '@/services/llmAnalysisService';
+import { getAdvancedGeoLocation } from '@/services/advancedGeoLocationService';
 
 /* ============================================================================
    TYPES - MALTEGO-STYLE ENTITIES
@@ -641,7 +642,6 @@ async function transformGeolocation(node: GraphNode): Promise<GraphNode[]> {
 
   try {
     // Use advanced geolocation service with multiple providers
-    const { getAdvancedGeoLocation } = await import('./advancedGeoLocationService');
     const location = await getAdvancedGeoLocation(node.value);
 
     if (location) {
