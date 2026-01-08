@@ -34,12 +34,7 @@ serve(async (req) => {
   try {
     const { messages, osintContext, useWebSearch } = await req.json() as ChatRequest;
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
-
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
     // Build system prompt with OSINT context
     let systemPrompt = `You are Phoenix, an elite OSINT and cyber threat intelligence AI assistant integrated with multiple intelligence modules.
@@ -121,22 +116,25 @@ Use this context to answer user questions about the investigation.`;
 
     console.log("[Phoenix Chat] Processing message...");
 
-    // Call Lovable AI (non-streaming for compatibility)
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Use Perplexity API directly for real-time web search capabilities
+    const PERPLEXITY_API_KEY = "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";
+    
+    const aiResponse = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-exp",
+        model: "sonar-pro",
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,
         ],
         stream: false,
-        temperature: 0.4,
+        temperature: 0.2,
         max_tokens: 4096,
+        search_recency_filter: "week",
       }),
     });
 
@@ -149,20 +147,20 @@ Use this context to answer user questions about the investigation.`;
       }
       if (aiResponse.status === 402) {
         return new Response(
-          JSON.stringify({ error: "AI credits exhausted. Please add credits to your workspace." }),
+          JSON.stringify({ error: "Perplexity API credits exhausted. Please check your subscription." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       if (aiResponse.status === 401) {
         return new Response(
-          JSON.stringify({ error: "API key is invalid or expired. Please check your Lovable API configuration." }),
+          JSON.stringify({ error: "Perplexity API key is invalid. Please check your API key." }),
           { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       const errorText = await aiResponse.text();
-      console.error("[Phoenix Chat] AI error:", aiResponse.status, errorText);
-      throw new Error("AI service unavailable");
+      console.error("[Phoenix Chat] Perplexity API error:", aiResponse.status, errorText);
+      throw new Error(`Perplexity API error: ${aiResponse.status}`);
     }
 
     // Parse and return the response
