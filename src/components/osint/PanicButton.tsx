@@ -33,7 +33,7 @@ export function PanicButton({ className }: PanicButtonProps) {
   const [location, setLocation] = useState<LocationData | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Start countdown when dialog opens
   useEffect(() => {
