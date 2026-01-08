@@ -264,7 +264,9 @@ function FloatingPerplexityChat() {
           },
         });
         
-        console.log('[Phoenix] Raw response:', JSON.stringify(data)?.substring(0, 500), 'Error:', error);
+        console.log('[Phoenix] Raw response:', data);
+        console.log('[Phoenix] Raw response type:', typeof data);
+        console.log('[Phoenix] Error:', error);
         
         if (error) {
           console.error('[Phoenix] Edge function error:', error);
@@ -277,12 +279,48 @@ function FloatingPerplexityChat() {
           throw new Error(data.error as string);
         }
         
-        // Extract content - edge function returns { content: "..." }
+        // Try multiple ways to extract content
+        let extracted = false;
+        
+        // 1. Direct { content: "..." } format
         if (data && typeof data === 'object' && 'content' in data && typeof data.content === 'string') {
           reply = data.content;
-          console.log('[Phoenix] Successfully extracted content');
-        } else {
-          console.error('[Phoenix] Unexpected response format:', data);
+          extracted = true;
+          console.log('[Phoenix] Extracted from data.content');
+        }
+        // 2. OpenAI format { choices: [{ message: { content: "..." } }] }
+        else if (data?.choices?.[0]?.message?.content) {
+          reply = data.choices[0].message.content;
+          extracted = true;
+          console.log('[Phoenix] Extracted from choices[0].message.content');
+        }
+        // 3. Direct string
+        else if (typeof data === 'string' && data.trim()) {
+          reply = data;
+          extracted = true;
+          console.log('[Phoenix] Extracted direct string');
+        }
+        // 4. Nested data.data.content
+        else if (data?.data?.content) {
+          reply = data.data.content;
+          extracted = true;
+          console.log('[Phoenix] Extracted from data.data.content');
+        }
+        // 5. Message field
+        else if (data?.message && typeof data.message === 'string') {
+          reply = data.message;
+          extracted = true;
+          console.log('[Phoenix] Extracted from data.message');
+        }
+        // 6. Text field
+        else if (data?.text && typeof data.text === 'string') {
+          reply = data.text;
+          extracted = true;
+          console.log('[Phoenix] Extracted from data.text');
+        }
+        
+        if (!extracted || !reply) {
+          console.error('[Phoenix] Could not extract content. Full data:', JSON.stringify(data, null, 2));
           throw new Error('Unexpected response format from Phoenix AI');
         }
       }
