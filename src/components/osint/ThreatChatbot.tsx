@@ -174,6 +174,7 @@ async function callPhoenixChat(
     riskLevel: context.metadata?.riskLevel || 'info',
   } : undefined;
 
+  console.log('[Phoenix] Calling edge function...');
   const { data, error } = await supabase.functions.invoke('phoenix-chat', {
     body: {
       messages: [
@@ -184,6 +185,8 @@ async function callPhoenixChat(
       useWebSearch: true,
     },
   });
+
+  console.log('[Phoenix] Response:', data, 'Error:', error);
 
   if (error) {
     console.error('[Phoenix] Edge function error:', error);
@@ -196,7 +199,12 @@ async function callPhoenixChat(
     throw new Error(data.error as string);
   }
   
-  // Handle direct string response (streaming collected on server)
+  // Parse the response - expecting { content: "..." }
+  if (data && typeof data === 'object' && 'content' in data && typeof data.content === 'string') {
+    return data.content;
+  }
+  
+  // Fallback handling for other formats
   if (typeof data === 'string') {
     return data;
   }
@@ -209,19 +217,14 @@ async function callPhoenixChat(
       if (content) return content;
     }
     
-    // Check for direct content field
-    if ('content' in data && typeof data.content === 'string') {
-      return data.content;
-    }
-    
     // Check for message field
     if ('message' in data && typeof data.message === 'string') {
       return data.message;
     }
   }
   
-  console.warn('[Phoenix] Unexpected response format:', data);
-  return 'I received a response but couldn\'t parse it properly. Please try again.';
+  console.error('[Phoenix] Unexpected response format:', JSON.stringify(data));
+  throw new Error('Unable to parse AI response. Check console for details.');
 }
 
 function formatRiskLevel(level: string): string {
