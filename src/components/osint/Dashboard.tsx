@@ -217,28 +217,31 @@ export function Dashboard() {
 
       {/* Garud AI Assistant */}
       <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent overflow-hidden">
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Shield className="h-5 w-5 text-primary" />
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+              <div className="p-1 sm:p-1.5 bg-primary/10 rounded-lg flex-shrink-0">
+                <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 text-primary" />
               </div>
-              <div>
-                <CardTitle className="text-lg">Garud AI Assistant</CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">
+              <div className="min-w-0 flex-1">
+                <CardTitle className="text-sm sm:text-base md:text-lg truncate">Garud AI</CardTitle>
+                <p className="text-[9px] sm:text-[10px] md:text-xs text-muted-foreground mt-0.5 hidden md:block">
                   CERT-In aligned cyber threat intelligence • Hindi & English support
+                </p>
+                <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5 md:hidden truncate">
+                  CERT-In aligned AI
                 </p>
               </div>
             </div>
             <button
               onClick={() => setChatExpanded(!chatExpanded)}
-              className="p-2 hover:bg-primary/10 rounded-lg transition-colors"
+              className="p-1 sm:p-1.5 hover:bg-primary/10 rounded-lg transition-colors flex-shrink-0"
               title={chatExpanded ? "Minimize" : "Expand"}
             >
               {chatExpanded ? (
-                <Minimize2 className="h-4 w-4 text-muted-foreground" />
+                <Minimize2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               ) : (
-                <Maximize2 className="h-4 w-4 text-muted-foreground" />
+                <Maximize2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               )}
             </button>
           </div>
@@ -246,12 +249,17 @@ export function Dashboard() {
         <CardContent className="p-0">
           <div className="relative overflow-hidden">
             <div 
-              className="relative w-full overflow-hidden" 
-              style={{ height: chatExpanded ? '700px' : '500px' }}
+              className="relative w-full overflow-hidden rounded-b-lg" 
+              style={{ 
+                height: chatExpanded 
+                  ? (typeof window !== 'undefined' && window.innerWidth < 640 ? '500px' : window.innerWidth < 768 ? '550px' : '700px')
+                  : (typeof window !== 'undefined' && window.innerWidth < 640 ? '350px' : window.innerWidth < 768 ? '400px' : '500px')
+              }}
             >
               <iframe
                 src="https://garud1.lovable.app/"
-                className="w-full h-full border-0"
+                className="w-full h-full border-0 scale-[0.95] sm:scale-100 origin-top-left"
+                style={{ width: typeof window !== 'undefined' && window.innerWidth < 640 ? '105.26%' : '100%' }}
                 title="Garud AI Assistant"
                 sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
                 allow="microphone; camera; geolocation"
