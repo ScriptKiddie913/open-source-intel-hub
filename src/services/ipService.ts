@@ -13,26 +13,29 @@ export async function getIPGeolocation(ip: string): Promise<GeoLocation | null> 
   if (cached) return cached;
 
   try {
-    const response = await fetch(`${API_ENDPOINTS.ipGeo.base}/${ip}`);
+    // Using ipapi.co - free tier with HTTPS support
+    const response = await fetch(`${API_ENDPOINTS.ipGeo.base}/${ip}/json/`);
     if (!response.ok) throw new Error(`IP lookup failed: ${response.statusText}`);
 
-    const data: IPAPIResponse = await response.json();
+    const data = await response.json();
     
-    if (data.status === 'fail') {
+    // Check for error in response
+    if (data.error) {
+      console.error('IP lookup error:', data.reason);
       return null;
     }
 
     const geoData: GeoLocation = {
-      ip: data.query,
-      country: data.country,
-      countryCode: data.countryCode,
-      region: data.regionName,
+      ip: data.ip,
+      country: data.country_name || data.country,
+      countryCode: data.country_code || data.country,
+      region: data.region,
       city: data.city,
-      lat: data.lat,
-      lon: data.lon,
-      isp: data.isp,
-      org: data.org,
-      as: data.as,
+      lat: data.latitude,
+      lon: data.longitude,
+      isp: data.org || 'Unknown',
+      org: data.org || 'Unknown',
+      as: data.asn || 'Unknown',
       timezone: data.timezone,
     };
 
