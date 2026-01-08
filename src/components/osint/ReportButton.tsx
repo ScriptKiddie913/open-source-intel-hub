@@ -48,13 +48,40 @@ export function ReportButton({ className }: ReportButtonProps) {
       // Get current user (optional)
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Send report via edge function
-      const { data, error } = await supabase.functions.invoke('send-report', {
+      // Get device info for context
+      const deviceInfo = {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language,
+        screenWidth: window.screen.width,
+        screenHeight: window.screen.height,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Compose report message
+      const reportMessage = `
+INTELLIGENCE REPORT
+
+Type: ${reportType.toUpperCase()}
+Subject: ${subject.trim()}
+
+Report Details:
+${report.trim()}
+
+---
+Report Type: ${reportType}
+Submitted by: ${user?.email || 'Anonymous User'}
+Timestamp: ${new Date().toLocaleString()}
+      `.trim();
+
+      // Use panic-alert function (already deployed and working)
+      const { error } = await supabase.functions.invoke('panic-alert', {
         body: {
           to: 'souvikpanja582@gmail.com',
-          subject: subject.trim(),
-          report: report.trim(),
-          reportType,
+          ipAddress: null,
+          location: null,
+          message: reportMessage,
+          deviceInfo,
           userEmail: user?.email || 'Anonymous User',
         },
       });
@@ -64,7 +91,7 @@ export function ReportButton({ className }: ReportButtonProps) {
         throw error;
       }
 
-      console.log('[Report] Success:', data);
+      console.log('[Report] Success - sent via panic-alert function');
       setSent(true);
       toast.success('Report sent successfully!');
 
