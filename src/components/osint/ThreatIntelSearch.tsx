@@ -140,9 +140,10 @@ export function ThreatIntelSearch() {
         toast.success(
           `✅ Analysis complete - ${abuseResult.threatLevel.toUpperCase()} threat level (${abuseResult.confidence}% confidence) - ${(searchTime / 1000).toFixed(1)}s`
         );
-      } else {
-        // Handle regular threat intel search
-        const data = await queryThreatIntel(searchType, query.trim());
+      } else if (searchType !== 'crimewall') {
+        // Handle regular threat intel search (excluding crimewall which has its own handler)
+        const validType = searchType as 'ip' | 'domain' | 'url' | 'hash' | 'email';
+        const data = await queryThreatIntel(validType, query.trim());
         setResult(data);
         
         if (data.errors && data.errors.length > 0) {
