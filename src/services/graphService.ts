@@ -8,9 +8,9 @@ import { searchDarkWebSignals, deepSearchDarkWeb, type DeepSearchResult } from '
 import { searchTelegramLeaks } from '@/services/telegramService';
 import { getSubdomainsFromCerts, searchCertificates } from '@/services/certService';
 import { getSubdomains } from '@/services/dnsService';
+import { getIPGeolocation } from '@/services/ipService';
 import { API_ENDPOINTS, getProxyUrl } from '@/data/publicApiEndpoints';
 import { extractEntities, analyzeLeakIntelligence, mapEntityRelationships, type LeakAnalysis, type ExtractedEntity } from '@/services/llmAnalysisService';
-import { getAdvancedGeoLocation } from '@/services/advancedGeoLocationService';
 
 /* ============================================================================
    TYPES - MALTEGO-STYLE ENTITIES
@@ -641,36 +641,27 @@ async function transformGeolocation(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    // Use advanced geolocation service with multiple providers
-    const location = await getAdvancedGeoLocation(node.value);
+    // Use basic IP geolocation service
+    const data = await getIPGeolocation(node.value);
 
-    if (location) {
-      const data = {
-        city: location.city,
-        country_name: location.country,
-        country: location.countryCode,
-        region: location.region,
-        latitude: location.lat,
-        longitude: location.lon,
-        org: location.org || location.isp,
-        asn: location.asn,
-      };
-
-      if (data) {
+    if (data && data.city && data.country) {
       // Location node
       newNodes.push({
         id: `geo-${node.value}-${Date.now()}`,
         type: 'geolocation',
-        label: `${data.city || 'Unknown'}, ${data.country_name || data.country}`,
-        value: `${data.latitude},${data.longitude}`,
+        label: `${data.city}, ${data.country}`,
+        value: `${data.lat},${data.lon}`,
         properties: {
-          country: data.country_name || data.country,
+          country: data.country,
+          countryCode: data.countryCode,
           city: data.city,
           region: data.region,
-          latitude: data.latitude,
-          longitude: data.longitude,
-          isp: data.org,
-          asn: data.asn,
+          latitude: data.lat,
+          longitude: data.lon,
+          isp: data.isp,
+          org: data.org,
+          asn: data.as,
+          timezone: data.timezone,
         },
         position: {
           x: node.position.x + 250,
@@ -682,15 +673,17 @@ async function transformGeolocation(node: GraphNode): Promise<GraphNode[]> {
       });
 
       // Organization/ISP node
-      if (data.org) {
+      const orgName = data.org || data.isp;
+      if (orgName) {
         newNodes.push({
-          id: `org-${data.org}-${Date.now()}`,
+          id: `org-${orgName.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`,
           type: 'organization',
-          label: data.org,
-          value: data.org,
+          label: orgName.substring(0, 40),
+          value: orgName,
           properties: {
-            asn: data.asn,
+            asn: data.as,
             type: 'ISP',
+            ip: node.value,
           },
           position: {
             x: node.position.x + 250,
@@ -700,7 +693,6 @@ async function transformGeolocation(node: GraphNode): Promise<GraphNode[]> {
           icon: ENTITY_CONFIG.organization.icon,
           size: 50,
         });
-      }
       }
     }
 
