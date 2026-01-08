@@ -243,16 +243,22 @@ export async function searchDarkWebForums(query: string): Promise<ForumSearchRes
 export async function getRansomwareVictims(
   options: { group?: string; sector?: string; country?: string; days?: number } = {}
 ): Promise<RansomwareVictim[]> {
+  console.log('[getRansomwareVictims] Starting fetch with options:', options);
   const victims: RansomwareVictim[] = [];
   
   try {
+    console.log('[getRansomwareVictims] Fetching from ransomwatch...');
     // Fetch from ransomwatch
     const response = await fetch(
-      'https://raw.githubusercontent.com/joshhighet/ransomwatch/main/posts.json'
+      'https://raw.githubusercontent.com/joshhighet/ransomwatch/main/posts.json',
+      { method: 'GET', cache: 'no-cache' }
     );
+    
+    console.log('[getRansomwareVictims] Ransomwatch response status:', response.status);
     
     if (response.ok) {
       const data = await response.json();
+      console.log('[getRansomwareVictims] Ransomwatch data length:', data?.length);
       
       for (const post of data) {
         // Filter by options
@@ -273,18 +279,29 @@ export async function getRansomwareVictims(
         
         victims.push(victim);
       }
+      console.log('[getRansomwareVictims] Added', victims.length, 'victims from Ransomwatch');
+    } else {
+      console.error('[getRansomwareVictims] Ransomwatch fetch failed:', response.status, response.statusText);
     }
   } catch (err) {
-    console.error('[RansomwareVictims] Error:', err);
+    console.error('[getRansomwareVictims] Ransomwatch error:', err);
   }
   
   // Fetch from ransomware.live
   try {
-    const response = await fetch('https://api.ransomware.live/recentvictims');
+    console.log('[getRansomwareVictims] Fetching from ransomware.live...');
+    const response = await fetch('https://api.ransomware.live/recentvictims', {
+      method: 'GET',
+      cache: 'no-cache'
+    });
+    
+    console.log('[getRansomwareVictims] Ransomware.live response status:', response.status);
     
     if (response.ok) {
       const data = await response.json();
+      console.log('[getRansomwareVictims] Ransomware.live data length:', data?.length);
       
+      const beforeLength = victims.length;
       for (const item of (data || [])) {
         victims.push({
           id: `rl-${item.victim?.replace(/[^a-z0-9]/gi, '-') || Date.now()}`,
@@ -299,18 +316,26 @@ export async function getRansomwareVictims(
           source: 'Ransomware.live',
         });
       }
+      console.log('[getRansomwareVictims] Added', victims.length - beforeLength, 'victims from Ransomware.live');
+    } else {
+      console.error('[getRansomwareVictims] Ransomware.live fetch failed:', response.status, response.statusText);
     }
   } catch (err) {
-    console.error('[RansomwareLive Victims] Error:', err);
+    console.error('[getRansomwareVictims] Ransomware.live error:', err);
   }
+  
+  console.log('[getRansomwareVictims] Total victims before filtering:', victims.length);
   
   // Filter by days
   if (options.days) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - options.days);
-    return victims.filter(v => new Date(v.announcementDate) >= cutoff);
+    const filtered = victims.filter(v => new Date(v.announcementDate) >= cutoff);
+    console.log('[getRansomwareVictims] After filtering by', options.days, 'days:', filtered.length);
+    return filtered;
   }
   
+  console.log('[getRansomwareVictims] Returning', victims.length, 'total victims');
   return victims;
 }
 
