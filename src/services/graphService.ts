@@ -640,13 +640,23 @@ async function transformGeolocation(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
-    // Use ip-api.com with HTTPS via CORS proxy or ipapi.co which has HTTPS
-    const response = await fetch(`https://ipapi.co/${node.value}/json/`);
-    if (!response.ok) throw new Error('Geolocation failed');
+    // Use advanced geolocation service with multiple providers
+    const { getAdvancedGeoLocation } = await import('./advancedGeoLocationService');
+    const location = await getAdvancedGeoLocation(node.value);
 
-    const data = await response.json();
+    if (location) {
+      const data = {
+        city: location.city,
+        country_name: location.country,
+        country: location.countryCode,
+        region: location.region,
+        latitude: location.lat,
+        longitude: location.lon,
+        org: location.org || location.isp,
+        asn: location.asn,
+      };
 
-    if (!data.error) {
+      if (data) {
       // Location node
       newNodes.push({
         id: `geo-${node.value}-${Date.now()}`,
@@ -808,17 +818,26 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
       const cert = certs[0];
       console.log(`[SSL Cert] ✅ Found certificate for ${node.value}`);
 
+      // Extract certificate properties safely
+      const certId = cert.id || cert.serial_number || cert.serialNumber;
+      const issuerName = cert.issuer_name || cert.issuerName || 'Unknown Issuer';
+      const commonName = cert.common_name || cert.commonName || node.value;
+      const notBefore = cert.not_before || cert.notBefore;
+      const notAfter = cert.not_after || cert.notAfter;
+      const serialNumber = cert.serial_number || cert.serialNumber;
+
       newNodes.push({
-        id: `cert-${cert.id || cert.serialNumber || Date.now()}`,
+        id: `cert-${certId || Date.now()}`,
         type: 'certificate',
         label: `SSL Certificate`,
-        value: cert.id?.toString() || cert.serialNumber || 'cert',
+        value: certId?.toString() || serialNumber || 'cert',
         properties: {
-          issuer: cert.issuer_name || cert.issuerName,
-          commonName: cert.common_name || cert.commonName,
-          notBefore: cert.not_before || cert.notBefore,
-          notAfter: cert.not_after || cert.notAfter,
-          serialNumber: cert.serial_number || cert.serialNumber,
+          issuer: issuerName,
+          commonName: commonName,
+          notBefore: notBefore,
+          notAfter: notAfter,
+          serialNumber: serialNumber,
+          validDays: notAfter ? Math.floor((new Date(notAfter).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null,
         },
         position: {
           x: node.position.x + 250,
@@ -830,15 +849,22 @@ async function transformSslCert(node: GraphNode): Promise<GraphNode[]> {
       });
 
       // Issuer organization
-      const issuerName = cert.issuer_name || cert.issuerName;
-      if (issuerName) {
+      if (issuerName && issuerName !== 'Unknown Issuer') {
+        const issuerLabel = issuerName.split(',')[0]
+          .replace('CN=', '')
+          .replace('O=', '')
+          .replace('C=', '')
+          .trim()
+          .substring(0, 30);
+          
         newNodes.push({
-          id: `org-${issuerName.substring(0, 20)}-${Date.now()}`,
+          id: `org-${issuerLabel.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`,
           type: 'organization',
-          label: issuerName.split(',')[0].replace('CN=', '').replace('O=', ''),
+          label: issuerLabel,
           value: issuerName,
           properties: {
             type: 'Certificate Authority',
+            fullName: issuerName,
           },
           position: {
             x: node.position.x + 500,
@@ -1050,17 +1076,24 @@ async function transformThreatIntel(node: GraphNode): Promise<GraphNode[]> {
   const newNodes: GraphNode[] = [];
 
   try {
+    console.log(`[Threat Intel] Checking ${node.value}`);
+    
     // Use URLhaus for threat intel
     const response = await fetch('https://urlhaus-api.abuse.ch/v1/host/', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
       body: `host=${encodeURIComponent(node.value)}`,
     });
 
     if (response.ok) {
       const data = await response.json();
       
-      if (data.query_status === 'ok' && data.urls) {
+      console.log(`[Threat Intel] URLhaus response status: ${data.query_status}`);
+      
+      if (data.query_status === 'ok' && data.urls && Array.isArray(data.urls)) {
         data.urls.slice(0, 8).forEach((url: any, idx: number) => {
           newNodes.push({
             id: `malware-${url.id}-${Date.now()}`,
@@ -1091,15 +1124,21 @@ async function transformThreatIntel(node: GraphNode): Promise<GraphNode[]> {
 
     // Also check ThreatFox
     if (newNodes.length === 0) {
+      console.log('[Threat Intel] Trying ThreatFox');
       const tfResponse = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({ query: 'search_ioc', search_term: node.value }),
       });
 
       if (tfResponse.ok) {
         const tfData = await tfResponse.json();
-        if (tfData.data && Array.isArray(tfData.data)) {
+        console.log(`[Threat Intel] ThreatFox response status: ${tfData.query_status}`);
+        
+        if (tfData.query_status === 'ok' && tfData.data && Array.isArray(tfData.data)) {
           tfData.data.slice(0, 5).forEach((ioc: any, idx: number) => {
             newNodes.push({
               id: `threat-${ioc.id}-${Date.now()}`,
@@ -1128,10 +1167,15 @@ async function transformThreatIntel(node: GraphNode): Promise<GraphNode[]> {
       }
     }
 
-    await cacheAPIResponse(cacheKey, newNodes, 1800);
+    console.log(`[Threat Intel] Found ${newNodes.length} threat indicators`);
+    
+    if (newNodes.length > 0) {
+      await cacheAPIResponse(cacheKey, newNodes, 1800);
+    }
+    
     return newNodes;
   } catch (error) {
-    console.error('Threat intel error:', error);
+    console.error('[Threat Intel] Error:', error);
     return [];
   }
 }
