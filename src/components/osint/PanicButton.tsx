@@ -66,16 +66,28 @@ export function PanicButton({ className }: PanicButtonProps) {
 
   const gatherData = async () => {
     setError(null);
+    let fetchedIp: string | null = null;
     
     try {
       // Fetch IP address
       const ipResponse = await fetch('https://api.ipify.org?format=json');
       const ipData = await ipResponse.json();
-      setIpAddress(ipData.ip);
-      console.log('[Panic] IP fetched:', ipData.ip);
+      fetchedIp = ipData.ip;
+      setIpAddress(fetchedIp);
+      console.log('[Panic] IP fetched:', fetchedIp);
+    } catch (err) {
+      console.error('[Panic] IP fetch error:', err);
+    }
 
-      // Get geolocation
-      if (navigator.geolocation) {
+    // Try browser geolocation first
+    const tryBrowserGeolocation = (): Promise<LocationData | null> => {
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+          console.log('[Panic] Geolocation not supported');
+          resolve(null);
+          return;
+        }
+
         navigator.geolocation.getCurrentPosition(
           async (position) => {
             const locationData: LocationData = {
@@ -87,7 +99,8 @@ export function PanicButton({ className }: PanicButtonProps) {
             // Try to get address from coordinates
             try {
               const geoResponse = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`,
+                { headers: { 'User-Agent': 'PhoenixOSINT/1.0' } }
               );
               const geoData = await geoResponse.json();
               locationData.address = geoData.display_name;
@@ -95,40 +108,61 @@ export function PanicButton({ className }: PanicButtonProps) {
               console.log('[Panic] Could not fetch address:', e);
             }
 
-            setLocation(locationData);
-            console.log('[Panic] Location fetched:', locationData);
-            setPhase('message');
+            resolve(locationData);
           },
           (err) => {
-            console.error('[Panic] Geolocation error:', err);
-            setError('Could not get location. Please allow location access.');
-            setPhase('message');
+            console.log('[Panic] Browser geolocation denied/failed:', err.message);
+            resolve(null);
           },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
         );
-      } else {
-        setError('Geolocation not supported by this browser.');
-        setPhase('message');
+      });
+    };
+
+    // Fallback to IP-based geolocation
+    const tryIpGeolocation = async (): Promise<LocationData | null> => {
+      try {
+        console.log('[Panic] Trying IP-based geolocation...');
+        const response = await fetch('https://ipapi.co/json/');
+        const data = await response.json();
+        
+        if (data.latitude && data.longitude) {
+          return {
+            latitude: data.latitude,
+            longitude: data.longitude,
+            accuracy: 5000, // IP geolocation is less accurate
+            address: `${data.city || ''}, ${data.region || ''}, ${data.country_name || ''}`.replace(/^, |, $/g, ''),
+          };
+        }
+      } catch (err) {
+        console.error('[Panic] IP geolocation error:', err);
       }
-    } catch (err) {
-      console.error('[Panic] Error gathering data:', err);
-      setError('Failed to gather some data. Continuing anyway.');
-      setPhase('message');
+      return null;
+    };
+
+    // Try browser geolocation first, then fallback to IP-based
+    let locationData = await tryBrowserGeolocation();
+    
+    if (!locationData) {
+      locationData = await tryIpGeolocation();
     }
+
+    if (locationData) {
+      setLocation(locationData);
+      console.log('[Panic] Location fetched:', locationData);
+    } else {
+      setError('Could not determine location. Alert will still be sent.');
+    }
+
+    setPhase('message');
   };
 
   const sendAlert = async () => {
     setPhase('sending');
 
     try {
-      // Get current user
+      // Get current user (optional - panic alerts work without login)
       const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        toast.error('You must be logged in to send panic alerts');
-        setPhase('message');
-        return;
-      }
 
       const deviceInfo = {
         userAgent: navigator.userAgent,
@@ -139,22 +173,26 @@ export function PanicButton({ className }: PanicButtonProps) {
         timestamp: new Date().toISOString(),
       };
 
-      // Save to database
-      const { error: dbError } = await supabase.from('panic_alerts' as any).insert({
-        user_id: user.id,
-        ip_address: ipAddress,
-        location: location,
-        message: message || 'Emergency alert triggered',
-        device_info: deviceInfo,
-        status: 'sent',
-      });
+      // Save to database only if user is logged in
+      if (user) {
+        const { error: dbError } = await supabase.from('panic_alerts' as any).insert({
+          user_id: user.id,
+          ip_address: ipAddress,
+          location: location,
+          message: message || 'Emergency alert triggered',
+          device_info: deviceInfo,
+          status: 'sent',
+        });
 
-      if (dbError) {
-        console.error('[Panic] Database error:', dbError);
-        throw new Error('Failed to save alert to database');
+        if (dbError) {
+          console.error('[Panic] Database error:', dbError);
+          // Don't fail - still send email
+        }
+      } else {
+        console.log('[Panic] User not logged in - skipping database save');
       }
 
-      // Send email via edge function
+      // Send email via edge function (works without auth)
       const { error: emailError } = await supabase.functions.invoke('panic-alert', {
         body: {
           to: 'souvikpanja582@gmail.com',
@@ -162,7 +200,7 @@ export function PanicButton({ className }: PanicButtonProps) {
           location,
           message: message || 'Emergency alert triggered',
           deviceInfo,
-          userEmail: user.email,
+          userEmail: user?.email || 'Anonymous User',
         },
       });
 
