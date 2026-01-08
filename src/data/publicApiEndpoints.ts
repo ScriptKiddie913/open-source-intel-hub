@@ -8,11 +8,11 @@ export const API_ENDPOINTS = {
     rateLimit: 1000, // requests per day (generous)
   },
 
-  // IP-API - Free tier, no key needed
+  // ipapi.co - Free tier with HTTPS support, no key needed
   ipGeo: {
-    base: 'https://ip-api.com/json',
-    description: 'IP Geolocation API',
-    rateLimit: 45, // per minute
+    base: 'https://ipapi.co',
+    description: 'IP Geolocation API (ipapi.co)',
+    rateLimit: 30000, // per month free tier
   },
 
   // Shodan InternetDB - Free, no auth
