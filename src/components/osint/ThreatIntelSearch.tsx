@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { queryThreatIntel, ThreatIntelResult, getRiskColor, getRiskBgColor } from '@/services/threatIntelService';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { DarkLookups } from './DarkLookups';
 
 // ============================================================================
 // CRYPTO ABUSE TYPES & FUNCTIONS
@@ -96,7 +97,7 @@ async function checkCryptoAbuse(
 
 export function ThreatIntelSearch() {
   const [query, setQuery] = useState('');
-  const [searchType, setSearchType] = useState<'ip' | 'domain' | 'url' | 'hash' | 'crypto' | 'crimewall'>('ip');
+  const [searchType, setSearchType] = useState<'ip' | 'domain' | 'url' | 'hash' | 'crypto' | 'crimewall' | 'darklookups'>('ip');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ThreatIntelResult | null>(null);
   const [cryptoResult, setCryptoResult] = useState<CryptoAbuseResult | null>(null);
@@ -252,7 +253,7 @@ export function ThreatIntelSearch() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Tabs value={searchType} onValueChange={(v) => setSearchType(v as any)}>
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="ip" className="flex items-center gap-2">
                 <Globe className="h-4 w-4" /> IP
               </TabsTrigger>
@@ -271,10 +272,15 @@ export function ThreatIntelSearch() {
               <TabsTrigger value="crimewall" className="flex items-center gap-2">
                 <Camera className="h-4 w-4" /> CrimeWall
               </TabsTrigger>
+              <TabsTrigger value="darklookups" className="flex items-center gap-2">
+                <Database className="h-4 w-4" /> DarkLookups
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
-          {searchType !== 'crimewall' ? (
+          {searchType === 'darklookups' ? (
+            <DarkLookups />
+          ) : searchType !== 'crimewall' ? (
             <>
               <div className="flex gap-2">
                 <Input
