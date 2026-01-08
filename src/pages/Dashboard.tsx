@@ -265,8 +265,41 @@ function FloatingPerplexityChat() {
           },
         });
         
-        if (error) throw error;
-        reply = data?.choices?.[0]?.message?.content || "No response received.";
+        if (error) {
+          console.error('[Phoenix] Edge function error:', error);
+          throw new Error(error.message || 'Failed to connect to Phoenix AI');
+        }
+        
+        // Handle error responses
+        if (data && typeof data === 'object' && 'error' in data) {
+          console.error('[Phoenix] API error:', data.error);
+          throw new Error(data.error as string);
+        }
+        
+        // Handle direct string response (streaming collected on server)
+        if (typeof data === 'string') {
+          reply = data;
+        }
+        // Handle structured response from AI API
+        else if (data && typeof data === 'object') {
+          // Check for choices array (OpenAI-style response)
+          if ('choices' in data && Array.isArray(data.choices) && data.choices.length > 0) {
+            reply = data.choices[0]?.message?.content || data.choices[0]?.text || "No response received.";
+          }
+          // Check for direct content field
+          else if ('content' in data && typeof data.content === 'string') {
+            reply = data.content;
+          }
+          // Check for message field
+          else if ('message' in data && typeof data.message === 'string') {
+            reply = data.message;
+          } else {
+            console.warn('[Phoenix] Unexpected response format:', data);
+            reply = "I received a response but couldn't parse it properly. Please try again.";
+          }
+        } else {
+          reply = "No response received.";
+        }
       }
 
       setMessages((m) => [
@@ -275,11 +308,26 @@ function FloatingPerplexityChat() {
       ]);
     } catch (err) {
       console.error('[Phoenix] Error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      
+      let userFriendlyMessage = "⚠️ Connection to intelligence service failed.";
+      
+      // Provide specific error messages
+      if (errorMessage.includes('Rate limit')) {
+        userFriendlyMessage = '⚠️ Rate limit reached. Please wait a moment before trying again.';
+      } else if (errorMessage.includes('credits')) {
+        userFriendlyMessage = '⚠️ AI credits exhausted. Please check your workspace settings.';
+      } else if (errorMessage.includes('API key')) {
+        userFriendlyMessage = '⚠️ API configuration issue. Please check your Lovable API key in environment settings.';
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch') || errorMessage.includes('Failed to connect')) {
+        userFriendlyMessage = '⚠️ Network error. Please check your connection and try again.';
+      }
+      
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
-          content: "⚠️ Connection to intelligence service failed. Check your network and try again.",
+          content: `${userFriendlyMessage}\n\n**Error details:** ${errorMessage}`,
           timestamp: new Date(),
         },
       ]);
