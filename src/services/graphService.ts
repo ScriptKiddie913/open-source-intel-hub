@@ -701,6 +701,7 @@ async function transformGeolocation(node: GraphNode): Promise<GraphNode[]> {
           size: 50,
         });
       }
+      }
     }
 
     await cacheAPIResponse(cacheKey, newNodes, 3600);
