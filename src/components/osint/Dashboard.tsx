@@ -255,6 +255,7 @@ export function Dashboard() {
                 style={{ height: chatExpanded ? '650px' : '450px' }}
                 title="Threat Intel Assistant"
                 sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+                allow="microphone *; camera *"
               />
             </div>
           </div>
