@@ -20,6 +20,7 @@ import {
   Database,
 } from 'lucide-react';
 import AnimatedOrb from '@/components/AnimatedOrb';
+import { LanguageSelector } from '@/components/LanguageSelector';
 
 const CAPABILITIES = [
   'Real-time threat monitoring across 150+ data sources',
@@ -99,7 +100,8 @@ export default function About() {
               </span>
             </Link>
             <div className="flex items-center gap-4">
-              <Link to="/" className="text-slate-300 hover:text-white transition-colors">
+              <LanguageSelector />
+              <Link to="/" className="hidden sm:block text-slate-300 hover:text-white transition-colors">
                 Home
               </Link>
               <Link to="/auth">
@@ -107,7 +109,7 @@ export default function About() {
                   Sign In
                 </Button>
               </Link>
-              <Link to="/auth">
+              <Link to="/auth" className="hidden sm:block">
                 <Button className="bg-gradient-to-r from-primary to-cyan-500 text-slate-900 font-semibold">
                   Get Started
                 </Button>
