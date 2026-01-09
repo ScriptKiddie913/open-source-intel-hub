@@ -345,52 +345,13 @@
   filter: blur(8px);
 }
 
-/* Google Translate Styling */
+/* Google Translate - Hidden but functional */
 #google_translate_element {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 9999;
-  background: linear-gradient(to bottom right, rgb(15 23 42), rgb(2 6 23)) !important;
-  padding: 0.75rem;
-  border: 1px solid rgba(6, 182, 212, 0.3);
-  border-radius: 0.5rem;
-  box-shadow: 0 10px 15px -3px rgba(6, 182, 212, 0.2);
-}
-
-.goog-te-gadget {
-  font-family: inherit !important;
-  font-size: 0.875rem !important;
-  color: #06b6d4 !important;
-  line-height: normal !important;
-}
-
-.goog-te-gadget .goog-te-combo {
-  margin: 0 !important;
-  padding: 0.5rem 2rem 0.5rem 0.75rem !important;
-  font-size: 0.875rem !important;
-  font-weight: 500 !important;
-  color: #06b6d4 !important;
-  background: rgb(2 6 23) !important;
-  border: 1px solid rgba(6, 182, 212, 0.3) !important;
-  border-radius: 0.375rem !important;
-  cursor: pointer !important;
-  outline: none !important;
-}
-
-.goog-te-gadget .goog-te-combo:hover {
-  border-color: rgba(6, 182, 212, 0.6) !important;
-  box-shadow: 0 10px 15px -3px rgba(6, 182, 212, 0.4) !important;
-}
-
-.goog-te-gadget .goog-te-combo:focus {
-  border-color: rgba(6, 182, 212, 0.6) !important;
-}
-
-.goog-te-gadget .goog-te-combo option {
-  background-color: rgb(15 23 42) !important;
-  color: rgb(226 232 240) !important;
-  padding: 0.5rem !important;
+  position: fixed !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 /* Hide all Google popups and banners */
@@ -401,7 +362,8 @@
 .goog-tooltip,
 .goog-tooltip:hover,
 .goog-te-spinner-pos,
-.goog-te-ftab-frame {
+.goog-te-ftab-frame,
+.goog-te-menu-frame {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
@@ -426,30 +388,9 @@ body {
   display: none !important;
 }
 
-.goog-te-gadget span:first-child {
-  display: inline-block !important;
-  color: #06b6d4 !important;
-  font-size: 0.75rem !important;
-  margin-right: 0.5rem !important;
-}
-
-.goog-te-gadget > span > a {
-  display: none !important;
-}
-
-.goog-te-gadget .goog-te-gadget-simple {
-  background-color: transparent !important;
-  border: none !important;
-}
-
-/* Hide iframe menu */
-iframe.goog-te-menu-frame {
-  display: none !important;
-}
-
-/* Hide tooltip and balloon */
-#goog-gt-tt,
-.goog-te-balloon-frame {
-  display: none !important;
-  visibility: hidden !important;
+/* Mobile-first responsive utilities */
+@media (max-width: 640px) {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
 }

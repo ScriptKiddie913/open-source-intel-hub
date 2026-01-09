@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>SoTaNik OSINT HUB</title>
     <script type="text/javascript">
       function googleTranslateElementInit() {
@@ -21,7 +21,8 @@
   </head>
 
   <body>
-    <div id="google_translate_element"></div>
+    <!-- Hidden Google Translate element - used programmatically by LanguageSelector -->
+    <div id="google_translate_element" style="position: fixed; top: -9999px; left: -9999px; visibility: hidden;"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

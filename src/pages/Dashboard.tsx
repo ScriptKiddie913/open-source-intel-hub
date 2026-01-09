@@ -25,9 +25,11 @@ import { PanicButton } from "@/components/osint/PanicButton";
 import { ReportButton } from "@/components/osint/ReportButton";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { initDatabase } from "@/lib/database";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { Loader2, Menu } from "lucide-react";
+import { LanguageSelector } from "@/components/LanguageSelector";
 
 // OSINT Integration
 import { processOSINTQuery, OSINTResult } from "@/services/osintIntegrationService";
@@ -653,6 +655,8 @@ Provide accurate, actionable intelligence. Use technical terminology appropriate
 
 const DashboardPage = () => {
   const { user, loading, signOut } = useAuth(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     initDatabase().catch(console.error);
@@ -677,30 +681,60 @@ const DashboardPage = () => {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      <OSINTSidebar onSignOut={signOut} userEmail={user.email} />
-      <main className="flex-1 overflow-y-auto relative">
-        <Routes>
-          <Route path="/" element={<DashboardHome />} />
-          <Route path="/threat-intel" element={<ThreatIntelSearch />} />
-          <Route path="/cve" element={<CVEExplorer />} />
-          <Route path="/live-threats" element={<LiveThreatFeed />} />
-          <Route path="/import" element={<DataImporter />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          
-          {/* NEW ROUTES */}
-          <Route path="/username" element={<UsernameEnumeration />} />
-          <Route path="/darkweb" element={<DarkWebScanner />} />
-          <Route path="/graph" element={<GraphVisualization />} />
-          <Route path="/news" element={<NewsIntelligence />} />
-          <Route path="/telegram" element={<TelegramIntelligence />} />
-          <Route path="/malware-pipeline" element={<MalwarePipeline />} />
-          <Route path="/stealthmole" element={<StealthMoleScanner />} />
-          <Route path="/threat-map" element={<LiveThreatMap />} />
-          <Route path="/monitoring" element={<MonitoringDashboard />} />
-          <Route path="/history" element={<SearchHistoryPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
+      <OSINTSidebar 
+        onSignOut={signOut} 
+        userEmail={user.email} 
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Mobile Header */}
+        {isMobile && (
+          <header className="flex items-center justify-between h-14 px-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <button 
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 -ml-2 rounded-lg hover:bg-secondary transition-colors"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-cyber">
+                <Terminal className="h-3.5 w-3.5 text-primary-foreground" />
+              </div>
+              <span className="font-bold text-foreground text-sm">SoTaNik OSINT</span>
+            </div>
+            
+            <LanguageSelector variant="compact" />
+          </header>
+        )}
+        
+        <main className="flex-1 overflow-y-auto relative">
+          <Routes>
+            <Route path="/" element={<DashboardHome />} />
+            <Route path="/threat-intel" element={<ThreatIntelSearch />} />
+            <Route path="/cve" element={<CVEExplorer />} />
+            <Route path="/live-threats" element={<LiveThreatFeed />} />
+            <Route path="/import" element={<DataImporter />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            
+            {/* NEW ROUTES */}
+            <Route path="/username" element={<UsernameEnumeration />} />
+            <Route path="/darkweb" element={<DarkWebScanner />} />
+            <Route path="/graph" element={<GraphVisualization />} />
+            <Route path="/news" element={<NewsIntelligence />} />
+            <Route path="/telegram" element={<TelegramIntelligence />} />
+            <Route path="/malware-pipeline" element={<MalwarePipeline />} />
+            <Route path="/stealthmole" element={<StealthMoleScanner />} />
+            <Route path="/threat-map" element={<LiveThreatMap />} />
+            <Route path="/monitoring" element={<MonitoringDashboard />} />
+            <Route path="/history" element={<SearchHistoryPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+      
       <FloatingPerplexityChat />
       <ReportButton />
       <PanicButton />
