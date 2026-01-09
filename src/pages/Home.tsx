@@ -70,8 +70,8 @@ const FEATURES = [
 ];
 
 const STATS = [
-  { value: '500M+', label: 'Threat Indicators' },
-  { value: '150+', label: 'Data Sources' },
+  { value: '768+', label: 'Threat Indicators' },
+  { value: '30+', label: 'Data Sources' },
   { value: '24/7', label: 'Monitoring' },
   { value: '99.9%', label: 'Uptime' },
 ];
