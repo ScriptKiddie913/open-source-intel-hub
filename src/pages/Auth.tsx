@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,9 +16,11 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle2,
-  Zap
+  Zap,
+  Home,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { LanguageSelector } from '@/components/LanguageSelector';
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -144,6 +146,15 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Top navigation bar */}
+      <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between p-4">
+        <Link to="/" className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors">
+          <Home className="h-5 w-5" />
+          <span className="hidden sm:inline">Home</span>
+        </Link>
+        <LanguageSelector />
+      </div>
+
       {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" />
