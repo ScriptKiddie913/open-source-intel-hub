@@ -238,6 +238,81 @@ export type Database = {
         }
         Relationships: []
       }
+      threat_intelligence: {
+        Row: {
+          attribution: Json | null
+          confidence_level: number
+          created_at: string
+          description: string | null
+          first_seen: string
+          id: string
+          indicators: Json | null
+          last_seen: string
+          metadata: Json | null
+          raw_data: Json | null
+          severity_level: string
+          source_id: string
+          source_name: string
+          status: string
+          tags: string[] | null
+          targets: Json | null
+          threat_type: string
+          timeline: Json | null
+          title: string
+          ttps: Json | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          attribution?: Json | null
+          confidence_level?: number
+          created_at?: string
+          description?: string | null
+          first_seen?: string
+          id?: string
+          indicators?: Json | null
+          last_seen?: string
+          metadata?: Json | null
+          raw_data?: Json | null
+          severity_level?: string
+          source_id: string
+          source_name: string
+          status?: string
+          tags?: string[] | null
+          targets?: Json | null
+          threat_type?: string
+          timeline?: Json | null
+          title?: string
+          ttps?: Json | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          attribution?: Json | null
+          confidence_level?: number
+          created_at?: string
+          description?: string | null
+          first_seen?: string
+          id?: string
+          indicators?: Json | null
+          last_seen?: string
+          metadata?: Json | null
+          raw_data?: Json | null
+          severity_level?: string
+          source_id?: string
+          source_name?: string
+          status?: string
+          tags?: string[] | null
+          targets?: Json | null
+          threat_type?: string
+          timeline?: Json | null
+          title?: string
+          ttps?: Json | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       user_sessions: {
         Row: {
           created_at: string

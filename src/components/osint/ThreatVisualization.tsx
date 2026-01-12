@@ -128,22 +128,66 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
     try {
       setLoading(true);
 
-      // Load comprehensive threat data for visualization
-      const [recentThreats, stats, timeSeriesThreats] = await Promise.all([
-        threatIntelligenceDB.queryThreatIntelligence({
-          timeRange: {
-            from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // Last 7 days
-            to: new Date().toISOString()
-          }
-        }),
-        threatIntelligenceDB.getThreatStatistics(),
-        threatIntelligenceDB.queryThreatIntelligence({
-          timeRange: {
-            from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // Last 30 days
-            to: new Date().toISOString()
-          }
-        })
-      ]);
+      // Try to load from database, but don't fail if unavailable
+      let recentThreats: ThreatIntelligenceRecord[] = [];
+      let stats: any = { 
+        totalThreats: 0, 
+        byType: {}, 
+        bySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+        bySource: {},
+        recentCount: 0 
+      };
+      let timeSeriesThreats: ThreatIntelligenceRecord[] = [];
+
+      try {
+        const [threatData, statsData, timeData] = await Promise.all([
+          threatIntelligenceDB.queryThreatIntelligence({
+            timeRange: {
+              from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+              to: new Date().toISOString()
+            }
+          }).catch(() => []),
+          threatIntelligenceDB.getThreatStatistics().catch(() => stats),
+          threatIntelligenceDB.queryThreatIntelligence({
+            timeRange: {
+              from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+              to: new Date().toISOString()
+            }
+          }).catch(() => [])
+        ]);
+        
+        recentThreats = threatData;
+        stats = statsData;
+        timeSeriesThreats = timeData;
+      } catch (dbError) {
+        console.warn('[ThreatViz] Database unavailable, using real-time data only:', dbError);
+      }
+
+      // If no database data, use real-time stats
+      if (stats.totalThreats === 0 && realTimeStats) {
+        stats = {
+          totalThreats: realTimeStats.totalThreats,
+          byType: {
+            c2: realTimeStats.activeC2Servers,
+            url: realTimeStats.maliciousUrls,
+            hash: realTimeStats.malwareSamples,
+            ioc: realTimeStats.threatfoxIOCs
+          },
+          bySeverity: {
+            critical: realTimeStats.criticalThreats,
+            high: realTimeStats.highThreats,
+            medium: realTimeStats.mediumThreats,
+            low: realTimeStats.lowThreats
+          },
+          bySource: {
+            'Feodo Tracker': realTimeStats.activeC2Servers,
+            'URLhaus': realTimeStats.maliciousUrls,
+            'ThreatFox': realTimeStats.threatfoxIOCs,
+            'MalwareBazaar': realTimeStats.malwareSamples
+          },
+          recentCount: realTimeStats.totalThreats
+        };
+      }
 
       setThreatData(recentThreats);
       setStatistics(stats);
@@ -164,7 +208,7 @@ export const ThreatVisualization: React.FC<ThreatVisualizationProps> = ({
 
     } catch (error) {
       console.error('[ThreatViz] Failed to load visualization data:', error);
-      toast.error('Failed to load threat visualization data');
+      // Don't show toast error for every refresh, just log
     } finally {
       setLoading(false);
     }
