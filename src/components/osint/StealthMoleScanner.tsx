@@ -7,6 +7,7 @@
 // ✔ Stealer log detection
 // ✔ Ransomware monitoring
 // ✔ Telegram intelligence
+// ✔ LinkedIn & Google OSINT
 // ✔ LLM-powered analysis
 // ✔ MITRE ATT&CK mapping
 // ============================================================================
@@ -55,6 +56,8 @@ import {
   Radio,
   Flame,
   Users,
+  Linkedin,
+  SearchCode,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -121,6 +124,13 @@ import {
   type ThreatIntelResult,
 } from '@/services/threatIntelService';
 
+import {
+  runSocialScraping,
+  type LinkedInResult,
+  type GoogleResult,
+  type SocialScrapeResult,
+} from '@/services/socialScrapingService';
+
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -137,6 +147,8 @@ type TabMode =
   | 'telegram' 
   | 'c2' 
   | 'onions'
+  | 'linkedin'
+  | 'google'
   | 'analysis';
 
 interface UnifiedSearchResult {
@@ -159,6 +171,10 @@ interface UnifiedSearchResult {
   telegramStealerLogs: TelegramIntelResult[];
   telegramRansomware: TelegramIntelResult[];
   
+  // Social/Web OSINT
+  linkedinResults: LinkedInResult[];
+  googleResults: GoogleResult[];
+  
   // Analysis
   entities: ExtractedEntity[];
   analysis: LeakAnalysis | null;
@@ -173,6 +189,8 @@ interface UnifiedSearchResult {
     stealerLogHits: number;
     activeC2s: number;
     telegramHits: number;
+    linkedinHits: number;
+    googleHits: number;
     entitiesExtracted: number;
     sourcesScanned: number;
   };
@@ -301,6 +319,8 @@ export function StealthMoleScanner() {
         telegramResults: [],
         telegramStealerLogs: [],
         telegramRansomware: [],
+        linkedinResults: [],
+        googleResults: [],
         entities: [],
         analysis: null,
         stats: {
@@ -312,6 +332,8 @@ export function StealthMoleScanner() {
           stealerLogHits: 0,
           activeC2s: 0,
           telegramHits: 0,
+          linkedinHits: 0,
+          googleHits: 0,
           entitiesExtracted: 0,
           sourcesScanned: 0,
         },
@@ -427,6 +449,20 @@ export function StealthMoleScanner() {
         );
       }
       
+      // 4. LinkedIn & Google OSINT (always enabled)
+      searchPromises.push(
+        (async () => {
+          try {
+            const socialResults = await runSocialScraping(query);
+            unifiedResult.linkedinResults = socialResults.linkedin;
+            unifiedResult.googleResults = socialResults.google;
+            console.log(`[Social] ✅ LinkedIn: ${socialResults.linkedin.length}, Google: ${socialResults.google.length}`);
+          } catch (err) {
+            console.error('[Social] ❌ Error:', err);
+          }
+        })()
+      );
+      
       // Wait for all searches
       await Promise.allSettled(searchPromises);
       
@@ -484,24 +520,32 @@ export function StealthMoleScanner() {
           unifiedResult.darkWebSignals.length +
           unifiedResult.malwareIndicators.length +
           unifiedResult.telegramResults.length +
+          unifiedResult.linkedinResults.length +
+          unifiedResult.googleResults.length +
           hashThreatCount,
         criticalThreats: 
           unifiedResult.darkWebSignals.filter(s => s.severity === 'critical').length +
           unifiedResult.malwareIndicators.filter(i => i.severity === 'critical').length +
           unifiedResult.telegramResults.filter(t => t.severity === 'critical').length +
+          unifiedResult.linkedinResults.filter(r => r.severity === 'critical').length +
+          unifiedResult.googleResults.filter(r => r.severity === 'critical').length +
           (unifiedResult.hashAnalysis?.formatted?.riskLevel === 'critical' ? 1 : 0),
         highThreats:
           unifiedResult.darkWebSignals.filter(s => s.severity === 'high').length +
           unifiedResult.malwareIndicators.filter(i => i.severity === 'high').length +
           unifiedResult.telegramResults.filter(t => t.severity === 'high').length +
+          unifiedResult.linkedinResults.filter(r => r.severity === 'high').length +
+          unifiedResult.googleResults.filter(r => r.severity === 'high').length +
           (unifiedResult.hashAnalysis?.formatted?.riskLevel === 'high' ? 1 : 0),
         malwareIOCs: unifiedResult.malwareIndicators.length + hashThreatCount,
         ransomwareHits: unifiedResult.ransomwareGroups.length + unifiedResult.telegramRansomware.length,
         stealerLogHits: unifiedResult.stealerLogs.length + unifiedResult.telegramStealerLogs.length,
         activeC2s: unifiedResult.c2Servers.filter(c => c.status === 'active').length,
         telegramHits: unifiedResult.telegramResults.length,
+        linkedinHits: unifiedResult.linkedinResults.length,
+        googleHits: unifiedResult.googleResults.length,
         entitiesExtracted: unifiedResult.entities.length,
-        sourcesScanned: 20, // Approximate
+        sourcesScanned: 22, // Including LinkedIn & Google
       };
       
       unifiedResult.searchTime = Date.now() - startTime;
@@ -640,7 +684,7 @@ export function StealthMoleScanner() {
 
       {/* STATS GRID */}
       {results && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-10 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 gap-3">
           <StatCard icon={Target} label="Total" value={results.stats.totalFindings} color="text-primary" />
           <StatCard icon={AlertOctagon} label="Critical" value={results.stats.criticalThreats} color="text-red-500" />
           <StatCard icon={ShieldAlert} label="High" value={results.stats.highThreats} color="text-orange-500" />
@@ -649,6 +693,8 @@ export function StealthMoleScanner() {
           <StatCard icon={Key} label="Stealer Logs" value={results.stats.stealerLogHits} color="text-yellow-500" />
           <StatCard icon={Server} label="Active C2" value={results.stats.activeC2s} color="text-cyan-500" />
           <StatCard icon={MessageSquare} label="Telegram" value={results.stats.telegramHits} color="text-blue-500" />
+          <StatCard icon={Linkedin} label="LinkedIn" value={results.stats.linkedinHits} color="text-blue-600" />
+          <StatCard icon={SearchCode} label="Google" value={results.stats.googleHits} color="text-green-600" />
           <StatCard icon={Fingerprint} label="Entities" value={results.stats.entitiesExtracted} color="text-green-500" />
           <StatCard icon={Zap} label="Time" value={`${(results.searchTime / 1000).toFixed(1)}s`} color="text-yellow-400" />
         </div>
@@ -656,7 +702,7 @@ export function StealthMoleScanner() {
 
       {/* MAIN TABS */}
       <Tabs value={tab} onValueChange={v => setTab(v as TabMode)}>
-        <TabsList className="grid w-full grid-cols-5 lg:grid-cols-9">
+        <TabsList className="grid w-full grid-cols-6 lg:grid-cols-11">
           <TabsTrigger value="overview" className="text-xs">
             <BarChart3 className="h-3 w-3 mr-1" />
             Overview
@@ -680,6 +726,14 @@ export function StealthMoleScanner() {
           <TabsTrigger value="telegram" className="text-xs">
             <MessageSquare className="h-3 w-3 mr-1" />
             Telegram
+          </TabsTrigger>
+          <TabsTrigger value="linkedin" className="text-xs">
+            <Linkedin className="h-3 w-3 mr-1" />
+            LinkedIn
+          </TabsTrigger>
+          <TabsTrigger value="google" className="text-xs">
+            <SearchCode className="h-3 w-3 mr-1" />
+            Google
           </TabsTrigger>
           <TabsTrigger value="c2" className="text-xs">
             <Server className="h-3 w-3 mr-1" />
@@ -992,6 +1046,28 @@ export function StealthMoleScanner() {
           ))}
         </TabsContent>
 
+        {/* LINKEDIN TAB */}
+        <TabsContent value="linkedin" className="mt-6 space-y-3">
+          {loading && <LoadingState />}
+          {!loading && results?.linkedinResults.length === 0 && (
+            <EmptyState icon={Linkedin} title="No LinkedIn Results" description="No LinkedIn profiles, companies, or posts found" />
+          )}
+          {!loading && results?.linkedinResults.map(result => (
+            <LinkedInResultCard key={result.id} result={result} />
+          ))}
+        </TabsContent>
+
+        {/* GOOGLE TAB */}
+        <TabsContent value="google" className="mt-6 space-y-3">
+          {loading && <LoadingState />}
+          {!loading && results?.googleResults.length === 0 && (
+            <EmptyState icon={SearchCode} title="No Google Results" description="No web intelligence found via Google OSINT" />
+          )}
+          {!loading && results?.googleResults.map(result => (
+            <GoogleResultCard key={result.id} result={result} />
+          ))}
+        </TabsContent>
+
         {/* AI ANALYSIS TAB */}
         <TabsContent value="analysis" className="mt-6 space-y-4">
           {loading && <LoadingState />}
@@ -1049,7 +1125,7 @@ export function StealthMoleScanner() {
         <CardContent className="p-4 flex gap-3">
           <Radio className="h-5 w-5 text-primary shrink-0 animate-pulse" />
           <div>
-            <h3 className="font-semibold">20+ Real-Time Intelligence Sources</h3>
+            <h3 className="font-semibold">22+ Real-Time Intelligence Sources</h3>
             <p className="text-sm text-muted-foreground mt-1">
               <strong>🦠 Malware:</strong> ThreatFox, URLhaus, MalwareBazaar, FeodoTracker, SSLBL
               {' • '}
@@ -1060,6 +1136,10 @@ export function StealthMoleScanner() {
               <strong>📱 Telegram:</strong> Breach channels, Stealer logs, Market monitoring
               {' • '}
               <strong>🧅 Onion:</strong> Ahmia.fi, DDoSecrets, WikiLeaks
+              {' • '}
+              <strong>💼 LinkedIn:</strong> Profiles, Companies, Posts
+              {' • '}
+              <strong>🔍 Google:</strong> Web, Pastebin, GitHub, Forums
             </p>
           </div>
         </CardContent>
@@ -1490,6 +1570,70 @@ function EntityCard({ entity }: { entity: ExtractedEntity }) {
       </div>
       <p className="font-mono text-sm break-all">{entity.value}</p>
     </div>
+  );
+}
+
+function LinkedInResultCard({ result }: { result: LinkedInResult }) {
+  return (
+    <Card className={cn('border-l-4', SEVERITY_COLORS[result.severity] || 'border-blue-500/40')}>
+      <CardContent className="pt-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <Linkedin className="h-4 w-4 text-blue-600 shrink-0" />
+              <Badge variant="outline" className="text-xs">{result.type}</Badge>
+              <Badge className={cn('text-xs', SEVERITY_COLORS[result.severity])}>
+                {result.severity}
+              </Badge>
+            </div>
+            <h4 className="font-semibold text-sm line-clamp-1">{result.title}</h4>
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{result.snippet}</p>
+            {result.metadata.headline && (
+              <p className="text-xs text-muted-foreground mt-1 italic">{result.metadata.headline}</p>
+            )}
+          </div>
+          {result.url && (
+            <Button variant="ghost" size="sm" asChild>
+              <a href={result.url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function GoogleResultCard({ result }: { result: GoogleResult }) {
+  return (
+    <Card className={cn('border-l-4', SEVERITY_COLORS[result.severity] || 'border-green-500/40')}>
+      <CardContent className="pt-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <SearchCode className="h-4 w-4 text-green-600 shrink-0" />
+              <Badge variant="outline" className="text-xs">{result.type}</Badge>
+              <Badge className={cn('text-xs', SEVERITY_COLORS[result.severity])}>
+                {result.severity}
+              </Badge>
+              {result.metadata.domain && (
+                <span className="text-xs text-muted-foreground">{result.metadata.domain}</span>
+              )}
+            </div>
+            <h4 className="font-semibold text-sm line-clamp-1">{result.title}</h4>
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{result.snippet}</p>
+          </div>
+          {result.url && (
+            <Button variant="ghost" size="sm" asChild>
+              <a href={result.url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
