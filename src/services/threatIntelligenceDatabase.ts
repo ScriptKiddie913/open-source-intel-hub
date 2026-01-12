@@ -33,61 +33,81 @@ export interface ThreatIntelligenceRecord {
 type ThreatType = 'apt' | 'malware' | 'ransomware' | 'campaign' | 'ioc' | 'actor' | 'vulnerability';
 type SeverityLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
+// Constants for auto-cleanup
+const MAX_RECORDS = 10000;
+const CLEANUP_THRESHOLD = 0.75; // 75%
+const CLEANUP_TARGET = 0.60; // Clean down to 60% after triggering
+
 // Real-time database synchronization class
 export class ThreatIntelligenceDatabase {
   private syncQueue: Map<string, any> = new Map();
   private isProcessing = false;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private realtimeSubscription: any = null;
+  private lastCleanupCheck = 0;
 
   constructor() {
     this.initializeRealtimeSync();
-    this.ensureSampleData();
   }
 
-  // Ensure some sample threat data exists for initial dashboard display
-  private async ensureSampleData() {
+  // Check and perform auto-cleanup when database exceeds 75% capacity
+  private async checkAndCleanup(): Promise<void> {
+    // Only check every 30 seconds to avoid hammering the database
+    const now = Date.now();
+    if (now - this.lastCleanupCheck < 30000) return;
+    this.lastCleanupCheck = now;
+
     try {
-      const stats = await this.getThreatStatistics();
-      if (stats.totalThreats === 0) {
-        console.log('[ThreatDB] No existing data, adding sample threats for dashboard');
+      const { count, error } = await (supabase as any)
+        .from('threat_intelligence')
+        .select('*', { count: 'exact', head: true });
+
+      if (error) {
+        console.warn('[ThreatDB] Failed to get record count:', error);
+        return;
+      }
+
+      const recordCount = count || 0;
+      const threshold = MAX_RECORDS * CLEANUP_THRESHOLD;
+
+      if (recordCount > threshold) {
+        console.log(`[ThreatDB] Database at ${((recordCount / MAX_RECORDS) * 100).toFixed(1)}% capacity. Triggering auto-cleanup...`);
         
-        const sampleThreats = [
-          {
-            name: 'LockBit 3.0 Ransomware Campaign',
-            description: 'Active ransomware campaign targeting healthcare and financial institutions',
-            type: 'ransomware',
-            severity: 'critical',
-            indicators: ['192.168.1.100', 'lockbit3.onion'],
-            ttps: ['T1486', 'T1490', 'T1083'],
-            attribution: 'LockBit Group'
-          },
-          {
-            name: 'RedLine Stealer Infrastructure',
-            description: 'Information stealing malware targeting credentials and crypto wallets',
-            type: 'malware', 
-            severity: 'high',
-            indicators: ['stealer.exe', '185.225.73.244'],
-            ttps: ['T1555', 'T1081', 'T1005']
-          },
-          {
-            name: 'BlackCat/ALPHV Ransomware',
-            description: 'Cross-platform ransomware written in Rust',
-            type: 'ransomware',
-            severity: 'critical',
-            indicators: ['alphv.exe', 'blackcat.onion'],
-            ttps: ['T1486', 'T1083', 'T1082']
+        // Calculate how many to delete to get down to 60%
+        const targetCount = Math.floor(MAX_RECORDS * CLEANUP_TARGET);
+        const deleteCount = recordCount - targetCount;
+
+        if (deleteCount > 0) {
+          // Get IDs of oldest records to delete
+          const { data: oldestRecords, error: selectError } = await (supabase as any)
+            .from('threat_intelligence')
+            .select('id')
+            .order('created_at', { ascending: true })
+            .limit(deleteCount);
+
+          if (selectError) {
+            console.error('[ThreatDB] Failed to get oldest records:', selectError);
+            return;
           }
-        ];
-        
-        for (const threat of sampleThreats) {
-          await this.storeThreatIntelligence(threat, 'InitialData');
+
+          if (oldestRecords && oldestRecords.length > 0) {
+            const idsToDelete = oldestRecords.map((r: any) => r.id);
+            
+            const { error: deleteError } = await (supabase as any)
+              .from('threat_intelligence')
+              .delete()
+              .in('id', idsToDelete);
+
+            if (deleteError) {
+              console.error('[ThreatDB] Failed to delete old records:', deleteError);
+            } else {
+              console.log(`[ThreatDB] Auto-cleanup complete. Deleted ${idsToDelete.length} oldest records.`);
+            }
+          }
         }
-        
-        console.log('[ThreatDB] Added', sampleThreats.length, 'sample threats');
       }
     } catch (error) {
-      console.error('[ThreatDB] Failed to ensure sample data:', error);
+      console.error('[ThreatDB] Auto-cleanup check failed:', error);
     }
   }
 
@@ -135,17 +155,43 @@ export class ThreatIntelligenceDatabase {
     }
   }
 
+  // Sanitize source_id to prevent malformed data
+  private sanitizeSourceId(id: string): string {
+    if (!id || typeof id !== 'string') return this.generateUniqueId();
+    // Remove any HTML/SVG content, take only alphanumeric + dashes
+    const cleaned = id.replace(/<[^>]*>/g, '').replace(/[^a-zA-Z0-9\-_]/g, '').slice(0, 100);
+    return cleaned || this.generateUniqueId();
+  }
+
   // Store threat intelligence following OpenCTI patterns
   async storeThreatIntelligence(data: any, source: string): Promise<string> {
     try {
+      // Check and cleanup if needed before inserting
+      await this.checkAndCleanup();
+
+      // Validate data before processing
+      if (!data || typeof data !== 'object') {
+        console.warn('[ThreatDB] Invalid data provided, skipping');
+        return 'skipped_invalid';
+      }
+
+      const rawSourceId = data.id || data.uuid || data.sha256 || data.hash || this.generateUniqueId();
+      const sourceId = this.sanitizeSourceId(String(rawSourceId));
+
+      // Skip if source_id contains HTML/SVG (corrupted data)
+      if (sourceId.includes('<') || sourceId.includes('>') || sourceId.length < 3) {
+        console.warn('[ThreatDB] Skipping malformed source_id:', rawSourceId?.slice(0, 50));
+        return 'skipped_malformed';
+      }
+
       const record: Partial<ThreatIntelligenceRecord> = {
-        source_id: data.id || data.uuid || this.generateUniqueId(),
+        source_id: sourceId,
         source_name: source,
         threat_type: this.classifyThreatType(data),
         severity_level: this.calculateSeverity(data),
         confidence_level: this.calculateConfidence(data, source),
-        title: data.name || data.title || data.summary || 'Unknown Threat',
-        description: data.description || data.details || data.summary || '',
+        title: String(data.name || data.title || data.summary || 'Unknown Threat').slice(0, 500),
+        description: String(data.description || data.details || data.summary || '').slice(0, 5000),
         indicators: this.extractIndicators(data),
         ttps: this.extractTTPs(data),
         targets: this.extractTargets(data),

@@ -449,12 +449,12 @@ class RealTimeThreatFeedService {
   }
 
   // Fetch MalwareBazaar samples (POST API)
-  private async fetchMalwareBazaar(): Promise<string[]> {
+  private async fetchMalwareBazaar(): Promise<{ sha256: string; signature?: string }[]> {
     try {
       const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'query=get_recent&selector=time'
+        body: 'query=get_recent&selector=100'
       });
       
       if (response.ok) {
@@ -462,9 +462,15 @@ class RealTimeThreatFeedService {
         if (!text.startsWith('<') && text.trim()) {
           const data = JSON.parse(text);
           if (data.query_status === 'ok' && data.data?.length) {
-            const hashes = data.data.map((s: any) => s.sha256_hash).filter(Boolean);
-            console.log(`[Bazaar] ${hashes.length} hashes`);
-            return hashes;
+            // Filter and validate hashes - must be 64 hex characters
+            const samples = data.data
+              .filter((s: any) => s.sha256_hash && /^[a-fA-F0-9]{64}$/.test(s.sha256_hash))
+              .map((s: any) => ({
+                sha256: s.sha256_hash,
+                signature: s.signature || s.tags?.[0] || 'Unknown'
+              }));
+            console.log(`[Bazaar] ${samples.length} valid samples`);
+            return samples;
           }
         }
       }
@@ -473,7 +479,7 @@ class RealTimeThreatFeedService {
     }
 
     console.warn('[Bazaar] Using sample data');
-    return this.generateSampleBazaarData();
+    return this.generateSampleBazaarData().map(h => ({ sha256: h, signature: 'Unknown' }));
   }
 
   private generateSampleBazaarData(): string[] {
@@ -585,19 +591,31 @@ class RealTimeThreatFeedService {
   }
 
   // Process MalwareBazaar data
-  private processBazaarData(hashes: string[]) {
-    hashes.forEach((hash, idx) => {
+  private processBazaarData(samples: { sha256: string; signature?: string }[]) {
+    samples.forEach((sample, idx) => {
+      // Validate hash format
+      if (!sample.sha256 || !/^[a-fA-F0-9]{64}$/.test(sample.sha256)) {
+        return; // Skip invalid hashes
+      }
+
       this.stats.malwareSamples++;
       this.stats.highThreats++;
+
+      const malwareName = sample.signature || 'Unknown';
+      if (malwareName && malwareName !== 'Unknown') {
+        const count = this.malwareFamilyCounts.get(malwareName) || 0;
+        this.malwareFamilyCounts.set(malwareName, count + 1);
+      }
 
       this.liveFeed.push({
         id: `bazaar-${idx}`,
         type: 'hash',
-        value: hash,
+        value: sample.sha256,
         source: 'MalwareBazaar',
         severity: 'high',
+        malwareFamily: malwareName,
         timestamp: new Date().toISOString(),
-        tags: ['malware', 'sha256']
+        tags: ['malware', 'sha256', malwareName].filter(t => t && t !== 'Unknown')
       });
     });
   }

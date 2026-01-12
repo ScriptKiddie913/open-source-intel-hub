@@ -290,44 +290,52 @@ export async function fetchMalwareBazaarRecent(): Promise<MalwareSample[]> {
   }
   
   try {
-    console.log('[MalwareBazaar] Fetching recent samples...');
+    console.log('[MalwareBazaar] Fetching recent samples via POST API...');
     
-    // Use local proxy to avoid CORS (proxied via vite.config.ts)
-    const response = await fetch('/api/bazaar/txt/sha256/recent/');
+    // Use the POST API which returns proper JSON with metadata
+    const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: 'query=get_recent&selector=100'
+    });
     
     if (!response.ok) {
-      throw new Error(`MalwareBazaar fetch failed: ${response.status}`);
+      throw new Error(`MalwareBazaar API failed: ${response.status}`);
     }
     
-    const text = await response.text();
+    const data = await response.json();
     
-    // Parse SHA256 hashes from text (one per line, skip comments starting with #)
-    const hashes = text
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line && !line.startsWith('#'));
+    if (data.query_status !== 'ok' || !data.data) {
+      console.warn('[MalwareBazaar] No data returned');
+      return [];
+    }
     
-    console.log('[MalwareBazaar] Raw hashes:', hashes.length);
+    console.log('[MalwareBazaar] Raw samples:', data.data.length);
     
-    const samples: MalwareSample[] = hashes.map((hash, index) => ({
-      id: `bazaar-${hash.slice(0, 16)}`,
-      sha256: hash,
-      sha1: undefined,
-      md5: undefined,
-      fileName: undefined,
-      fileType: 'unknown',
-      fileSize: undefined,
-      signature: 'Unknown',
-      malwareFamily: 'Unknown',
-      tags: ['malware', 'recent'],
-      firstSeen: new Date().toISOString(),
-      lastSeen: new Date().toISOString(),
-      downloadUrl: `https://bazaar.abuse.ch/sample/${hash}/`,
-      intelligence: [],
-    }));
+    // Parse proper JSON response - each entry has full metadata
+    const samples: MalwareSample[] = data.data
+      .filter((entry: any) => entry.sha256_hash && /^[a-fA-F0-9]{64}$/.test(entry.sha256_hash))
+      .map((entry: any) => ({
+        id: `bazaar-${entry.sha256_hash.slice(0, 16)}`,
+        sha256: entry.sha256_hash,
+        sha1: entry.sha1_hash,
+        md5: entry.md5_hash,
+        fileName: entry.file_name || undefined,
+        fileType: entry.file_type_mime || entry.file_type || 'unknown',
+        fileSize: entry.file_size,
+        signature: entry.signature || 'Unknown',
+        malwareFamily: entry.signature || entry.tags?.[0] || 'Unknown',
+        tags: entry.tags || ['malware', 'recent'],
+        firstSeen: entry.first_seen || new Date().toISOString(),
+        lastSeen: entry.last_seen || new Date().toISOString(),
+        downloadUrl: `https://bazaar.abuse.ch/sample/${entry.sha256_hash}/`,
+        intelligence: entry.intelligence || [],
+      }));
     
     await cacheAPIResponse(cacheKey, samples, CACHE_TTL.malwarebazaar);
-    console.log(`[MalwareBazaar] Loaded ${samples.length} samples`);
+    console.log(`[MalwareBazaar] Loaded ${samples.length} valid samples`);
     return samples;
   } catch (error) {
     console.error('[MalwareBazaar] Error:', error);
