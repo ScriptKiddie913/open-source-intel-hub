@@ -18,7 +18,9 @@ import {
 } from 'lucide-react';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie,
-  Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
+  ComposedChart, Scatter
 } from 'recharts';
 import { 
   realTimeThreatFeedService, 
@@ -133,15 +135,30 @@ interface MalwareDetail {
   severity: { critical: number; high: number; medium: number; low: number };
 }
 
+// OpenCTI-inspired dark theme colors
 const COLORS = {
-  critical: '#ef4444',
-  high: '#f97316', 
-  medium: '#eab308',
-  low: '#22c55e',
-  primary: '#3b82f6',
-  secondary: '#8b5cf6',
-  tertiary: '#ec4899',
-  quaternary: '#14b8a6'
+  critical: '#ff1744',
+  high: '#ff9100', 
+  medium: '#ffea00',
+  low: '#00e676',
+  primary: '#00bcd4',
+  secondary: '#7c4dff',
+  tertiary: '#f50057',
+  quaternary: '#00e5ff',
+  accent: '#00b8d4',
+  background: '#0d1117',
+  surface: '#161b22',
+  border: '#30363d',
+  text: '#c9d1d9'
+};
+
+// OpenCTI-style gradient definitions for charts
+const GRADIENTS = {
+  critical: 'url(#gradientCritical)',
+  high: 'url(#gradientHigh)',
+  medium: 'url(#gradientMedium)',
+  low: 'url(#gradientLow)',
+  primary: 'url(#gradientPrimary)'
 };
 
 interface RealTimeChartsProps {
@@ -403,22 +420,26 @@ const RealTimeCharts: React.FC<RealTimeChartsProps> = ({
         </Card>
       </div>
 
-      {/* Charts Tabs */}
+      {/* Charts Tabs - OpenCTI Style */}
       <Tabs defaultValue="trends" className="w-full">
-        <TabsList className="bg-gray-900/50 border border-gray-800">
-          <TabsTrigger value="trends" className="data-[state=active]:bg-gray-800">
+        <TabsList className="bg-[#0d1117] border border-[#30363d] p-1 rounded-lg">
+          <TabsTrigger value="trends" className="data-[state=active]:bg-[#21262d] data-[state=active]:text-cyan-400 rounded-md transition-all">
             <TrendingUp className="h-4 w-4 mr-2" />
             Trends
           </TabsTrigger>
-          <TabsTrigger value="types" className="data-[state=active]:bg-gray-800">
+          <TabsTrigger value="radar" className="data-[state=active]:bg-[#21262d] data-[state=active]:text-cyan-400 rounded-md transition-all">
+            <Shield className="h-4 w-4 mr-2" />
+            Threat Radar
+          </TabsTrigger>
+          <TabsTrigger value="types" className="data-[state=active]:bg-[#21262d] data-[state=active]:text-cyan-400 rounded-md transition-all">
             <Target className="h-4 w-4 mr-2" />
             Types
           </TabsTrigger>
-          <TabsTrigger value="sources" className="data-[state=active]:bg-gray-800">
+          <TabsTrigger value="sources" className="data-[state=active]:bg-[#21262d] data-[state=active]:text-cyan-400 rounded-md transition-all">
             <Globe className="h-4 w-4 mr-2" />
             Sources
           </TabsTrigger>
-          <TabsTrigger value="severity" className="data-[state=active]:bg-gray-800">
+          <TabsTrigger value="severity" className="data-[state=active]:bg-[#21262d] data-[state=active]:text-cyan-400 rounded-md transition-all">
             <AlertTriangle className="h-4 w-4 mr-2" />
             Severity
           </TabsTrigger>
@@ -448,6 +469,67 @@ const RealTimeCharts: React.FC<RealTimeChartsProps> = ({
                     <Area type="monotone" dataKey="low" stackId="1" stroke={COLORS.low} fill={COLORS.low} fillOpacity={0.6} name="Low" activeDot={{ r: 8, strokeWidth: 2 }} />
                   </AreaChart>
                 </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* OpenCTI-Style Radar Chart */}
+        <TabsContent value="radar" className="mt-6">
+          <Card className="bg-[#0d1117] border-[#30363d]">
+            <CardHeader>
+              <CardTitle className="text-[#c9d1d9]">Threat Intelligence Radar</CardTitle>
+              <CardDescription className="text-[#8b949e]">
+                Multi-dimensional threat analysis in OpenCTI style
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div style={{ height: '400px' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart data={[
+                      { subject: 'C2 Servers', A: stats?.activeC2Servers || 0, fullMark: Math.max(stats?.activeC2Servers || 100, 100) },
+                      { subject: 'Malicious URLs', A: stats?.maliciousUrls || 0, fullMark: Math.max(stats?.maliciousUrls || 100, 100) },
+                      { subject: 'Malware Samples', A: stats?.malwareSamples || 0, fullMark: Math.max(stats?.malwareSamples || 100, 100) },
+                      { subject: 'Critical Threats', A: stats?.criticalThreats || 0, fullMark: Math.max(stats?.criticalThreats || 50, 50) },
+                      { subject: 'High Threats', A: stats?.highThreats || 0, fullMark: Math.max(stats?.highThreats || 100, 100) },
+                      { subject: 'IOCs', A: stats?.threatfoxIOCs || 0, fullMark: Math.max(stats?.threatfoxIOCs || 100, 100) },
+                    ]}>
+                      <PolarGrid stroke="#30363d" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: '#8b949e', fontSize: 11 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={{ fill: '#8b949e', fontSize: 10 }} />
+                      <Radar name="Threats" dataKey="A" stroke="#00bcd4" fill="#00bcd4" fillOpacity={0.4} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-4">
+                  <div className="p-4 bg-[#161b22] border border-[#30363d] rounded-lg">
+                    <h4 className="text-sm font-medium text-[#c9d1d9] mb-3 flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-cyan-400" />
+                      Threat Landscape Summary
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between"><span className="text-[#8b949e]">Total Indicators</span><span className="text-cyan-400 font-bold">{formatNumber(stats?.totalThreats || 0)}</span></div>
+                      <div className="flex justify-between"><span className="text-[#8b949e]">Active C2 Infrastructure</span><span className="text-red-400 font-bold">{formatNumber(stats?.activeC2Servers || 0)}</span></div>
+                      <div className="flex justify-between"><span className="text-[#8b949e]">Malware Families</span><span className="text-purple-400 font-bold">{malwareDetails.length}</span></div>
+                      <div className="flex justify-between"><span className="text-[#8b949e]">Data Sources</span><span className="text-green-400 font-bold">4</span></div>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-[#161b22] border border-[#30363d] rounded-lg">
+                    <h4 className="text-sm font-medium text-[#c9d1d9] mb-3">Top Active Threats</h4>
+                    <div className="space-y-2">
+                      {malwareDetails.slice(0, 5).map((m, i) => (
+                        <div key={m.name} className="flex items-center justify-between text-sm">
+                          <span className="text-[#8b949e] flex items-center gap-2">
+                            <span className="text-xs text-cyan-400">#{i + 1}</span>
+                            {m.name}
+                          </span>
+                          <Badge variant="outline" className="text-xs">{m.count}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

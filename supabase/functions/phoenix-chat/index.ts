@@ -116,8 +116,15 @@ Use this context to answer user questions about the investigation.`;
 
     console.log("[Phoenix Chat] Processing message...");
 
-    // Use Perplexity API directly for real-time web search capabilities
-    const PERPLEXITY_API_KEY = "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";
+    // Use Perplexity API from environment variable
+    const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+    if (!PERPLEXITY_API_KEY) {
+      console.error("[Phoenix Chat] PERPLEXITY_API_KEY not configured");
+      return new Response(
+        JSON.stringify({ error: "Perplexity API not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     
     const aiResponse = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
