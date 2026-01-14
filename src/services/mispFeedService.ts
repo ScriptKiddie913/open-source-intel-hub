@@ -180,9 +180,9 @@ export async function fetchURLhausRecent(): Promise<URLhausEntry[]> {
     const response = await fetch('/api/urlhaus/json_recent/');
     
     if (!response.ok) {
-      console.warn(`[URLhaus] Download endpoint failed (${response.status}), trying POST API...`);
-      // Fallback to POST API which works directly (CORS-allowed)
-      const postResponse = await fetch('https://urlhaus-api.abuse.ch/v1/urls/recent/', {
+      console.warn(`[URLhaus] Download endpoint failed (${response.status}), trying POST API via proxy...`);
+      // Use Vite proxy to avoid CORS: /api/urlhaus-api -> https://urlhaus-api.abuse.ch/v1
+      const postResponse = await fetch('/api/urlhaus-api/urls/recent/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'selector=100'
@@ -275,8 +275,8 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
   try {
     console.log('[ThreatFox] Fetching recent IOCs via POST API...');
     
-    // Use the POST API which allows CORS and returns proper JSON
-    const response = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
+    // Use Vite proxy to avoid CORS: /api/threatfox-api -> https://threatfox-api.abuse.ch/api/v1
+    const response = await fetch('/api/threatfox-api/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: 'get_iocs', days: days })
@@ -332,8 +332,8 @@ export async function fetchMalwareBazaarRecent(): Promise<MalwareSample[]> {
   try {
     console.log('[MalwareBazaar] Fetching recent samples via POST API...');
     
-    // Use the POST API which returns proper JSON with metadata
-    const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
+    // Use Vite proxy to avoid CORS: /api/bazaar-api -> https://mb-api.abuse.ch/api/v1
+    const response = await fetch('/api/bazaar-api/', {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/x-www-form-urlencoded'
