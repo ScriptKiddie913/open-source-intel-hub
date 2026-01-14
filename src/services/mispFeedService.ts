@@ -124,19 +124,17 @@ export async function fetchFeodoC2Servers(): Promise<C2Server[]> {
   }
   
   try {
-    console.log('[FeodoTracker] Fetching C2 server data...');
+    console.log('[FeodoTracker] Fetching C2 server data via Edge Function...');
     
-    // Use local proxy to avoid CORS (proxied via vite.config.ts)
-    const response = await fetch('/api/feodo/ipblocklist_recommended.json');
+    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || 'xpbcscgajcnxthokttoi';
+    const response = await fetch(`https://${projectId}.supabase.co/functions/v1/threat-feeds?source=feodo`);
     
     if (!response.ok) {
-      throw new Error(`Feodo fetch failed: ${response.status}`);
+      throw new Error(`Edge function failed: ${response.status}`);
     }
     
-    const data = await response.json();
-    
-    // API returns { value: [...] } structure - extract the array
-    const entries = Array.isArray(data) ? data : (data?.value || data?.data || []);
+    const result = await response.json();
+    const entries = result.data || [];
     console.log('[FeodoTracker] Raw entries:', entries.length);
     
     const servers: C2Server[] = entries.map((entry: any, index: number) => ({
@@ -150,7 +148,7 @@ export async function fetchFeodoC2Servers(): Promise<C2Server[]> {
       asn: entry.as_number?.toString(),
       asName: entry.as_name,
       country: entry.country,
-      countryCode: entry.country_code,
+      countryCode: entry.country,
     }));
     
     await cacheAPIResponse(cacheKey, servers, CACHE_TTL.feodo);
@@ -174,26 +172,20 @@ export async function fetchURLhausRecent(): Promise<URLhausEntry[]> {
   }
   
   try {
-    console.log('[URLhaus] Fetching recent malware URLs...');
+    console.log('[URLhaus] Fetching recent malware URLs via Edge Function...');
     
-    // Use local proxy to avoid CORS (proxied via vite.config.ts)
-    const response = await fetch('/api/urlhaus/json_recent/');
+    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || 'xpbcscgajcnxthokttoi';
+    const response = await fetch(`https://${projectId}.supabase.co/functions/v1/threat-feeds?source=urlhaus`);
     
     if (!response.ok) {
-      throw new Error(`URLhaus fetch failed: ${response.status}`);
+      throw new Error(`Edge function failed: ${response.status}`);
     }
     
-    const data = await response.json();
-    
-    // API returns object with numeric keys, each containing an array with one entry
-    // Format: { "3722626": [{ dateadded, url, url_status, ... }], ... }
-    const rawEntries = Object.values(data || {})
-      .flat() // Flatten the arrays
-      .slice(0, 1000);
-    
+    const result = await response.json();
+    const rawEntries = result.data || [];
     console.log('[URLhaus] Raw entries:', rawEntries.length);
     
-    const entries: URLhausEntry[] = rawEntries.map((entry: any, index: number) => {
+    const entries: URLhausEntry[] = rawEntries.slice(0, 500).map((entry: any, index: number) => {
       let host = '';
       try {
         host = entry.host || (entry.url ? new URL(entry.url).hostname : 'unknown');
@@ -234,29 +226,21 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
   }
   
   try {
-    console.log('[ThreatFox] Fetching recent IOCs...');
+    console.log('[ThreatFox] Fetching recent IOCs via Edge Function...');
     
-    // Use local proxy to avoid CORS (proxied via vite.config.ts)
-    const response = await fetch('/api/threatfox/json/recent/');
+    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || 'xpbcscgajcnxthokttoi';
+    const response = await fetch(`https://${projectId}.supabase.co/functions/v1/threat-feeds?source=threatfox&days=${days}`);
     
     if (!response.ok) {
-      throw new Error(`ThreatFox fetch failed: ${response.status}`);
+      throw new Error(`Edge function failed: ${response.status}`);
     }
     
-    const data = await response.json();
-    
-    // Export endpoint returns object with numeric keys, each containing an array
-    // Format: { "1688983": [{ ioc_value, ioc_type, threat_type, ... }], ... }
-    const rawEntries = Object.entries(data || {})
-      .flatMap(([id, entries]: [string, any]) => 
-        (Array.isArray(entries) ? entries : [entries]).map(entry => ({ ...entry, _id: id }))
-      )
-      .slice(0, 1000);
-    
+    const result = await response.json();
+    const rawEntries = result.data || [];
     console.log('[ThreatFox] Raw entries:', rawEntries.length);
     
-    const iocs: ThreatFoxIOC[] = rawEntries.map((entry: any) => ({
-      id: `threatfox-${entry._id || entry.id}`,
+    const iocs: ThreatFoxIOC[] = rawEntries.slice(0, 500).map((entry: any) => ({
+      id: `threatfox-${entry.id || Math.random().toString(36).slice(2)}`,
       ioc: entry.ioc_value || entry.ioc || '',
       iocType: entry.ioc_type || 'unknown',
       threatType: entry.threat_type || 'unknown',
@@ -290,32 +274,27 @@ export async function fetchMalwareBazaarRecent(): Promise<MalwareSample[]> {
   }
   
   try {
-    console.log('[MalwareBazaar] Fetching recent samples via POST API...');
+    console.log('[MalwareBazaar] Fetching recent samples via Edge Function...');
     
-    // Use the POST API which returns proper JSON with metadata
-    const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: 'query=get_recent&selector=100'
-    });
+    // Use Edge Function to avoid CORS
+    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || 'xpbcscgajcnxthokttoi';
+    const response = await fetch(`https://${projectId}.supabase.co/functions/v1/threat-feeds?source=malwarebazaar&limit=100`);
     
     if (!response.ok) {
-      throw new Error(`MalwareBazaar API failed: ${response.status}`);
+      throw new Error(`Edge function failed: ${response.status}`);
     }
     
-    const data = await response.json();
+    const result = await response.json();
     
-    if (data.query_status !== 'ok' || !data.data) {
+    if (!result.success || !result.data?.length) {
       console.warn('[MalwareBazaar] No data returned');
       return [];
     }
     
-    console.log('[MalwareBazaar] Raw samples:', data.data.length);
+    console.log('[MalwareBazaar] Raw samples:', result.data.length);
     
-    // Parse proper JSON response - each entry has full metadata
-    const samples: MalwareSample[] = data.data
+    // Parse response - each entry has full metadata
+    const samples: MalwareSample[] = result.data
       .filter((entry: any) => entry.sha256_hash && /^[a-fA-F0-9]{64}$/.test(entry.sha256_hash))
       .map((entry: any) => ({
         id: `bazaar-${entry.sha256_hash.slice(0, 16)}`,
