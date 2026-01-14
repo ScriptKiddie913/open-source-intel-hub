@@ -2,6 +2,7 @@
 // Multi-source: NVD, CIRCL, CISA KEV, MITRE GitHub, Exploit-DB, Packet Storm, GitHub PoC
 
 import { cacheAPIResponse, getCachedData } from '@/lib/database';
+import { threatFeedsAPI } from '@/lib/api/threatFeeds';
 
 export interface CVEData {
   id: string;
@@ -110,26 +111,6 @@ const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 // ============================================================================
 // 1️⃣ NVD (NIST) — Official CVE Source
 // ============================================================================
-
-// Get IP geolocation
-async function getGeoLocation(ip: string): Promise<{ country: string; city: string; lat: number; lon: number } | null> {
-  try {
-    const response = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon`);
-    if (!response.ok) return null;
-    const data = await response.json();
-    if (data.status === 'success') {
-      return {
-        country: data.country,
-        city: data.city,
-        lat: data.lat,
-        lon: data.lon,
-      };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 // NVD API - Primary source
 export async function searchCVE(query: string, limit = 20): Promise<CVEData[]> {
@@ -1013,23 +994,23 @@ export async function getTrendingCVEs(limit = 20): Promise<CVEData[]> {
   }
 }
 
-// Enhanced Live Threat Feeds with Geolocation
 export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
   const cacheKey = 'threats:live:feeds';
   const cached = await getCachedData(cacheKey);
   if (cached) return cached;
 
-  const feeds: ThreatFeed[] = [];
-
   try {
-    // Feodo Tracker (Botnet C2) with geolocation
-    const feodoResponse = await fetch('https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json');
-    if (feodoResponse.ok) {
-      const feodoData = await feodoResponse.json();
-      
-      for (const item of feodoData.slice(0, 100)) {
-        const geo = await getGeoLocation(item.ip_address);
-        
+    const response = await threatFeedsAPI.fetchAllFeeds(7, 200);
+    if (!response.success) {
+      return [];
+    }
+
+    const feeds: ThreatFeed[] = [];
+    const { sources, timestamp } = response;
+    const fallbackTime = timestamp || new Date().toISOString();
+
+    if (sources.feodo.success && sources.feodo.data?.length) {
+      sources.feodo.data.slice(0, 100).forEach((item) => {
         feeds.push({
           id: `feodo-${item.ip_address}`,
           type: 'botnet',
@@ -1037,99 +1018,83 @@ export async function getLiveThreatFeeds(): Promise<ThreatFeed[]> {
           indicatorType: 'ip',
           threat: item.malware || 'Botnet C2',
           confidence: 95,
-          firstSeen: item.first_seen,
-          lastSeen: item.last_seen || item.first_seen,
+          firstSeen: item.first_seen || item.last_online || fallbackTime,
+          lastSeen: item.last_online || item.first_seen || fallbackTime,
           source: 'Feodo Tracker',
           tags: ['botnet', 'c2', item.malware?.toLowerCase() || ''].filter(Boolean),
-          location: geo || undefined,
         });
-      }
+      });
     }
 
-    // URLhaus (Malware URLs)
-    const urlhausResponse = await fetch('https://urlhaus.abuse.ch/downloads/json_recent/');
-    if (urlhausResponse.ok) {
-      const urlhausData = await urlhausResponse.json();
-      for (const item of urlhausData.slice(0, 50)) {
+    if (sources.urlhaus.success && sources.urlhaus.data?.length) {
+      sources.urlhaus.data.slice(0, 50).forEach((item) => {
         feeds.push({
-          id: `urlhaus-${item.id}`,
+          id: `urlhaus-${item.id || item.url}`,
           type: 'malware',
           indicator: item.url,
           indicatorType: 'url',
           threat: item.threat || 'Malware Distribution',
           confidence: 90,
-          firstSeen: item.date_added,
-          lastSeen: item.date_added,
+          firstSeen: item.dateadded || fallbackTime,
+          lastSeen: item.last_online || item.dateadded || fallbackTime,
           source: 'URLhaus',
           tags: item.tags || [],
         });
-      }
+      });
     }
 
-    // OpenPhish
-    const openphishResponse = await fetch('https://openphish.com/feed.txt');
-    if (openphishResponse.ok) {
-      const openphishData = await openphishResponse.text();
-      const urls = openphishData.split('\n').filter(Boolean).slice(0, 50);
-      
-      const now = new Date().toISOString();
-      for (const url of urls) {
-        feeds.push({
-          id: `openphish-${btoa(url).slice(0, 16)}`,
-          type: 'phishing',
-          indicator: url,
-          indicatorType: 'url',
-          threat: 'Phishing',
-          confidence: 85,
-          firstSeen: now,
-          lastSeen: now,
-          source: 'OpenPhish',
-          tags: ['phishing'],
-        });
-      }
-    }
+    if (sources.threatfox.success && sources.threatfox.data?.length) {
+      sources.threatfox.data.slice(0, 50).forEach((item) => {
+        const isIp = item.ioc_type === 'ip' || item.ioc_type === 'ip:port';
+        const indicatorType: ThreatFeed['indicatorType'] =
+          isIp ? 'ip' : item.ioc_type === 'url' ? 'url' : 'domain';
 
-    // ThreatFox (Recent IOCs)
-    const threatfoxResponse = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: 'get_iocs', days: 1 }),
-    });
-    
-    if (threatfoxResponse.ok) {
-      const threatfoxData = await threatfoxResponse.json();
-      
-      for (const item of (threatfoxData.data || []).slice(0, 50)) {
-        const isIp = item.ioc_type === 'ip:port' || item.ioc_type === 'ip';
-        let geo = null;
-        
-        if (isIp) {
-          const ip = item.ioc.split(':')[0];
-          geo = await getGeoLocation(ip);
-        }
-        
+        const threatType = item.threat_type?.toLowerCase() || '';
+        let type: ThreatFeed['type'] = 'malware';
+        if (threatType.includes('apt')) type = 'apt';
+        else if (threatType.includes('ransom')) type = 'ransomware';
+
+        const tags = typeof item.tags === 'string'
+          ? item.tags.split(',').map((t) => t.trim()).filter(Boolean)
+          : item.tags || [];
+
         feeds.push({
-          id: `threatfox-${item.id}`,
-          type: item.threat_type?.includes('apt') ? 'apt' : 
-                item.threat_type?.includes('ransomware') ? 'ransomware' : 'malware',
-          indicator: item.ioc,
-          indicatorType: isIp ? 'ip' : item.ioc_type.includes('domain') ? 'domain' : 'url',
+          id: `threatfox-${item.id || item.ioc_value}`,
+          type,
+          indicator: item.ioc_value,
+          indicatorType,
           threat: item.malware_printable || item.threat_type || 'Unknown Threat',
           confidence: item.confidence_level || 80,
-          firstSeen: item.first_seen,
-          lastSeen: item.last_seen || item.first_seen,
+          firstSeen: item.first_seen_utc || fallbackTime,
+          lastSeen: item.last_seen_utc || item.first_seen_utc || fallbackTime,
           source: 'ThreatFox',
-          tags: item.tags || [],
-          location: geo || undefined,
+          tags,
         });
-      }
+      });
+    }
+
+    if (sources.malwarebazaar.success && sources.malwarebazaar.data?.length) {
+      sources.malwarebazaar.data.slice(0, 50).forEach((sample) => {
+        feeds.push({
+          id: `malwarebazaar-${sample.sha256_hash}`,
+          type: 'malware',
+          indicator: sample.sha256_hash,
+          indicatorType: 'hash',
+          threat: sample.signature || 'Unknown Malware',
+          confidence: 95,
+          firstSeen: sample.first_seen || fallbackTime,
+          lastSeen: sample.last_seen || sample.first_seen || fallbackTime,
+          source: 'MalwareBazaar',
+          tags: sample.tags || [],
+        });
+      });
     }
 
     await cacheAPIResponse(cacheKey, feeds, THREAT_FEED_CACHE_TTL);
     return feeds;
   } catch (error) {
     console.error('Live threat feeds error:', error);
-    return feeds;
+    return [];
   }
 }
 
