@@ -5,14 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "build:prod": "vite build --mode production",
+    "build":  "vite build",
     "build:dev": "vite build --mode development",
-    "lint": "eslint . --fix",
-    "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d dist",
-    "deploy:vercel": "vercel --prod",
-    "type-check": "tsc --noEmit"
+    "lint": "eslint .",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -53,7 +49,6 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
-    "node-fetch": "^2.7.0",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
@@ -71,7 +66,7 @@
     "@eslint/js": "^9.32.0",
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^22.16.5",
-    "@types/react": "^18.3.23",
+    "@types/react":  "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@vercel/node": "^3.2.0",
     "@vitejs/plugin-react-swc": "^3.11.0",

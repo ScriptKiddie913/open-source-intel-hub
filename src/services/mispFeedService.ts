@@ -124,38 +124,34 @@ export async function fetchFeodoC2Servers(): Promise<C2Server[]> {
   }
   
   try {
-    console.log('[FeodoTracker] Fetching C2 server data directly...');
+    console.log('[FeodoTracker] Fetching C2 server data...');
     
-    const response = await fetch('https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json', {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'OSINT-Intel-Hub/1.0'
-      }
-    });
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/feodo/ipblocklist_recommended.json');
     
     if (!response.ok) {
-      throw new Error(`Feodo API error: ${response.status}`);
+      throw new Error(`Feodo fetch failed: ${response.status}`);
     }
     
-    const entries = await response.json();
-    const data = Array.isArray(entries) ? entries : (entries.data || []);
-    console.log('[FeodoTracker] Raw entries:', data.length);
+    const data = await response.json();
     
-    const servers: C2Server[] = data
-      .filter((entry: any) => entry && entry.ip_address)
-      .map((entry: any, index: number) => ({
-        id: `feodo-${index}-${entry.ip_address?.replace(/\./g, '-') || index}`,
-        ip: entry.ip_address || '',
-        port: entry.port || 443,
-        malwareFamily: entry.malware || entry.malware_family || 'Unknown',
-        status: entry.status === 'online' ? 'online' : 'offline',
-        firstSeen: entry.first_seen || new Date().toISOString(),
-        lastOnline: entry.last_online || new Date().toISOString(),
-        asn: entry.as_number?.toString(),
-        asName: entry.as_name,
-        country: entry.country,
-        countryCode: entry.country_code || entry.country,
-      }));
+    // API returns { value: [...] } structure - extract the array
+    const entries = Array.isArray(data) ? data : (data?.value || data?.data || []);
+    console.log('[FeodoTracker] Raw entries:', entries.length);
+    
+    const servers: C2Server[] = entries.map((entry: any, index: number) => ({
+      id: `feodo-${index}-${entry.ip_address?.replace(/\./g, '-') || index}`,
+      ip: entry.ip_address || '',
+      port: entry.port || 443,
+      malwareFamily: entry.malware || 'Unknown',
+      status: entry.status === 'online' ? 'online' : 'offline',
+      firstSeen: entry.first_seen || new Date().toISOString(),
+      lastOnline: entry.last_online || new Date().toISOString(),
+      asn: entry.as_number?.toString(),
+      asName: entry.as_name,
+      country: entry.country,
+      countryCode: entry.country_code,
+    }));
     
     await cacheAPIResponse(cacheKey, servers, CACHE_TTL.feodo);
     console.log(`[FeodoTracker] Loaded ${servers.length} C2 servers`);
@@ -178,46 +174,44 @@ export async function fetchURLhausRecent(): Promise<URLhausEntry[]> {
   }
   
   try {
-    console.log('[URLhaus] Fetching recent malware URLs from CIRCL...');
+    console.log('[URLhaus] Fetching recent malware URLs...');
     
-    // Use CIRCL public CSV export (no auth required)
-    const response = await fetch('https://urlhaus.abuse.ch/downloads/csv_recent/', {
-      headers: {
-        'Accept': 'text/csv',
-        'User-Agent': 'OSINT-Intel-Hub/1.0'
-      }
-    });
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/urlhaus/json_recent/');
     
     if (!response.ok) {
-      throw new Error(`URLhaus fallback failed: ${response.status}`);
+      throw new Error(`URLhaus fetch failed: ${response.status}`);
     }
     
-    const csv = await response.text();
-    const lines = csv.split('\n').slice(1); // Skip header
+    const data = await response.json();
     
-    const entries: URLhausEntry[] = lines
-      .filter(line => line.trim())
-      .slice(0, 500)
-      .map((line: string, index: number) => {
-        const [id, dateadded, url, urlStatus, threat, reporter, tags] = line.split(',');
-        let host = '';
-        try {
-          host = url ? new URL(url.replace(/^"|"$/g, '')).hostname : 'unknown';
-        } catch {
-          host = 'unknown';
-        }
-        
-        return {
-          id: `urlhaus-${id || index}`,
-          url: url?.replace(/^"|"$/g, '') || '',
-          urlStatus: urlStatus?.toLowerCase() === 'online' ? 'online' : 'offline',
-          host,
-          dateAdded: dateadded || new Date().toISOString(),
-          threat: threat || 'malware_download',
-          tags: tags ? tags.split(' ').filter(Boolean) : [],
-          reporter: reporter || 'anonymous',
-        };
-      });
+    // API returns object with numeric keys, each containing an array with one entry
+    // Format: { "3722626": [{ dateadded, url, url_status, ... }], ... }
+    const rawEntries = Object.values(data || {})
+      .flat() // Flatten the arrays
+      .slice(0, 1000);
+    
+    console.log('[URLhaus] Raw entries:', rawEntries.length);
+    
+    const entries: URLhausEntry[] = rawEntries.map((entry: any, index: number) => {
+      let host = '';
+      try {
+        host = entry.host || (entry.url ? new URL(entry.url).hostname : 'unknown');
+      } catch {
+        host = 'unknown';
+      }
+      
+      return {
+        id: `urlhaus-${entry.id || index}`,
+        url: entry.url || '',
+        urlStatus: entry.url_status === 'online' ? 'online' : 'offline',
+        host,
+        dateAdded: entry.dateadded || new Date().toISOString(),
+        threat: entry.threat || 'malware_download',
+        tags: Array.isArray(entry.tags) ? entry.tags : (entry.tags ? [entry.tags] : []),
+        reporter: entry.reporter || 'anonymous',
+      };
+    });
     
     await cacheAPIResponse(cacheKey, entries, CACHE_TTL.urlhaus);
     console.log(`[URLhaus] Loaded ${entries.length} malware URLs`);
@@ -240,51 +234,44 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
   }
   
   try {
-    console.log('[ThreatFox] Fetching recent IOCs from public sources...');
+    console.log('[ThreatFox] Fetching recent IOCs...');
     
-    // Use MISP warninglist and other public feeds
-    const response = await fetch('https://raw.githubusercontent.com/MISP/MISP/2.4/app/files/misp-objects/objects/ip-port/template.json', {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'OSINT-Intel-Hub/1.0'
-      }
-    });
+    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    const response = await fetch('/api/threatfox/json/recent/');
     
     if (!response.ok) {
-      throw new Error(`ThreatFox alternative failed: ${response.status}`);
+      throw new Error(`ThreatFox fetch failed: ${response.status}`);
     }
     
-    // For now, return mock data from reliable patterns
-    // In production, this would fetch from public threat feeds
-    const mockIOCs: ThreatFoxIOC[] = [
-      {
-        id: 'tf-mock-1',
-        ioc: '192.168.1.100:443',
-        iocType: 'ip:port',
-        threatType: 'c2-server',
-        malwarePrintable: 'Qakbot',
-        confidenceLevel: 95,
-        firstSeen: new Date(Date.now() - 24*60*60*1000).toISOString(),
-        lastSeen: new Date().toISOString(),
-        tags: ['qakbot', 'trojan', 'banking'],
-        reference: 'https://threatfox-api.abuse.ch'
-      },
-      {
-        id: 'tf-mock-2',
-        ioc: 'malicious-domain.com',
-        iocType: 'domain',
-        threatType: 'phishing',
-        confidenceLevel: 90,
-        firstSeen: new Date(Date.now() - 48*60*60*1000).toISOString(),
-        lastSeen: new Date().toISOString(),
-        tags: ['phishing', 'credential-harvesting'],
-        reference: 'https://threatfox-api.abuse.ch'
-      }
-    ];
+    const data = await response.json();
     
-    await cacheAPIResponse(cacheKey, mockIOCs, CACHE_TTL.threatfox);
-    console.log(`[ThreatFox] Loaded ${mockIOCs.length} IOCs (from public reference data)`);
-    return mockIOCs;
+    // Export endpoint returns object with numeric keys, each containing an array
+    // Format: { "1688983": [{ ioc_value, ioc_type, threat_type, ... }], ... }
+    const rawEntries = Object.entries(data || {})
+      .flatMap(([id, entries]: [string, any]) => 
+        (Array.isArray(entries) ? entries : [entries]).map(entry => ({ ...entry, _id: id }))
+      )
+      .slice(0, 1000);
+    
+    console.log('[ThreatFox] Raw entries:', rawEntries.length);
+    
+    const iocs: ThreatFoxIOC[] = rawEntries.map((entry: any) => ({
+      id: `threatfox-${entry._id || entry.id}`,
+      ioc: entry.ioc_value || entry.ioc || '',
+      iocType: entry.ioc_type || 'unknown',
+      threatType: entry.threat_type || 'unknown',
+      malware: entry.malware,
+      malwarePrintable: entry.malware_printable,
+      confidenceLevel: entry.confidence_level || 50,
+      firstSeen: entry.first_seen_utc || entry.first_seen || new Date().toISOString(),
+      lastSeen: entry.last_seen_utc || entry.last_seen,
+      tags: typeof entry.tags === 'string' ? entry.tags.split(',') : (entry.tags || []),
+      reference: entry.reference,
+    }));
+    
+    await cacheAPIResponse(cacheKey, iocs, CACHE_TTL.threatfox);
+    console.log(`[ThreatFox] Loaded ${iocs.length} IOCs`);
+    return iocs;
   } catch (error) {
     console.error('[ThreatFox] Error:', error);
     return [];
@@ -303,40 +290,49 @@ export async function fetchMalwareBazaarRecent(): Promise<MalwareSample[]> {
   }
   
   try {
-    console.log('[MalwareBazaar] Fetching recent samples from public sources...');
+    console.log('[MalwareBazaar] Fetching recent samples via POST API...');
     
-    // Use public GitHub malware repositories instead
-    const response = await fetch('https://api.github.com/repos/ytisf/theZoo/contents/malwares', {
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'OSINT-Intel-Hub/1.0'
-      }
+    // Use the POST API which returns proper JSON with metadata
+    const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: 'query=get_recent&selector=100'
     });
     
     if (!response.ok) {
-      throw new Error(`MalwareBazaar alternative failed: ${response.status}`);
+      throw new Error(`MalwareBazaar API failed: ${response.status}`);
     }
     
-    const dirs = await response.json();
+    const data = await response.json();
     
-    // Create mock samples from malware zoo data
-    const samples: MalwareSample[] = (Array.isArray(dirs) ? dirs : []).slice(0, 100).map((dir: any, index: number) => ({
-      id: `bazaar-${dir.name || index}`,
-      sha256: Array(64).fill(0).map(() => Math.floor(Math.random()*16).toString(16)).join(''),
-      fileName: `${dir.name}.bin`,
-      fileType: 'application/octet-stream',
-      signature: dir.name?.replace(/-/g, ' ').toUpperCase() || 'Unknown',
-      malwareFamily: dir.name || 'Unknown',
-      tags: ['malware', 'public-repository'],
-      firstSeen: new Date(Date.now() - Math.random() * 7*24*60*60*1000).toISOString(),
-      lastSeen: new Date().toISOString(),
-      downloadUrl: dir.html_url,
-      intelligence: ['public-zoo'],
-    }));
+    if (data.query_status !== 'ok' || !data.data) {
+      console.warn('[MalwareBazaar] No data returned');
+      return [];
+    }
     
-    await cacheAPIResponse(cacheKey, samples, CACHE_TTL.malwarebazaar);
-    console.log(`[MalwareBazaar] Loaded ${samples.length} samples from public repo`);
-    return samples;
+    console.log('[MalwareBazaar] Raw samples:', data.data.length);
+    
+    // Parse proper JSON response - each entry has full metadata
+    const samples: MalwareSample[] = data.data
+      .filter((entry: any) => entry.sha256_hash && /^[a-fA-F0-9]{64}$/.test(entry.sha256_hash))
+      .map((entry: any) => ({
+        id: `bazaar-${entry.sha256_hash.slice(0, 16)}`,
+        sha256: entry.sha256_hash,
+        sha1: entry.sha1_hash,
+        md5: entry.md5_hash,
+        fileName: entry.file_name || undefined,
+        fileType: entry.file_type_mime || entry.file_type || 'unknown',
+        fileSize: entry.file_size,
+        signature: entry.signature || 'Unknown',
+        malwareFamily: entry.signature || entry.tags?.[0] || 'Unknown',
+        tags: entry.tags || ['malware', 'recent'],
+        firstSeen: entry.first_seen || new Date().toISOString(),
+        lastSeen: entry.last_seen || new Date().toISOString(),
+        downloadUrl: `https://bazaar.abuse.ch/sample/${entry.sha256_hash}/`,
+        intelligence: entry.intelligence || [],
+      }));
     
     await cacheAPIResponse(cacheKey, samples, CACHE_TTL.malwarebazaar);
     console.log(`[MalwareBazaar] Loaded ${samples.length} valid samples`);
