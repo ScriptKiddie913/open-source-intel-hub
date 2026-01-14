@@ -1,0 +1,396 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 4%;
+    --foreground: 160 100% 95%;
+
+    --card: 220 18% 7%;
+    --card-foreground: 160 100% 95%;
+
+    --popover: 220 18% 7%;
+    --popover-foreground: 160 100% 95%;
+
+    --primary: 160 100% 45%;
+    --primary-foreground: 220 20% 4%;
+
+    --secondary: 220 15% 12%;
+    --secondary-foreground: 160 60% 85%;
+
+    --muted: 220 15% 15%;
+    --muted-foreground: 220 10% 55%;
+
+    --accent: 185 100% 45%;
+    --accent-foreground: 220 20% 4%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 20% 4%;
+
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 220 15% 18%;
+    --input: 220 15% 12%;
+    --ring: 160 100% 45%;
+
+    --radius: 0.5rem;
+
+    /* Custom OSINT colors */
+    --cyber-green: 160 100% 45%;
+    --cyber-green-glow: 160 100% 60%;
+    --cyber-cyan: 185 100% 45%;
+    --cyber-blue: 210 100% 50%;
+    --cyber-purple: 270 100% 60%;
+    --cyber-red: 0 100% 60%;
+    --cyber-orange: 25 100% 55%;
+    --matrix-green: 120 100% 40%;
+
+    /* Gradients */
+    --gradient-cyber: linear-gradient(135deg, hsl(160 100% 45%), hsl(185 100% 45%));
+    --gradient-threat: linear-gradient(135deg, hsl(0 100% 50%), hsl(25 100% 55%));
+    --gradient-card: linear-gradient(180deg, hsl(220 18% 9%), hsl(220 18% 6%));
+    --gradient-glow: radial-gradient(ellipse at center, hsl(160 100% 45% / 0.15), transparent 70%);
+
+    /* Shadows */
+    --shadow-cyber: 0 0 20px hsl(160 100% 45% / 0.3);
+    --shadow-glow: 0 0 40px hsl(160 100% 45% / 0.2);
+    --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.4);
+
+    /* Animations */
+    --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --sidebar-background: 220 18% 5%;
+    --sidebar-foreground: 160 60% 85%;
+    --sidebar-primary: 160 100% 45%;
+    --sidebar-primary-foreground: 220 20% 4%;
+    --sidebar-accent: 220 15% 12%;
+    --sidebar-accent-foreground: 160 60% 85%;
+    --sidebar-border: 220 15% 15%;
+    --sidebar-ring: 160 100% 45%;
+  }
+
+  .dark {
+    --background: 220 20% 4%;
+    --foreground: 160 100% 95%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .text-glow {
+    text-shadow: 0 0 10px hsl(var(--primary) / 0.5);
+  }
+
+  .text-glow-cyan {
+    text-shadow: 0 0 10px hsl(var(--accent) / 0.5);
+  }
+
+  .border-glow {
+    box-shadow: 0 0 10px hsl(var(--primary) / 0.3), inset 0 0 10px hsl(var(--primary) / 0.1);
+  }
+
+  .card-cyber {
+    @apply bg-card border border-border rounded-lg;
+    background: var(--gradient-card);
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  .animate-scan-line {
+    animation: scan-line 3s linear infinite;
+  }
+
+  .animate-flicker {
+    animation: flicker 0.15s infinite;
+  }
+
+  .grid-cyber {
+    background-image: 
+      linear-gradient(hsl(var(--border) / 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.3) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 40px hsl(var(--primary) / 0.5);
+  }
+}
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+/* Matrix rain effect for backgrounds */
+.matrix-bg {
+  position: relative;
+  overflow: hidden;
+}
+
+.matrix-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--gradient-glow);
+  pointer-events: none;
+}
+/* Enhanced Chatbot Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 
+      0 0 10px hsl(var(--primary) / 0.3),
+      0 0 30px hsl(var(--primary) / 0.2),
+      0 0 60px hsl(var(--primary) / 0.1);
+  }
+  50% {
+    box-shadow: 
+      0 0 20px hsl(var(--primary) / 0.5),
+      0 0 50px hsl(var(--primary) / 0.3),
+      0 0 80px hsl(var(--primary) / 0.2);
+  }
+}
+
+@keyframes typing {
+  0% { width: 0; }
+  100% { width: 100%; }
+}
+
+@keyframes blink-cursor {
+  0%, 50% { border-color: hsl(var(--primary)); }
+  51%, 100% { border-color: transparent; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes rotate-gradient {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--primary) / 0.1) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+.animate-rotate-gradient {
+  animation: rotate-gradient 5s linear infinite;
+}
+
+/* Scrollbar styling for chat */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thumb-primary\/20::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.2);
+  border-radius: 3px;
+}
+
+.scrollbar-thumb-primary\/20::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.4);
+}
+
+.scrollbar-track-transparent::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Chat message hover effects */
+.chat-message-hover {
+  transition: all 0.2s ease;
+}
+
+.chat-message-hover:hover {
+  transform: translateX(4px);
+  box-shadow: -4px 0 0 hsl(var(--primary));
+}
+
+/* Cyber grid pattern for chatbot */
+.cyber-grid-pattern {
+  background-image: 
+    linear-gradient(hsl(var(--primary) / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--primary) / 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Glowing border effect */
+.border-glow-animated {
+  position: relative;
+}
+
+.border-glow-animated::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(
+    45deg,
+    hsl(var(--primary)),
+    hsl(var(--accent)),
+    hsl(270 100% 60%),
+    hsl(var(--primary))
+  );
+  border-radius: inherit;
+  z-index: -1;
+  animation: rotate-gradient 3s linear infinite;
+  opacity: 0.5;
+  filter: blur(8px);
+}
+
+/* Google Translate - Hidden but functional */
+#google_translate_element {
+  position: fixed !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Hide all Google popups and banners */
+.goog-te-banner-frame,
+.goog-te-banner-frame.skiptranslate,
+#goog-gt-tt,
+.goog-te-balloon-frame,
+.goog-tooltip,
+.goog-tooltip:hover,
+.goog-te-spinner-pos,
+.goog-te-ftab-frame,
+.goog-te-menu-frame {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+body {
+  top: 0 !important;
+  position: static !important;
+}
+
+.skiptranslate {
+  display: none !important;
+}
+
+/* Hide Google branding */
+.goog-logo-link,
+.goog-logo-link:link,
+.goog-logo-link:visited,
+.goog-logo-link:hover,
+.goog-logo-link:active {
+  display: none !important;
+}
+
+/* Mobile-first responsive utilities */
+@media (max-width: 640px) {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+}
