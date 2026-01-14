@@ -154,16 +154,6 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/sslbl/, '/blacklist'),
         },
-        // Proxy Ransomware.live
-        '/api/ransomware-live': {
-          target: 'https://api.ransomware.live',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/ransomware-live/, ''),
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0 OSINT-Hub/1.0',
-          },
-        },
       },
     },
 

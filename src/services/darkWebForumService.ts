@@ -109,7 +109,7 @@ export interface RansomwareVictim {
 const PUBLIC_AGGREGATORS = [
   {
     name: 'Ransomware.live',
-    url: '/api/ransomware-live',
+    url: 'https://api.ransomware.live',
     type: 'ransomware_tracker',
     description: 'Public ransomware victim tracking',
   },
@@ -290,7 +290,7 @@ export async function getRansomwareVictims(
   // Fetch from ransomware.live
   try {
     console.log('[getRansomwareVictims] Fetching from ransomware.live...');
-    const response = await fetch('/api/ransomware-live/recentvictims', {
+    const response = await fetch('https://api.ransomware.live/recentvictims', {
       method: 'GET',
       cache: 'no-cache'
     });
@@ -392,7 +392,7 @@ async function searchRansomwareLive(query: string): Promise<{ leaks: LeakPost[] 
   const leaks: LeakPost[] = [];
   
   try {
-    const response = await fetch('/api/ransomware-live/recentvictims');
+    const response = await fetch('https://api.ransomware.live/recentvictims');
     
     if (response.ok) {
       const data = await response.json();
