@@ -127,7 +127,8 @@ export async function fetchFeodoC2Servers(): Promise<C2Server[]> {
     console.log('[FeodoTracker] Fetching C2 server data...');
     
     // Use local proxy to avoid CORS (proxied via vite.config.ts)
-    const response = await fetch('/api/feodo/ipblocklist_recommended.json');
+    // Use full list instead of recommended to ensure we get data
+    const response = await fetch('/api/feodo/ipblocklist.json');
     
     if (!response.ok) {
       throw new Error(`Feodo fetch failed: ${response.status}`);
