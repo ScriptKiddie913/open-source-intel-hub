@@ -176,11 +176,50 @@ export async function fetchURLhausRecent(): Promise<URLhausEntry[]> {
   try {
     console.log('[URLhaus] Fetching recent malware URLs...');
     
-    // Use local proxy to avoid CORS (proxied via vite.config.ts)
+    // Use local proxy: /api/urlhaus -> https://urlhaus.abuse.ch/downloads
     const response = await fetch('/api/urlhaus/json_recent/');
     
     if (!response.ok) {
-      throw new Error(`URLhaus fetch failed: ${response.status}`);
+      console.warn(`[URLhaus] Download endpoint failed (${response.status}), trying POST API...`);
+      // Fallback to POST API which works directly (CORS-allowed)
+      const postResponse = await fetch('https://urlhaus-api.abuse.ch/v1/urls/recent/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'selector=100'
+      });
+      
+      if (!postResponse.ok) {
+        throw new Error(`URLhaus POST API failed: ${postResponse.status}`);
+      }
+      
+      const postData = await postResponse.json();
+      if (postData.query_status !== 'ok' || !postData.urls) {
+        console.warn('[URLhaus] POST API returned no data');
+        return [];
+      }
+      
+      const postEntries: URLhausEntry[] = postData.urls.map((entry: any, index: number) => {
+        let host = '';
+        try {
+          host = entry.host || (entry.url ? new URL(entry.url).hostname : 'unknown');
+        } catch {
+          host = 'unknown';
+        }
+        return {
+          id: `urlhaus-${entry.id || index}`,
+          url: entry.url || '',
+          urlStatus: entry.url_status === 'online' ? 'online' : 'offline',
+          host,
+          dateAdded: entry.dateadded || new Date().toISOString(),
+          threat: entry.threat || 'malware_download',
+          tags: Array.isArray(entry.tags) ? entry.tags : (entry.tags ? entry.tags.split(',') : []),
+          reporter: entry.reporter || 'anonymous',
+        };
+      });
+      
+      await cacheAPIResponse(cacheKey, postEntries, CACHE_TTL.urlhaus);
+      console.log(`[URLhaus] Loaded ${postEntries.length} malware URLs via POST API`);
+      return postEntries;
     }
     
     const data = await response.json();
@@ -234,30 +273,31 @@ export async function fetchThreatFoxIOCs(days: number = 1): Promise<ThreatFoxIOC
   }
   
   try {
-    console.log('[ThreatFox] Fetching recent IOCs...');
+    console.log('[ThreatFox] Fetching recent IOCs via POST API...');
     
-    // Use local proxy to avoid CORS (proxied via vite.config.ts)
-    const response = await fetch('/api/threatfox/json/recent/');
+    // Use the POST API which allows CORS and returns proper JSON
+    const response = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'get_iocs', days: days })
+    });
     
     if (!response.ok) {
-      throw new Error(`ThreatFox fetch failed: ${response.status}`);
+      throw new Error(`ThreatFox POST API failed: ${response.status}`);
     }
     
     const data = await response.json();
     
-    // Export endpoint returns object with numeric keys, each containing an array
-    // Format: { "1688983": [{ ioc_value, ioc_type, threat_type, ... }], ... }
-    const rawEntries = Object.entries(data || {})
-      .flatMap(([id, entries]: [string, any]) => 
-        (Array.isArray(entries) ? entries : [entries]).map(entry => ({ ...entry, _id: id }))
-      )
-      .slice(0, 1000);
+    if (data.query_status !== 'ok' || !data.data) {
+      console.warn('[ThreatFox] No data returned:', data.query_status);
+      return [];
+    }
     
-    console.log('[ThreatFox] Raw entries:', rawEntries.length);
+    console.log('[ThreatFox] Raw IOCs:', data.data.length);
     
-    const iocs: ThreatFoxIOC[] = rawEntries.map((entry: any) => ({
-      id: `threatfox-${entry._id || entry.id}`,
-      ioc: entry.ioc_value || entry.ioc || '',
+    const iocs: ThreatFoxIOC[] = data.data.slice(0, 1000).map((entry: any) => ({
+      id: `threatfox-${entry.id || Math.random().toString(36).slice(2)}`,
+      ioc: entry.ioc || entry.ioc_value || '',
       iocType: entry.ioc_type || 'unknown',
       threatType: entry.threat_type || 'unknown',
       malware: entry.malware,
