@@ -2,12 +2,14 @@
 // realTimeThreatFeedService.ts
 // REAL-TIME THREAT INTELLIGENCE FEED SERVICE
 // ============================================================================
-// Fetches real threat data from multiple free abuse.ch APIs:
+// Fetches real threat data via Edge Function from abuse.ch APIs:
 // - Feodo Tracker (C2 Servers)
 // - URLhaus (Malicious URLs)
 // - ThreatFox (IOCs - IPs, domains, URLs)
 // - MalwareBazaar (Malware samples SHA256)
 // ============================================================================
+
+import { threatFeedsAPI, type FeodoEntry, type URLhausEntry, type ThreatFoxEntry, type MalwareBazaarEntry } from '@/lib/api/threatFeeds';
 
 /* ============================================================================
    TYPES
@@ -59,46 +61,6 @@ export interface LiveFeedEntry {
   tags: string[];
   port?: number;
   status?: string;
-}
-
-// Raw API response types based on actual testing
-interface FeodoEntry {
-  ip_address: string;
-  port: number;
-  status: 'online' | 'offline';
-  hostname: string | null;
-  as_number: number;
-  as_name: string;
-  country: string;
-  first_seen: string;
-  last_online: string;
-  malware: string;
-}
-
-interface URLhausEntry {
-  dateadded: string;
-  url: string;
-  url_status: 'online' | 'offline';
-  last_online: string | null;
-  threat: string;
-  tags: string[];
-  urlhaus_link: string;
-  reporter: string;
-}
-
-interface ThreatFoxEntry {
-  ioc_value: string;
-  ioc_type: string;
-  threat_type: string;
-  malware: string;
-  malware_alias: string | null;
-  malware_printable: string;
-  first_seen_utc: string;
-  last_seen_utc: string | null;
-  confidence_level: number;
-  reference: string | null;
-  tags: string;
-  reporter: string;
 }
 
 /* ============================================================================
@@ -201,7 +163,7 @@ class RealTimeThreatFeedService {
     console.log('[RealTimeFeed] Initialized successfully');
   }
 
-  // Fetch all threat feeds
+  // Fetch all threat feeds via Edge Function
   async fetchAllFeeds(): Promise<void> {
     if (this.stats.isLoading) return;
     
@@ -212,14 +174,11 @@ class RealTimeThreatFeedService {
     const startTime = Date.now();
 
     try {
-      // Fetch all feeds in parallel
-      const [feodoData, urlhausData, threatfoxData, bazaarData] = await Promise.allSettled([
-        this.fetchFeodoTracker(),
-        this.fetchURLhaus(),
-        this.fetchThreatFox(),
-        this.fetchMalwareBazaar()
-      ]);
-
+      console.log('[RealTimeFeed] Fetching all feeds from Edge Function...');
+      
+      // Use Edge Function to fetch all feeds at once
+      const response = await threatFeedsAPI.fetchAllFeeds(7, 200);
+      
       // Reset counters
       this.stats.activeC2Servers = 0;
       this.stats.maliciousUrls = 0;
@@ -232,29 +191,35 @@ class RealTimeThreatFeedService {
       this.liveFeed = [];
       this.malwareFamilyCounts.clear();
 
+      if (!response.success) {
+        throw new Error('Edge function returned failure');
+      }
+
+      const { sources } = response;
+
       // Process each feed
-      if (feodoData.status === 'fulfilled' && feodoData.value) {
-        this.processFeodoData(feodoData.value);
-      } else if (feodoData.status === 'rejected') {
-        this.stats.errors.push('Feodo: ' + (feodoData.reason?.message || 'Failed'));
+      if (sources.feodo.success && sources.feodo.data?.length) {
+        this.processFeodoData(sources.feodo.data);
+      } else if (!sources.feodo.success) {
+        this.stats.errors.push('Feodo: ' + (sources.feodo.error || 'Failed'));
       }
 
-      if (urlhausData.status === 'fulfilled' && urlhausData.value) {
-        this.processURLhausData(urlhausData.value);
-      } else if (urlhausData.status === 'rejected') {
-        this.stats.errors.push('URLhaus: ' + (urlhausData.reason?.message || 'Failed'));
+      if (sources.urlhaus.success && sources.urlhaus.data?.length) {
+        this.processURLhausData(sources.urlhaus.data);
+      } else if (!sources.urlhaus.success) {
+        this.stats.errors.push('URLhaus: ' + (sources.urlhaus.error || 'Failed'));
       }
 
-      if (threatfoxData.status === 'fulfilled' && threatfoxData.value) {
-        this.processThreatFoxData(threatfoxData.value);
-      } else if (threatfoxData.status === 'rejected') {
-        this.stats.errors.push('ThreatFox: ' + (threatfoxData.reason?.message || 'Failed'));
+      if (sources.threatfox.success && sources.threatfox.data?.length) {
+        this.processThreatFoxData(sources.threatfox.data);
+      } else if (!sources.threatfox.success) {
+        this.stats.errors.push('ThreatFox: ' + (sources.threatfox.error || 'Failed'));
       }
 
-      if (bazaarData.status === 'fulfilled' && bazaarData.value) {
-        this.processBazaarData(bazaarData.value);
-      } else if (bazaarData.status === 'rejected') {
-        this.stats.errors.push('Bazaar: ' + (bazaarData.reason?.message || 'Failed'));
+      if (sources.malwarebazaar.success && sources.malwarebazaar.data?.length) {
+        this.processBazaarData(sources.malwarebazaar.data);
+      } else if (!sources.malwarebazaar.success) {
+        this.stats.errors.push('Bazaar: ' + (sources.malwarebazaar.error || 'Failed'));
       }
 
       // Calculate totals
@@ -272,6 +237,7 @@ class RealTimeThreatFeedService {
 
       const elapsed = Date.now() - startTime;
       console.log(`[RealTimeFeed] Fetched in ${elapsed}ms - Total: ${this.stats.totalThreats}`);
+      console.log(`[RealTimeFeed] C2: ${this.stats.activeC2Servers}, URLs: ${this.stats.maliciousUrls}, IOCs: ${this.stats.threatfoxIOCs}, Samples: ${this.stats.malwareSamples}`);
 
     } catch (error) {
       console.error('[RealTimeFeed] Error:', error);
@@ -280,212 +246,6 @@ class RealTimeThreatFeedService {
       this.stats.isLoading = false;
       this.notifyListeners();
     }
-  }
-
-  // Fetch Feodo Tracker C2 Servers (using text format as fallback)
-  private async fetchFeodoTracker(): Promise<FeodoEntry[]> {
-    // Use direct URL with CORS headers - abuse.ch allows this
-    const urls = [
-      'https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json',
-      '/api/feodo/ipblocklist_recommended.json'
-    ];
-
-    for (const url of urls) {
-      try {
-        const response = await fetch(url, {
-          headers: { 'Accept': 'application/json' }
-        });
-        
-        if (response.ok) {
-          const text = await response.text();
-          if (!text.startsWith('<') && text.trim()) {
-            const data = JSON.parse(text);
-            const entries: FeodoEntry[] = Array.isArray(data) ? data : (data?.value || []);
-            if (entries.length > 0) {
-              console.log(`[Feodo] ${entries.length} C2 servers`);
-              return entries;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn(`[Feodo] Failed with ${url}:`, e);
-      }
-    }
-
-    // Generate sample data if all APIs fail
-    console.warn('[Feodo] All endpoints failed, using sample data');
-    return this.generateSampleFeodoData();
-  }
-
-  private generateSampleFeodoData(): FeodoEntry[] {
-    const malwareTypes = ['Emotet', 'Dridex', 'TrickBot', 'QakBot', 'IcedID', 'BazarLoader', 'Cobalt Strike'];
-    const countries = ['US', 'RU', 'CN', 'DE', 'NL', 'FR', 'GB', 'UA', 'KR', 'JP'];
-    
-    return Array.from({ length: 50 }, (_, i) => ({
-      ip_address: `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
-      port: [443, 447, 449, 8080, 4443][Math.floor(Math.random() * 5)],
-      status: Math.random() > 0.3 ? 'online' as const : 'offline' as const,
-      hostname: null,
-      as_number: Math.floor(Math.random() * 65000),
-      as_name: 'AS' + Math.floor(Math.random() * 65000),
-      country: countries[Math.floor(Math.random() * countries.length)],
-      first_seen: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-      last_online: new Date().toISOString(),
-      malware: malwareTypes[Math.floor(Math.random() * malwareTypes.length)]
-    }));
-  }
-
-  // Fetch URLhaus malicious URLs (POST API)
-  private async fetchURLhaus(): Promise<URLhausEntry[]> {
-    const urls = [
-      { url: 'https://urlhaus-api.abuse.ch/v1/urls/recent/limit/1000/', method: 'GET' },
-      { url: '/api/urlhaus-api/', method: 'POST', body: 'query=get_recent&limit=1000' }
-    ];
-
-    for (const config of urls) {
-      try {
-        const response = await fetch(config.url, {
-          method: config.method,
-          headers: config.method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {},
-          body: config.body
-        });
-        
-        if (response.ok) {
-          const text = await response.text();
-          if (!text.startsWith('<') && text.trim()) {
-            const data = JSON.parse(text);
-            if (data.urls?.length || data.data?.length) {
-              const entries = data.urls || data.data || [];
-              console.log(`[URLhaus] ${entries.length} URLs`);
-              return entries.map((u: any) => ({
-                dateadded: u.dateadded || u.date_added || new Date().toISOString(),
-                url: u.url,
-                url_status: u.url_status || 'online',
-                last_online: u.last_online,
-                threat: u.threat || 'malware_download',
-                tags: u.tags || [],
-                urlhaus_link: u.urlhaus_link || '',
-                reporter: u.reporter || ''
-              }));
-            }
-          }
-        }
-      } catch (e) {
-        console.warn(`[URLhaus] Failed:`, e);
-      }
-    }
-
-    console.warn('[URLhaus] All endpoints failed, using sample data');
-    return this.generateSampleURLhausData();
-  }
-
-  private generateSampleURLhausData(): URLhausEntry[] {
-    const threats = ['malware_download', 'phishing', 'cryptominer', 'ransomware'];
-    const tags = [['emotet'], ['dridex'], ['gozi'], ['qakbot'], ['icedid'], ['bazarloader']];
-    
-    return Array.from({ length: 100 }, (_, i) => ({
-      dateadded: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-      url: `http://malicious-${i}.example.com/payload${Math.floor(Math.random() * 1000)}.exe`,
-      url_status: Math.random() > 0.5 ? 'online' as const : 'offline' as const,
-      last_online: new Date().toISOString(),
-      threat: threats[Math.floor(Math.random() * threats.length)],
-      tags: tags[Math.floor(Math.random() * tags.length)],
-      urlhaus_link: `https://urlhaus.abuse.ch/url/${i}/`,
-      reporter: 'anonymous'
-    }));
-  }
-
-  // Fetch ThreatFox IOCs (POST API)
-  private async fetchThreatFox(): Promise<ThreatFoxEntry[]> {
-    try {
-      const response = await fetch('https://threatfox-api.abuse.ch/api/v1/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: 'get_iocs', days: 7 })
-      });
-      
-      if (response.ok) {
-        const text = await response.text();
-        if (!text.startsWith('<') && text.trim()) {
-          const data = JSON.parse(text);
-          if (data.query_status === 'ok' && data.data?.length) {
-            console.log(`[ThreatFox] ${data.data.length} IOCs`);
-            return data.data;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[ThreatFox] API failed:', e);
-    }
-
-    console.warn('[ThreatFox] Using sample data');
-    return this.generateSampleThreatFoxData();
-  }
-
-  private generateSampleThreatFoxData(): ThreatFoxEntry[] {
-    const malware = ['Emotet', 'Dridex', 'TrickBot', 'QakBot', 'AgentTesla', 'AsyncRAT', 'RedLineStealer'];
-    const iocTypes = ['ip:port', 'domain', 'url', 'md5_hash'];
-    
-    return Array.from({ length: 80 }, (_, i) => ({
-      ioc_value: iocTypes[i % 4] === 'ip:port' 
-        ? `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}:${[443, 8080, 4443][Math.floor(Math.random() * 3)]}`
-        : iocTypes[i % 4] === 'domain'
-        ? `malware-c2-${i}.evil.com`
-        : iocTypes[i % 4] === 'url'
-        ? `http://malware-${i}.com/payload.exe`
-        : Array.from({ length: 32 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join(''),
-      ioc_type: iocTypes[i % 4],
-      threat_type: 'botnet_cc',
-      malware: malware[Math.floor(Math.random() * malware.length)],
-      malware_alias: null,
-      malware_printable: malware[Math.floor(Math.random() * malware.length)],
-      first_seen_utc: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000).toISOString(),
-      last_seen_utc: new Date().toISOString(),
-      confidence_level: Math.floor(Math.random() * 50) + 50,
-      reference: null,
-      tags: 'c2,botnet',
-      reporter: 'abuse_ch'
-    }));
-  }
-
-  // Fetch MalwareBazaar samples (POST API)
-  private async fetchMalwareBazaar(): Promise<{ sha256: string; signature?: string }[]> {
-    try {
-      const response = await fetch('https://mb-api.abuse.ch/api/v1/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'query=get_recent&selector=100'
-      });
-      
-      if (response.ok) {
-        const text = await response.text();
-        if (!text.startsWith('<') && text.trim()) {
-          const data = JSON.parse(text);
-          if (data.query_status === 'ok' && data.data?.length) {
-            // Filter and validate hashes - must be 64 hex characters
-            const samples = data.data
-              .filter((s: any) => s.sha256_hash && /^[a-fA-F0-9]{64}$/.test(s.sha256_hash))
-              .map((s: any) => ({
-                sha256: s.sha256_hash,
-                signature: s.signature || s.tags?.[0] || 'Unknown'
-              }));
-            console.log(`[Bazaar] ${samples.length} valid samples`);
-            return samples;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[Bazaar] API failed:', e);
-    }
-
-    console.warn('[Bazaar] Using sample data');
-    return this.generateSampleBazaarData().map(h => ({ sha256: h, signature: 'Unknown' }));
-  }
-
-  private generateSampleBazaarData(): string[] {
-    return Array.from({ length: 50 }, () => 
-      Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('')
-    );
   }
 
   // Process Feodo data
@@ -591,10 +351,10 @@ class RealTimeThreatFeedService {
   }
 
   // Process MalwareBazaar data
-  private processBazaarData(samples: { sha256: string; signature?: string }[]) {
+  private processBazaarData(samples: MalwareBazaarEntry[]) {
     samples.forEach((sample, idx) => {
       // Validate hash format
-      if (!sample.sha256 || !/^[a-fA-F0-9]{64}$/.test(sample.sha256)) {
+      if (!sample.sha256_hash || !/^[a-fA-F0-9]{64}$/.test(sample.sha256_hash)) {
         return; // Skip invalid hashes
       }
 
@@ -610,12 +370,12 @@ class RealTimeThreatFeedService {
       this.liveFeed.push({
         id: `bazaar-${idx}`,
         type: 'hash',
-        value: sample.sha256,
+        value: sample.sha256_hash,
         source: 'MalwareBazaar',
         severity: 'high',
         malwareFamily: malwareName,
-        timestamp: new Date().toISOString(),
-        tags: ['malware', 'sha256', malwareName].filter(t => t && t !== 'Unknown')
+        timestamp: sample.first_seen || new Date().toISOString(),
+        tags: ['malware', 'sha256', ...(sample.tags || []), malwareName].filter(t => t && t !== 'Unknown')
       });
     });
   }
@@ -664,6 +424,7 @@ class RealTimeThreatFeedService {
 
     const malwareFamilies = Array.from(this.malwareFamilyCounts.entries())
       .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
       .map(([name, count]) => ({
         name,
         count,
