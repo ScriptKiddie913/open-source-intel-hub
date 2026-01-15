@@ -14,7 +14,7 @@ import { fetchAPTMapData, type APTGroup } from './aptMapService';
 import { feodoTrackerService } from './feodoTrackerService';
 import { urlhausService } from './urlhausService';
 import { malwareBazaarService } from './malwareBazaarService';
-import { searchCVE, getCISAKEV, getRecentCriticalCVEs, type CVEData, type KEVData } from './cveService';
+import { searchCVE, getCISAKEV, getRecentCVEs, type CVEData, type KEVData } from './cveService';
 import { searchMalwareActivity, type MalwareSearchResult, type RansomwareGroup, type StealerLog } from './malwareTrackingService';
 import { searchThreatActors, type ThreatActor } from './threatActorService';
 import { getRansomwareVictims, searchDarkWebForums, type RansomwareVictim, type ForumSearchResult } from './darkWebForumService';
@@ -455,11 +455,13 @@ class UnifiedThreatPipelineService {
     try {
       const kevData = await getCISAKEV();
       kevData.slice(0, MAX_RECORDS_PER_SOURCE).forEach(kev => {
+        // KEVData uses vulnerabilityName as identifier, not cveID
+        const kevId = kev.vulnerabilityName?.replace(/\s+/g, '-') || `kev-${Date.now()}`;
         threats.push({
-          id: `kev-${kev.cveID}`,
+          id: `kev-${kevId}`,
           source: THREAT_SOURCES.CISA_KEV,
           type: 'cve',
-          value: kev.cveID,
+          value: kev.vulnerabilityName || 'Unknown Vulnerability',
           severity: 'critical',
           confidence: 100,
           firstSeen: kev.dateAdded,
@@ -482,7 +484,7 @@ class UnifiedThreatPipelineService {
 
     // Fetch recent critical CVEs from NVD
     try {
-      const recentCVEs = await getRecentCriticalCVEs(7); // Last 7 days
+      const recentCVEs = await getRecentCVEs(7, 100); // Last 7 days, up to 100
       recentCVEs.slice(0, MAX_RECORDS_PER_SOURCE).forEach(cve => {
         threats.push({
           id: `nvd-${cve.id}`,
@@ -522,18 +524,18 @@ class UnifiedThreatPipelineService {
           id: `ransom-${victim.id}`,
           source: THREAT_SOURCES.RANSOM_WATCH,
           type: 'ransomware',
-          value: victim.victim,
+          value: victim.victimName,
           malwareFamily: victim.group,
           severity: 'critical',
           confidence: 85,
-          firstSeen: victim.date,
-          lastSeen: victim.date,
-          tags: [victim.group, victim.country || 'Unknown', victim.sector || 'Unknown'],
+          firstSeen: victim.announcementDate,
+          lastSeen: victim.announcementDate,
+          tags: [victim.group, victim.victimCountry || 'Unknown', victim.victimSector || 'Unknown'],
           metadata: {
             group: victim.group,
-            country: victim.country,
-            sector: victim.sector,
-            website: victim.website,
+            country: victim.victimCountry,
+            sector: victim.victimSector,
+            website: victim.victimDomain,
           },
         });
       });
