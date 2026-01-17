@@ -16,6 +16,7 @@ import {
   Radar,
   Bug,
   Zap,
+  Crown,
   AlertTriangle,
   User,
   Network,
@@ -69,6 +70,7 @@ const dataNavItems: NavItem[] = [
 ];
 
 const systemNavItems: NavItem[] = [
+  { name: "Admin", href: "/dashboard/admin", icon: Crown, description: "User Management" },
   { name: "Settings", href: "/dashboard/settings", icon: Settings, description: "Configuration" },
 ];
 
