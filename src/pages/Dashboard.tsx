@@ -29,6 +29,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { initDatabase } from "@/lib/database";
 import { cn } from "@/lib/utils";
+import "@/lib/adminUtils"; // Import admin utilities for debugging
 import { Loader2, Menu } from "lucide-react";
 import { LanguageSelector } from "@/components/LanguageSelector";
 
@@ -731,6 +732,7 @@ const DashboardPage = () => {
             <Route path="/threat-map" element={<LiveThreatMap />} />
             <Route path="/monitoring" element={<MonitoringDashboard />} />
             <Route path="/history" element={<SearchHistoryPage />} />
+            <Route path="/admin" element={<AdminPanel />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

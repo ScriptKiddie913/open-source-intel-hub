@@ -24,6 +24,7 @@ export interface AdminMessage {
   created_at: string;
   updated_at: string;
   from_user_email?: string;
+  to_user_email?: string;
 }
 
 // Check if current user is admin
@@ -263,7 +264,7 @@ export async function getSentMessages(): Promise<AdminMessage[]> {
     return (data || []).map(msg => ({
       ...msg,
       severity: msg.severity as 'info' | 'warning' | 'critical',
-      from_user_email: profiles?.find(p => p.user_id === msg.to_user_id)?.email || 'Unknown',
+      to_user_email: profiles?.find(p => p.user_id === msg.to_user_id)?.email || 'Unknown User',
     }));
   } catch (error) {
     console.error('[AdminService] Error getting sent messages:', error);

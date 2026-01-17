@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { AdminDebugPanel } from '@/components/osint/AdminDebugPanel';
 import {
   Users,
   Shield,
@@ -50,6 +51,7 @@ export function AdminPanel() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
   
   // Message form state
   const [selectedUserId, setSelectedUserId] = useState<string>('');
@@ -65,22 +67,35 @@ export function AdminPanel() {
 
   const checkAdminAndLoad = async () => {
     setLoading(true);
-    const adminStatus = await isCurrentUserAdmin();
-    setIsAdmin(adminStatus);
-    
-    if (adminStatus) {
-      await loadData();
+    setError(null);
+    try {
+      const adminStatus = await isCurrentUserAdmin();
+      setIsAdmin(adminStatus);
+      
+      if (adminStatus) {
+        await loadData();
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load admin panel';
+      setError(errorMessage);
+      console.error('Admin panel error:', err);
     }
     setLoading(false);
   };
 
   const loadData = async () => {
-    const [usersData, messagesData] = await Promise.all([
-      getAllUsers(),
-      getSentMessages(),
-    ]);
-    setUsers(usersData);
-    setSentMessages(messagesData);
+    try {
+      const [usersData, messagesData] = await Promise.all([
+        getAllUsers(),
+        getSentMessages(),
+      ]);
+      setUsers(usersData);
+      setSentMessages(messagesData);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load data';
+      setError(errorMessage);
+      console.error('Data loading error:', err);
+    }
   };
 
   const handleToggleAdmin = async (user: UserWithProfile) => {
@@ -154,6 +169,11 @@ export function AdminPanel() {
         <p className="text-muted-foreground text-center">
           You do not have administrator privileges to access this section.
         </p>
+        {error && (
+          <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -174,6 +194,25 @@ export function AdminPanel() {
           Refresh
         </Button>
       </div>
+
+      {/* Error Alert */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-red-400" />
+            <span className="text-red-400 font-medium">Error</span>
+          </div>
+          <p className="text-red-400 text-sm mt-1">{error}</p>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setError(null)}
+            className="mt-2 text-red-400 border-red-500/30 hover:bg-red-500/10"
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -240,6 +279,10 @@ export function AdminPanel() {
           <TabsTrigger value="messages" className="data-[state=active]:bg-primary">
             <MessageSquare className="h-4 w-4 mr-2" />
             Sent Messages
+          </TabsTrigger>
+          <TabsTrigger value="debug" className="data-[state=active]:bg-primary">
+            <Crown className="h-4 w-4 mr-2" />
+            Debug
           </TabsTrigger>
         </TabsList>
 
@@ -425,7 +468,7 @@ export function AdminPanel() {
                             <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <Mail className="h-3 w-3" />
-                                To: {msg.from_user_email}
+                                To: {msg.to_user_email}
                               </span>
                               <span className="flex items-center gap-1">
                                 <Clock className="h-3 w-3" />
@@ -441,6 +484,10 @@ export function AdminPanel() {
               </ScrollArea>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="debug">
+          <AdminDebugPanel />
         </TabsContent>
       </Tabs>
 
