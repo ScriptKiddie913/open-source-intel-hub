@@ -148,6 +148,21 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/openphish/, ''),
         },
+        // Proxy Blocklist.de
+        '/api/blocklist': {
+          target: 'https://api.blocklist.de',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/blocklist/, ''),
+        },
+        // Proxy Emerging Threats
+        '/api/emerging-threats': {
+          target: 'https://rules.emergingthreats.net',
+          changeOrigin: true,
+          rewrite: (path) => {
+            if (path.includes('block-ips')) return '/fwrules/emerging-Block-IPs.txt';
+            return path.replace(/^\/api\/emerging-threats/, '/fwrules');
+          },
+        },
         // Proxy SSLBL - SSL Blacklist by abuse.ch
         '/api/sslbl': {
           target: 'https://sslbl.abuse.ch',

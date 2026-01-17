@@ -124,8 +124,19 @@ FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
 -- Insert admin role for sagnik.saha.raptor@gmail.com
-INSERT INTO public.user_roles (user_id, role)
-VALUES ('bbc1a140-2b31-4491-af08-9832a28241ba', 'admin');
+-- NOTE: This assumes the user already exists in auth.users. 
+-- Since we are migrating to a new project where this user likely doesn't exist yet,
+-- we should handle this gracefully or remove this hardcoded insert.
+-- For now, we will wrap it in a DO block to avoid errors if the user is missing.
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM auth.users WHERE id = 'bbc1a140-2b31-4491-af08-9832a28241ba') THEN
+        INSERT INTO public.user_roles (user_id, role)
+        VALUES ('bbc1a140-2b31-4491-af08-9832a28241ba', 'admin')
+        ON CONFLICT (user_id, role) DO NOTHING;
+    END IF;
+END $$;
 
 -- Create indexes for performance
 CREATE INDEX idx_user_roles_user_id ON public.user_roles(user_id);

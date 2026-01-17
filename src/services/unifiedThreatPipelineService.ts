@@ -341,7 +341,7 @@ class UnifiedThreatPipelineService {
   private async fetchSSLBL(): Promise<UnifiedThreat[]> {
     const threats: UnifiedThreat[] = [];
     try {
-      const response = await fetch('https://sslbl.abuse.ch/blacklist/sslipblacklist.json');
+      const response = await fetch('/api/sslbl/sslipblacklist.json');
       if (!response.ok) return threats;
       
       const data = await response.json();
@@ -621,7 +621,7 @@ class UnifiedThreatPipelineService {
   private async fetchBlocklistDe(): Promise<UnifiedThreat[]> {
     const threats: UnifiedThreat[] = [];
     try {
-      const response = await fetch('https://api.blocklist.de/getlast.php?time=86400');
+      const response = await fetch('/api/blocklist/getlast.php?time=86400');
       if (!response.ok) return threats;
       
       const text = await response.text();
@@ -651,7 +651,7 @@ class UnifiedThreatPipelineService {
   private async fetchEmergingThreats(): Promise<UnifiedThreat[]> {
     const threats: UnifiedThreat[] = [];
     try {
-      const response = await fetch('https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt');
+      const response = await fetch('/api/emerging-threats/block-ips');
       if (!response.ok) return threats;
       
       const text = await response.text();
@@ -684,7 +684,7 @@ class UnifiedThreatPipelineService {
     const threats: UnifiedThreat[] = [];
     try {
       // PhishTank requires API key, using public feed
-      const response = await fetch('https://data.phishtank.com/data/online-valid.csv');
+      const response = await fetch('/api/phishtank/online-valid.csv');
       if (!response.ok) return threats;
       
       const text = await response.text();
@@ -720,7 +720,7 @@ class UnifiedThreatPipelineService {
   private async fetchOpenPhish(): Promise<UnifiedThreat[]> {
     const threats: UnifiedThreat[] = [];
     try {
-      const response = await fetch('https://openphish.com/feed.txt');
+      const response = await fetch('/api/openphish/feed.txt');
       if (!response.ok) return threats;
       
       const text = await response.text();
