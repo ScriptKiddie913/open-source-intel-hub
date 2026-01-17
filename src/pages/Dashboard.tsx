@@ -23,6 +23,7 @@ import { MonitoringDashboard } from "@/components/osint/MonitoringDashboard";
 import { SearchHistoryPage } from "@/components/osint/SearchHistoryPage";
 import { PanicButton } from "@/components/osint/PanicButton";
 import { ReportButton } from "@/components/osint/ReportButton";
+import { AdminPanel } from "@/components/osint/AdminPanel";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
